@@ -617,12 +617,26 @@ jobs:
         # aceita `timeout-minutes`. Razão e medições: o cabeçalho da action.
         timeout-minutes: 5
 
+      # Novo fork ELUS ainda não possui releases/tags publicadas próprias.
+      # Trazer SOMENTE tags oficiais ao checkout temporário do runner;
+      # NÃO empurrar tags ao fork (isso dispararia publicação de imagens).
+      # Conferir os commits completos para falhar fechado diante de tag móvel.
+      - name: Pinagem das releases de referência do teste de isolamento
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --depth=1 --no-tags https://github.com/melgarafael/DeskcommCRM.git \
+            '+refs/tags/v1.85.0:refs/tags/v1.85.0' \
+            '+refs/tags/v1.63.0:refs/tags/v1.63.0'
+          test "$(git rev-parse 'refs/tags/v1.85.0^{commit}')" = '83aeac8f78aa076f3adfaf3e773c8616229e5cd9'
+          test "$(git rev-parse 'refs/tags/v1.63.0^{commit}')" = '0fd9bda24fac7430dbb240e87c35cc9fd7ce7633'
+
       - name: RLS isolation + governance invariants (pg${{ matrix.pg }})
-        # O token é só para `gh release view`: o test:db confere o update.sh da
-        # última release publicada (issue #1909), e a API anônima tem teto de 60
-        # consultas/hora por IP — o executor próprio é um IP só.
+        # A versão do kit em teste é a release OFICIAL fixada no fork inicial;
+        # gh release view no fork vazio falha (ainda não publicou release).
         env:
           GH_TOKEN: ${{ github.token }}
+          CONFERENCIA_KIT_RELEASE: v1.85.0
         run: pnpm test:db
 
       # O `update.sh` do cliente roda sobre um banco COM DADOS, e nenhum gate
