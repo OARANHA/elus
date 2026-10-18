@@ -24,6 +24,8 @@
 #     raiz (o CHANGELOG que a tela mostra chega do agente do host, não do disco
 #     da imagem). Markdown em subdiretório fica de fora da regra: há código que
 #     lê `.md` do próprio disco (lib/agent-engine/playbooks/*.md).
+#   - compose.portainer.yml na raiz: configuração de deploy explicitamente
+#     excluída do contexto pelo .dockerignore; outros Compose continuam construindo.
 set -euo pipefail
 
 algum=nao
@@ -44,7 +46,7 @@ while IFS= read -r caminho || [ -n "$caminho" ]; do
     # Daqui para baixo, só arquivo da RAIZ: qualquer outro caminho com `/` alcança.
     */*) echo sim; exit 0 ;;
     # ↓ espelho do .dockerignore — os arquivos da raiz.
-    .env | .env.* | playwright.config.ts | *.png | *.log | *.tsbuildinfo) ;;
+    .env | .env.* | playwright.config.ts | *.png | *.log | *.tsbuildinfo | compose.portainer.yml) ;;
     *.md) ;;
     *) echo sim; exit 0 ;;
   esac
