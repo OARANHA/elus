@@ -134,22 +134,26 @@ export default async function LoginPage({
                     {error === "convite_invalido" && (
                       <AvisoLogin>
                         {t(
-                          "Sua conta foi confirmada, mas o convite não vale mais — ele expirou ou foi emitido para outro e-mail. Peça um novo a quem te convidou.",
-                        )}
+            "Sua conta foi confirmada, mas o convite não vale mais — ele expirou ou foi emitido para outro e-mail. Peça um novo a quem te convidou. Não criamos uma empresa nova para você, porque não era isso que você estava fazendo.",
+          )}
                       </AvisoLogin>
                     )}
                     {error === "cadastro_por_convite" && (
                       <AvisoLogin>
                         {t(
-                          "Esta instalação aceita cadastro apenas por convite. Peça um novo convite a quem administra o sistema.",
-                        )}
+            "Sua conta foi confirmada, mas esta instalação aceita cadastro apenas por convite — então não criamos uma empresa para você. Peça um convite a quem administra o sistema; o link dele já traz tudo o que falta.",
+          )}
                       </AvisoLogin>
                     )}
                     {error === "template_padrao" && (
                       <AvisoLogin>
                         {t(
-                          "Este link de confirmação não é compatível com esta instalação. Peça a quem administra o sistema para revisar os modelos de e-mail.",
-                        )}
+            "Este link veio do modelo de e-mail padrão do Supabase, que não fecha o acesso nesta instalação — pedir outro link não resolve. Quem administra o sistema precisa configurar os modelos de e-mail: na nuvem do Supabase, com ",
+          )}
+          <code>marca-emails.sh</code>
+          {t(
+            "; num Supabase próprio, apontando GOTRUE_MAILER_TEMPLATES_* para as rotas /email-templates/ do app.",
+          )}
                       </AvisoLogin>
                     )}
                     {error === "provisionamento" && (
@@ -162,20 +166,20 @@ export default async function LoginPage({
                     {error === "entrada_com_google" && (
                       <AvisoLogin>
                         {t(
-                          "Não foi possível concluir a autenticação anterior. Entre com e-mail e senha.",
-                        )}
+            "Não foi possível concluir a entrada com o Google. Tente novamente — se acontecer de novo, entre com e-mail e senha.",
+          )}
                       </AvisoLogin>
                     )}
                     {error === "entrada_com_google_cancelada" && (
                       <AvisoLogin>
-                        {t("A autenticação anterior foi cancelada. Nada mudou na sua conta.")}
+                        {t("A entrada com o Google foi cancelada antes de terminar. Nada mudou na sua conta.")}
                       </AvisoLogin>
                     )}
                     {error === "acesso_revogado" && (
                       <AvisoLogin>
                         {t(
-                          "O acesso desta conta foi retirado por quem administra o sistema. Se o acesso deveria continuar, peça a restauração.",
-                        )}
+            "O acesso desta conta foi retirado por quem administra o sistema — então não criamos uma empresa nova para você. Se o acesso deveria continuar, peça a quem administra para restaurá-lo; se você está entrando em outra equipe, peça um convite.",
+          )}
                       </AvisoLogin>
                     )}
                   </div>
