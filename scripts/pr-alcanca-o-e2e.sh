@@ -27,6 +27,8 @@
 #     de fora da regra: há código que lê `.md` do próprio disco
 #     (lib/agent-engine/playbooks/*.md).
 #   - infra/executor-proprio/: a máquina que RODA os jobs, não o produto.
+#   - compose.portainer.yml na raiz: configuração de deploy, fora do contexto
+#     de build; não muda o produto nem o ambiente que o e2e executa.
 set -euo pipefail
 
 algum=nao
@@ -45,6 +47,7 @@ while IFS= read -r caminho || [ -n "$caminho" ]; do
     .github/*.md | .github/ISSUE_TEMPLATE/*) ;;
     # Daqui para baixo, só arquivo da RAIZ: qualquer outro caminho com `/` alcança.
     */*) echo sim; exit 0 ;;
+    compose.portainer.yml) ;;
     *.md) ;;
     *) echo sim; exit 0 ;;
   esac

@@ -10,10 +10,44 @@ import { describe, expect, it } from "vitest";
 const SCRIPT = "scripts/pr-mexe-na-imagem.sh";
 
 function responde(caminhos: string[]): string {
-  return execFileSync("bash", [SCRIPT], { input: caminhos.join("\n") + "\n", encoding: "utf-8" }).trim();
+  return execFileSync("bash", [SCRIPT], {
+    input: caminhos.join("\n") + "\n",
+    encoding: "utf-8",
+  }).trim();
 }
 
 describe("pr-mexe-na-imagem", () => {
+  it("compose.portainer.yml isolado é configuração de deploy e pula os builds", () => {
+    expect(responde(["compose.portainer.yml"])).toBe("nao");
+    expect(responde(["docs/deploy.md", "compose.portainer.yml", "tests/unit/deploy.test.ts"])).toBe(
+      "nao",
+    );
+  });
+
+  it.each([
+    "app/page.tsx",
+    "lib/qualquer.ts",
+    "Dockerfile",
+    "Dockerfile.worker",
+    "Dockerfile.scheduler",
+    ".dockerignore",
+    "docker-compose.yml",
+    "docker-compose.prod.yml",
+    "docker-compose.portainer.yml",
+    "compose.yml",
+    "compose.outro.yml",
+    "compose.portainer.yaml",
+    "compose.portainer.yml.bak",
+    "infra/compose.portainer.yml",
+    "compose.portainer.yml/arquivo.ts",
+    "Compose.portainer.yml",
+    "caminho-desconhecido",
+  ])("compose.portainer.yml com %s mantém os builds nas duas ordens", (caminho) => {
+    expect(responde(["compose.portainer.yml", caminho])).toBe("sim");
+    expect(responde([caminho, "compose.portainer.yml"])).toBe("sim");
+    expect(responde([caminho])).toBe("sim");
+  });
+
   it.each([
     ["Dockerfile"],
     ["Dockerfile.worker"],
@@ -64,6 +98,10 @@ describe("pr-mexe-na-imagem", () => {
     .map((l) => l.trim())
     .filter((l) => l && !l.startsWith("#"));
 
+  it("o compose do Portainer está explicitamente fora do contexto de build", () => {
+    expect(ignorados).toContain("compose.portainer.yml");
+  });
+
   // Um processo bash só, que chama o script por entrada (~50 execuções): menos
   // de um segundo numa máquina ociosa, 18 s numa com carga 90. O teto é para a
   // máquina, não para o script.
@@ -83,7 +121,11 @@ describe("pr-mexe-na-imagem", () => {
 
   it("o espelho do .dockerignore no script não tem entrada que o .dockerignore não tenha", () => {
     const fonte = readFileSync(SCRIPT, "utf-8");
-    const bloco = [...fonte.matchAll(/^\s*(?:\|\s*)?((?:[.\w*-]+(?:\/\*)?\s*\|\s*)*[.\w*-]+(?:\/\*)?)\s*(?:\\|\) ;;)$/gm)]
+    const bloco = [
+      ...fonte.matchAll(
+        /^\s*(?:\|\s*)?((?:[.\w*-]+(?:\/\*)?\s*\|\s*)*[.\w*-]+(?:\/\*)?)\s*(?:\\|\) ;;)$/gm,
+      ),
+    ]
       .flatMap((m) => (m[1] ?? "").split("|").map((s) => s.trim()))
       .filter(Boolean);
     const doEspelho = bloco
@@ -126,7 +168,8 @@ describe("pr-mexe-na-imagem", () => {
       .filter((f) => !SO_FORA_DA_IMAGEM.has(f));
     expect(arquivos.length).toBeGreaterThan(500);
 
-    const IMPORT = /(?:from\s+|import\s*\(\s*|import\s+|require\(\s*)['"]((?:\.{1,2}\/|@\/)[^'"]+)['"]/g;
+    const IMPORT =
+      /(?:from\s+|import\s*\(\s*|import\s+|require\(\s*)['"]((?:\.{1,2}\/|@\/)[^'"]+)['"]/g;
     const violacoes: string[] = [];
     for (const f of arquivos) {
       const fonte = readFileSync(f, "utf-8");

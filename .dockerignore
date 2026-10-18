@@ -30,3 +30,6 @@ scratchpad
 evidence
 .superpowers
 *.tsbuildinfo
+
+# Configuração de deploy do Portainer; não compõe nenhuma imagem.
+compose.portainer.yml

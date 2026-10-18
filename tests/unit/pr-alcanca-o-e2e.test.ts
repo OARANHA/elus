@@ -7,10 +7,44 @@ import { describe, expect, it } from "vitest";
 const SCRIPT = "scripts/pr-alcanca-o-e2e.sh";
 
 function responde(caminhos: string[]): string {
-  return execFileSync("bash", [SCRIPT], { input: caminhos.join("\n") + "\n", encoding: "utf-8" }).trim();
+  return execFileSync("bash", [SCRIPT], {
+    input: caminhos.join("\n") + "\n",
+    encoding: "utf-8",
+  }).trim();
 }
 
 describe("pr-alcanca-o-e2e", () => {
+  it("compose.portainer.yml isolado é configuração de deploy e pula o e2e", () => {
+    expect(responde(["compose.portainer.yml"])).toBe("nao");
+    expect(responde(["docs/deploy.md", "compose.portainer.yml", "tests/unit/deploy.test.ts"])).toBe(
+      "nao",
+    );
+  });
+
+  it.each([
+    "app/page.tsx",
+    "lib/qualquer.ts",
+    "Dockerfile",
+    "Dockerfile.worker",
+    "Dockerfile.scheduler",
+    ".dockerignore",
+    "docker-compose.yml",
+    "docker-compose.prod.yml",
+    "docker-compose.portainer.yml",
+    "compose.yml",
+    "compose.outro.yml",
+    "compose.portainer.yaml",
+    "compose.portainer.yml.bak",
+    "infra/compose.portainer.yml",
+    "compose.portainer.yml/arquivo.ts",
+    "Compose.portainer.yml",
+    "caminho-desconhecido",
+  ])("compose.portainer.yml com %s mantém o e2e nas duas ordens", (caminho) => {
+    expect(responde(["compose.portainer.yml", caminho])).toBe("sim");
+    expect(responde([caminho, "compose.portainer.yml"])).toBe("sim");
+    expect(responde([caminho])).toBe("sim");
+  });
+
   it.each([
     ["app/(app)/leads/page.tsx"],
     ["components/ui/button.tsx"],
