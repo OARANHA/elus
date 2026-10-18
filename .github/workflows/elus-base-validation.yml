@@ -3,8 +3,6 @@ name: ELUS — validação inicial da base 1.85.0
 on:
   pull_request:
     branches: [main]
-  push:
-    branches: [bootstrap/deskcommcrm-v1.85.0]
 
 permissions:
   contents: read
@@ -46,6 +44,8 @@ jobs:
       - name: Instalar dependências fixadas
         run: pnpm install --frozen-lockfile
       - name: Verificar TypeScript
+        env:
+          NODE_OPTIONS: --max-old-space-size=6144
         run: pnpm typecheck
       - name: Testar contratos básicos da release
         run: pnpm exec vitest run tests/unit/agents-md-versoes.test.ts tests/unit/documentacao-aponta-para-o-que-existe.test.ts
