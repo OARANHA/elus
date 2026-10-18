@@ -123,6 +123,11 @@ echo "gh falso: comando fora do contrato: $*" >&2; exit 1
 GH
 chmod +x "$TMP/bin/gh"
 export PATH="$TMP/bin:$PATH"
+# Testes simulam PRs numerados (inclusive #7) dentro de repos git descartáveis.
+# GITHUB_REF da execução REAL (refs/pull/7/merge, por exemplo) não pode transformar
+# a PR fictícia #7 no "próprio PR" e removê-la do universo medido. O gate real
+# continua lendo GITHUB_REF normalmente; só este harness sem rede o isola.
+unset GITHUB_REF
 unset FAKE_GH_PRS FAKE_GH_PRS_FECHADOS FAKE_GH_PAI FAKE_GH_SEM_NUMERO
 
 # ── um "repositório principal" mínimo, com duas migrations já aplicadas ──────────────
