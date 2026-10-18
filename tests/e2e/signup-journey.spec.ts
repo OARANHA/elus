@@ -1,7 +1,7 @@
 /**
  * E2E — jornada completa de criação de conta (usuário real, browser real):
  *
- * 1. /login → clica "Criar conta"
+ * 1. /login sem cadastro público → abre /signup diretamente para exercer a rota existente
  * 2. preenche o formulário de signup e envia
  * 3. abre o e-mail de confirmação (Mailpit) e clica no link
  * 4. cai autenticado no onboarding (tenant provisionado)
@@ -23,9 +23,10 @@ test("criar conta: signup → e-mail de confirmação → onboarding → re-logi
   const email = uniqueEmail("signup");
   const password = "SenhaForte!123";
 
-  // 1. Login → botão "Criar conta"
+  // 1. A entrada Elus não oferece cadastro público; a rota continua testada de ponta a ponta.
   await page.goto("/login");
-  await page.getByRole("link", { name: "Criar conta" }).click();
+  await expect(page.getByRole("link", { name: "Criar conta" })).toHaveCount(0);
+  await page.goto("/signup");
   await expect(page).toHaveURL(/\/signup$/);
 
   // 2. Formulário de signup

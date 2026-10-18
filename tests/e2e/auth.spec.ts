@@ -24,6 +24,9 @@ test.describe("auth flow", () => {
     await page.locator("#email").focus();
     await expect(page.locator("#email")).toBeFocused();
     await page.keyboard.press("Tab");
+    // O atalho de recuperação fica entre o email e a senha na tela Elus.
+    await expect(page.getByRole("link", { name: "Esqueci minha senha" })).toBeFocused();
+    await page.keyboard.press("Tab");
     await expect(page.locator("#password")).toBeFocused();
     await page.keyboard.press("Tab");
     // O botão de mostrar a senha fica no Tab de propósito: quem usa só o teclado precisa alcançá-lo.

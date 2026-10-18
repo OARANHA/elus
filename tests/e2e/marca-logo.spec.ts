@@ -748,7 +748,7 @@ test.describe("o logo subido pela tela chega à tela", () => {
 
     const editor = page.locator("#custom_css");
     await expect(editor).toBeVisible();
-    await editor.fill(".text-muted-foreground { color: rgb(1, 2, 3); }");
+    await editor.fill(".elus-login-descricao { color: rgb(1, 2, 3); }");
     await page.getByRole("button", { name: "Salvar CSS", exact: true }).click();
     await expect(page.getByText("CSS personalizado salvo.")).toBeVisible({ timeout: 15_000 });
 
@@ -763,10 +763,10 @@ test.describe("o logo subido pela tela chega à tela", () => {
         .poll(() =>
           paginaLogin.locator("#marca-css-personalizado").evaluate((element) => element.textContent ?? ""),
         )
-        .toContain(":root:root .text-muted-foreground");
+        .toContain(":root:root .elus-login-descricao");
       await expect
         .poll(() =>
-          paginaLogin.locator(".text-muted-foreground").first().evaluate((element) =>
+          paginaLogin.locator(".elus-login-descricao").evaluate((element) =>
             getComputedStyle(element).color,
           ),
         )

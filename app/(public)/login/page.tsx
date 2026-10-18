@@ -111,7 +111,7 @@ export default async function LoginPage({
                         {marca.nome}
                       </span>
                     </h1>
-                    <p className="max-w-sm text-sm leading-6 text-white/60">
+                    <p className="elus-login-descricao max-w-sm text-sm leading-6 text-white/60">
                       {t(
                         "Acesse sua operação para continuar seus atendimentos, vendas e automações.",
                       )}
@@ -187,14 +187,14 @@ export default async function LoginPage({
                   <LoginForm next={next} forgotHref="/login/forgot" appearance="elus" />
 
                   <div className="mt-7 border-t border-white/[0.08] pt-5 text-center">
-                    <p className="text-xs leading-5 text-white/40">
+                    <p className="text-xs leading-5 text-white/65">
                       {t("Acesso restrito a usuários autorizados do Elus.")}
                     </p>
                   </div>
                 </div>
               </div>
 
-              <p className="mt-5 text-center text-xs tracking-[0.16em] text-white/30 uppercase">
+              <p className="mt-5 text-center text-xs tracking-[0.16em] text-white/65 uppercase">
                 {t("Elus by Wandora")}
               </p>
             </div>
