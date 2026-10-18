@@ -37,11 +37,12 @@ jobs:
 
           git switch -c bootstrap/deskcommcrm-v1.85.0
 
-          # Manter o workflow de bootstrap como evidência da procedência.
-          # Não copiar o histórico .git de outro projeto.
+          # O GitHub App não tem autorização para criar/alterar workflows.
+          # Preservar TODOS os workflows locais; importar os oficiais separadamente,
+          # mediante a permissão específica, nunca forçar push de arquivos protegidos.
           rsync -a --delete \
             --exclude='/.git/' \
-            --exclude='/.github/workflows/bootstrap-deskcomm-v185.yml' \
+            --exclude='/.github/workflows/' \
             "$origem/" ./
 
           test -f supabase/baseline.sql || {
@@ -54,6 +55,10 @@ jobs:
           }
           git diff --check
           git add -A
+          if git diff --cached --name-only | grep -q '^\.github/workflows/'; then
+            echo "::error::Importação tentou alterar workflow protegido."
+            exit 1
+          fi
           test -n "$(git status --porcelain)" || {
             echo "::error::Nenhuma mudança importada."
             exit 1
@@ -63,8 +68,11 @@ jobs:
           git commit -m "chore: importa snapshot da DeskcommCRM v1.85.0 ($UPSTREAM_SHA)"
           git push origin HEAD:refs/heads/bootstrap/deskcommcrm-v1.85.0
 
-          echo "### Importação preparada" >> "$GITHUB_STEP_SUMMARY"
-          echo "- Snapshot upstream: `$UPSTREAM_SHA`" >> "$GITHUB_STEP_SUMMARY"
-          echo "- Branch: `bootstrap/deskcommcrm-v1.85.0`" >> "$GITHUB_STEP_SUMMARY"
-          echo "- Nenhum deploy ou banco alterado." >> "$GITHUB_STEP_SUMMARY"
-          echo "- Abrir PR para `main` e validar antes de merge." >> "$GITHUB_STEP_SUMMARY"
+          {
+            printf '%s\n' '### Importação preparada'
+            printf '%s\n' "- Snapshot upstream: $UPSTREAM_SHA"
+            printf '%s\n' '- Branch: bootstrap/deskcommcrm-v1.85.0'
+            printf '%s\n' '- Workflows oficiais excluídos (permissão específica pendente).'
+            printf '%s\n' '- Nenhum deploy ou banco alterado.'
+            printf '%s\n' '- Abrir PR para main e validar antes de merge.'
+          } >> "$GITHUB_STEP_SUMMARY"
