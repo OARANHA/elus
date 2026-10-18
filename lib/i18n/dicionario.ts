@@ -16212,6 +16212,13 @@ export const DICIONARIO: Traducoes = {
   "A resposta ia mostrar um produto que não foi encontrado no cadastro. Confira o produto e gere de novo.": { es: "La respuesta iba a mostrar un producto que no se encontró en el registro. Revisa el producto y genera de nuevo." },
   "A sugestão tentou usar uma ação que a prévia não reconhece. Gere de novo; se repetir, revise as ferramentas ligadas no agente.": { es: "La sugerencia intentó usar una acción que la previsualización no reconoce. Genera de nuevo; si se repite, revisa las herramientas activadas en el agente." },
   "A geração da sugestão falhou, ou o contexto da conversa não pôde ser montado. Tente de novo; se repetir, o motivo ficou registrado no servidor.": { es: "La generación de la sugerencia falló, o no se pudo armar el contexto de la conversación. Inténtalo de nuevo; si se repite, el motivo quedó registrado en el servidor." },
+  // Identidade visual do ELUS — login aprovado (sem substituir traduções da release).
+  "Apresentação do Elus": { es: "Presentación de Elus" },
+  "Elus — Seu atendimento, vendas e rotina trabalhando no automático.": { es: "Elus — Tu atención al cliente, tus ventas y tus tareas cotidianas funcionando de forma automática." },
+  "Bem-vindo ao": { es: "Bienvenido a" },
+  "Acesse sua operação para continuar seus atendimentos, vendas e automações.": { es: "Accede a tu operación para continuar con la atención al cliente, las ventas y las automatizaciones." },
+  "Acesso restrito a usuários autorizados do Elus.": { es: "Acceso restringido a usuarios autorizados de Elus." },
+  "Elus by Wandora": { es: "Elus by Wandora" },
 };
 
 /**
