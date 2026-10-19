@@ -185,21 +185,22 @@ export async function proxy(request: NextRequest) {
   if (isAdminSurface && pathname.startsWith("/admin") && pathname !== "/admin/forbidden") {
     // Uma falha de transporte pode vir como PostgREST error OU como exceção.
     // Nenhuma das duas comprova ausência de papel administrativo.
-    let permAdmin: Awaited<ReturnType<typeof supabase.rpc>>;
+    let permitido = false;
     try {
-      permAdmin = await supabase.rpc("fn_is_platform_admin");
+      const { data, error } = await supabase.rpc("fn_is_platform_admin");
+      if (error) {
+        console.warn("[auth] permissão de plataforma indisponível", {
+          requestId,
+          codigo: error.code ?? null,
+        });
+        return authIndisponivel(pathname, requestId);
+      }
+      permitido = data === true;
     } catch {
       console.warn("[auth] consulta de papel de plataforma sem resposta", { requestId });
       return authIndisponivel(pathname, requestId);
     }
-    if (permAdmin.error) {
-      console.warn("[auth] permissão de plataforma indisponível", {
-        requestId,
-        codigo: permAdmin.error.code ?? null,
-      });
-      return authIndisponivel(pathname, requestId);
-    }
-    if (!permAdmin.data) {
+    if (!permitido) {
       return NextResponse.redirect(new URL("/admin/forbidden", request.url));
     }
   }
