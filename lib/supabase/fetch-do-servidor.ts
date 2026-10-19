@@ -86,8 +86,7 @@ export function fetchDoServidor(urlInterna: string, urlPublica: string): typeof 
  * O proxy e o cliente SSR validam a sessão por `/auth/v1/user`. Na ocorrência
  * real de 19/10/2026, o gateway do Supabase registrou respostas dessa rota
  * acima de 60 s (pico de 224 s); uma navegação protegida esperava até o 524
- * do Cloudflare. O timeout vale APENAS para a verificação/renovação de sessão:
- * Storage, PostgREST, uploads e operações administrativas permanecem intactos.
+ * do Cloudflare. O timeout cobre a validação/renovação de sessão e as leituras de\n * autoridade indispensáveis ao layout. Consultas de negócio, uploads e\n * mutações continuam sem esse limite.
  *
  * Não usamos Promise.race: abortar o fetch evita deixar uma requisição órfã.
  * Preservamos o AbortSignal do chamador, inclusive cancelamento de navegação.
@@ -107,22 +106,21 @@ export function fetchAuthComPrazo(
     } catch {
       return baseFetch(input, init);
     }
-    // As leituras de identidade/RBAC compõem o mesmo gate de navegação.
-    // NÃO aplicar prazo de autenticação a consultas de negócio nem a escritas.
-    const protegido =
-      caminho === "/auth/v1/user" ||
-      caminho === "/auth/v1/token" ||
+    // GETs de identidade/membership e RPCs de autorização (POST somente leitura).
+    // Não interromper consultas de negócio, mutações nem uploads.
+    const caminhoDeAutenticacao = caminho === "/auth/v1/user" || caminho === "/auth/v1/token";
+    const leituraDeIdentidade =
       caminho === "/rest/v1/user_organizations" ||
       caminho === "/rest/v1/platform_admins" ||
-      caminho === "/rest/v1/organizations" ||
+      caminho === "/rest/v1/organizations";
+    const rpcDeAutorizacao =
       caminho === "/rest/v1/rpc/fn_support_context" ||
       caminho === "/rest/v1/rpc/fn_is_platform_admin" ||
       caminho === "/rest/v1/rpc/fn_user_role_in_org";
-    if (!protegido || (init?.method ?? (input instanceof Request ? input.method : "GET")).toUpperCase() !== "GET" &&
-      caminho !== "/auth/v1/token" &&
-      caminho !== "/rest/v1/rpc/fn_is_platform_admin" &&
-      caminho !== "/rest/v1/rpc/fn_support_context" &&
-      caminho !== "/rest/v1/rpc/fn_user_role_in_org") {
+    const metodo = (init?.method ?? (input instanceof Request ? input.method : "GET")).toUpperCase();
+    if (
+      !(caminhoDeAutenticacao || rpcDeAutorizacao || (leituraDeIdentidade && metodo === "GET"))
+    ) {
       return baseFetch(input, init);
     }
 
