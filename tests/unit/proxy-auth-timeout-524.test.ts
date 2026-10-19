@@ -8,6 +8,7 @@ const estado = vi.hoisted(() => ({
   lancar: false,
   admin: true,
   erroRpc: null as { code: string } | null,
+  lancarRpc: false,
 }));
 
 vi.mock("@/lib/env", () => ({
@@ -32,7 +33,10 @@ vi.mock("@supabase/ssr", () => ({
         return { data: { user: estado.user }, error: estado.erro };
       },
     },
-    rpc: async () => ({ data: estado.admin, error: estado.erroRpc }),
+    rpc: async () => {
+      if (estado.lancarRpc) throw new Error("PostgREST sem resposta");
+      return { data: estado.admin, error: estado.erroRpc };
+    },
   }),
 }));
 
@@ -48,6 +52,7 @@ beforeEach(() => {
   estado.lancar = false;
   estado.admin = true;
   estado.erroRpc = null;
+  estado.lancarRpc = false;
 });
 
 describe("proxy — falha temporária de Auth nunca vira logout nem admin forbidden", () => {
@@ -96,6 +101,12 @@ describe("proxy — falha temporária de Auth nunca vira logout nem admin forbid
     const resposta = await proxy(requisição("/admin"));
     expect(resposta.status).toBe(503);
     expect(resposta.headers.get("location")).toBeNull();
+  });
+
+  it("exceção de transporte na RPC de plataforma também devolve 503", async () => {
+    estado.lancarRpc = true;
+    const resposta = await proxy(requisição("/admin"));
+    expect(resposta.status).toBe(503);
   });
 
   it("não-admin validado continua proibido no admin", async () => {
