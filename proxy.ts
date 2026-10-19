@@ -23,7 +23,7 @@ function authIndisponivel(pathname: string, requestId: string): NextResponse {
   };
   if (pathname.startsWith("/api/")) {
     return NextResponse.json(
-      { error: { code: "auth_temporarily_unavailable", message: "Validação de sessão indisponível. Tente novamente." } },
+      { error: { code: "upstream_unavailable", message: "Validação de sessão indisponível. Tente novamente." } },
       { status: 503, headers },
     );
   }
