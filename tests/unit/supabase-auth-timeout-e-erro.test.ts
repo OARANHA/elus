@@ -32,7 +32,7 @@ describe("deadline da autenticação — falha fechada e requisição abortada",
   });
 
   it("não altera fetchs de negócio nem uploads, mesmo com a mesma origem", async () => {
-    const base = vi.fn(async () => new Response("{}", { status: 200 }));
+    const base = vi.fn(async (_input: RequestInfo | URL, _options?: RequestInit) => new Response("{}", { status: 200 }));
     const bounded = fetchAuthComPrazo(base as typeof fetch, 20);
     await bounded(PUBLICA + "/rest/v1/orders", { method: "GET" });
     await bounded(PUBLICA + "/storage/v1/object/upload/file", { method: "POST" });
@@ -43,7 +43,7 @@ describe("deadline da autenticação — falha fechada e requisição abortada",
   });
 
   it("limita leitura de membership e RPC de admin, nunca mutação de tabela", async () => {
-    const base = vi.fn(async () => new Response("{}", { status: 200 }));
+    const base = vi.fn(async (_input: RequestInfo | URL, _options?: RequestInit) => new Response("{}", { status: 200 }));
     const bounded = fetchAuthComPrazo(base as typeof fetch, 20);
     await bounded(PUBLICA + "/rest/v1/user_organizations?select=role", { method: "GET" });
     await bounded(PUBLICA + "/rest/v1/rpc/fn_is_platform_admin", { method: "POST" });
