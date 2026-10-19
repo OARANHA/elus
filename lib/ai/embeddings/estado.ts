@@ -62,7 +62,13 @@ export async function montarEstadoDaChave(
     familiaIlegivel = true;
   }
   const [chave, { data }] = await Promise.all([
-    resolverChaveDeEmbedding(organizationId, "embedding_indexar", { familia }),
+    // Sem familia gravada, nao forcar null: o resolvedor aplica o opt-in da
+    // instalacao somente a bases novas. Erro de leitura nunca vira escolha.
+    familiaIlegivel
+      ? Promise.resolve(null)
+      : familia === null
+        ? resolverChaveDeEmbedding(organizationId, "embedding_indexar")
+        : resolverChaveDeEmbedding(organizationId, "embedding_indexar", { familia }),
     supabase
       .from("ai_provider_credentials_safe")
       .select("id, provider, label, api_key_last4, validated_at, validation_error, is_active")
