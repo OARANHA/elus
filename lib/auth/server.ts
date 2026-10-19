@@ -12,6 +12,7 @@ import { readSupportContext } from "@/lib/impersonate/support";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { logger } from "@/lib/logger";
+import { erroTransitorioDeAuth } from "@/lib/auth/erro-transitorio";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import {
@@ -176,6 +177,11 @@ export const loadAuthUser = cache(async (): Promise<AuthUser | null> => {
       status: error.status ?? null,
       message: error.message,
     });
+  }
+  // Falha transitória NÃO é sessão ausente: não redirecionar silenciosamente
+  // a pessoa para /login. Acesso segue negado enquanto o IdP não responde.
+  if (erroTransitorioDeAuth(error)) {
+    throw new Error("auth_temporarily_unavailable");
   }
   if (!user) return null;
 
