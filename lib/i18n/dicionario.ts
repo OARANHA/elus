@@ -37,6 +37,8 @@ import type { Idioma } from "./idiomas";
 type Traducoes = Record<string, Partial<Record<Exclude<Idioma, "pt-BR">, string>>>;
 
 export const DICIONARIO: Traducoes = {
+  "A IA gerenciada da base de conhecimento está indisponível.": { es: "La IA gestionada de la base de conocimientos no está disponible." },
+  "Peça à administração da plataforma para restabelecer o serviço. Não altere o provedor da base: isto exigiria preparar todo o material novamente.": { es: "Solicita a la administración de la plataforma que restablezca el servicio. No cambies el proveedor de la base: hacerlo exigiría volver a preparar todo el material." },
   "Há um ajuste proporcional esperando pagamento. Escolher outro plano cancela esse ajuste.": { es: "Hay un ajuste proporcional esperando el pago. Elegir otro plan cancela ese ajuste." },
   "Estamos preparando o ajuste proporcional. Aguarde alguns segundos e tente novamente.": { es: "Estamos preparando el ajuste proporcional. Espera unos segundos e inténtalo de nuevo." },
   "Estamos preparando o ajuste proporcional. Aguarde alguns segundos.": { es: "Estamos preparando el ajuste proporcional. Espera unos segundos." },

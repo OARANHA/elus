@@ -298,6 +298,10 @@ const schema = z.object({
   VERCEL_AI_GATEWAY_URL: z.string().optional().default(""),
   ANTHROPIC_API_KEY: z.string().optional().default(""),
   OPENAI_API_KEY: z.string().optional().default(""),
+  // Embeddings Chutes da instalacao, nunca repassar ao navegador ou ao tenant.
+  CHUTES_API_KEY: z.string().optional().default(""),
+  // Opt-in de bases novas, sem familia escolhida e sem indice ativo.
+  ELUS_EMBEDDING_DEFAULT: z.enum(["", "chutes"]).optional().default(""),
   // Esforço de raciocínio dos modelos da OpenAI (o*, gpt-5*, gpt-6*). `z.string()`
   // e NUNCA `z.enum` (motivo mais abaixo, em AGENT_DISPATCH_CONSUMER): quem valida
   // a grafia é o boot do worker, em `lib/agent-engine/env.ts`.
