@@ -64,7 +64,7 @@ describe("proxy — falha temporária de Auth nunca vira logout nem admin forbid
     expect(resposta.headers.get("retry-after")).toBe("5");
     expect(resposta.headers.get("cache-control")).toBe("no-store");
     expect(resposta.headers.get("location")).toBeNull();
-    expect((await resposta.json()).error.code).toBe("auth_temporarily_unavailable");
+    expect((await resposta.json()).error.code).toBe("upstream_unavailable");
   });
 
   it("UI recebe 503 sem ser redirecionada para login", async () => {
