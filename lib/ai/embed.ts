@@ -21,6 +21,7 @@ import {
   type PontoDeEmbedding,
 } from "@/lib/ai/embeddings/chave";
 import { gatewayHeaders, type ModelId } from "@/lib/ai/gateway";
+import { CHUTES_QWEN3_VECTOR_MODEL, solicitarEmbeddingQwen3 } from "@/lib/ai/embeddings/chutes-qwen3-tee";
 import { logger } from "@/lib/logger";
 // O par (provedor, modelo): a mesma régua dos demais caminhos (issue #2377).
 import { ParProvedorModeloInvalidoError, validarParProvedorModelo } from "@/lib/ai/par-provedor-modelo";
@@ -71,6 +72,20 @@ export async function embedText(
   }
 
   const modelId = String(opts.model ?? modeloDeEmbedding(chave.provedor));
+
+  // Qwen3: endereco fixo e chave server-side. Nao aceita URL/modelo do tenant.
+  // A validacao da familia ocorreu no resolvedor, antes de qualquer chamada.
+  if (chave.provedor === "chutes") {
+    if (chave.viaGateway || !chave.apiKey || modelId !== CHUTES_QWEN3_VECTOR_MODEL || chave.baseUrl) {
+      throw new Error("embedding_chutes_contrato_ou_chave_invalida");
+    }
+    const resultado = await solicitarEmbeddingQwen3(
+      content,
+      opts.ponto === "embedding_consultar" ? "consulta" : "documento",
+      chave.apiKey,
+    );
+    return { embedding: resultado.embedding, promptTokens: 0, model: resultado.model };
+  }
 
   // O PAR ANTES DE INDEXAR OU CONSULTAR (issue #2377) — caminho de LEITURA,
   // que era justamente um dos que falhavam sozinhos. `chave.provedor` é quem

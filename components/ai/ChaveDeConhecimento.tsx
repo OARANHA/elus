@@ -53,7 +53,11 @@ export type { EstadoDaChave };
 
 type ProvedorDaChave = "openai" | "openrouter" | "google";
 
-const NOME_DO_PROVEDOR: Record<ProvedorDaBase, string> = { openai: "OpenAI", google: "Google" };
+const NOME_DO_PROVEDOR: Record<ProvedorDaBase, string> = {
+  openai: "OpenAI",
+  google: "Google",
+  chutes: "IA gerenciada pelo ELUS",
+};
 
 const ONDE_PEGAR: Record<ProvedorDaChave, { url: string; texto: string; placeholder: string }> = {
   openai: {

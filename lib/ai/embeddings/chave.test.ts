@@ -13,6 +13,8 @@ const state = vi.hoisted(() => ({
     OPENAI_API_KEY: "",
     OPENROUTER_API_KEY: "",
     OPENROUTER_BASE_URL: "",
+    CHUTES_API_KEY: "",
+    ELUS_EMBEDDING_DEFAULT: "",
   },
 }));
 
@@ -98,6 +100,34 @@ beforeEach(() => {
   state.env.AI_GATEWAY_API_KEY = "";
   state.env.OPENAI_API_KEY = "";
   state.env.OPENROUTER_API_KEY = "";
+  state.env.CHUTES_API_KEY = "";
+  state.env.ELUS_EMBEDDING_DEFAULT = "";
+});
+
+describe("Chutes como embedding gerenciado pela instalacao", () => {
+  it("seleciona Chutes somente para base sem familia com opt-in explicito", async () => {
+    state.env.CHUTES_API_KEY = "credencial-sintetica-de-instalacao";
+    state.env.ELUS_EMBEDDING_DEFAULT = "chutes";
+    expect(await resolverChaveDeEmbedding("org-1", "embedding_indexar")).toMatchObject({
+      provedor: "chutes",
+      origem: "chave_da_instalacao",
+      apiKey: "credencial-sintetica-de-instalacao",
+    });
+    expect(await resolverChaveDeEmbedding("org-2", "embedding_consultar")).toMatchObject({
+      provedor: "chutes",
+      origem: "chave_da_instalacao",
+    });
+  });
+  it("nao troca a familia ja gravada apenas por haver Chutes no ambiente", async () => {
+    state.env.CHUTES_API_KEY = "credencial-sintetica-de-instalacao";
+    state.env.ELUS_EMBEDDING_DEFAULT = "chutes";
+    state.organizations = [{ id: "org-1", settings: { base_de_conhecimento: { familia: "google" } } }];
+    expect(await resolverChaveDeEmbedding("org-1", "embedding_consultar")).toBeNull();
+  });
+  it("nao ativa Chutes sem a chave ou sem opt-in para base nova", async () => {
+    state.env.CHUTES_API_KEY = "credencial-sintetica-de-instalacao";
+    expect(await resolverChaveDeEmbedding("org-1")).toBeNull();
+  });
 });
 
 describe("resolverChaveDeEmbedding", () => {
