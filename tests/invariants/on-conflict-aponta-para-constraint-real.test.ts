@@ -2,9 +2,10 @@ import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
-import { describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
 
 import { sql } from "./gov-helpers";
+import { provisionadorasDoCatalogo } from "./molde-de-provisionadora";
 
 /**
  * TODO `onConflict` APONTA PARA UMA CONSTRAINT QUE EXISTE.
@@ -116,6 +117,14 @@ function conjuntosUnicos(tabela: string): string[][] {
 }
 
 describe("onConflict × constraints reais", () => {
+  beforeAll(() => {
+    // O arquivo roda sobre baseline sem módulos instalados; instala o catálogo
+    // antes de inspecionar os onConflict das tabelas opcionais.
+    for (const provisionadora of provisionadorasDoCatalogo()) {
+      sql(`select public.${provisionadora.nome}();`);
+    }
+  });
+
   const arquivos = arquivosDoRepo();
   const todos = arquivos.map(usosDe);
   const usos = todos.flatMap((t) => t.usos);

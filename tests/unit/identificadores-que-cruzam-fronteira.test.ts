@@ -187,6 +187,10 @@ const SITES: { arquivo: string; fronteira: string; papel?: "gerador" | "validado
   { arquivo: "app/api/v1/ai/knowledge/sources/route.ts", fronteira: "storage.chave-de-objeto" },
   // O PDF da proposta comercial (#1832): `<org>/<proposta>.pdf`, dois uuids.
   { arquivo: "lib/propostas/storage.ts", fronteira: "storage.chave-de-objeto" },
+  // DANFE administrativa: caminho privado por organização e id do documento;
+  // o bucket é privado e o arquivo validado antes do sender canônico.
+  { arquivo: "lib/integracoes-erp/autoridade-admin-whatsapp.ts", fronteira: "storage.chave-de-objeto" },
+  { arquivo: "lib/integracoes-erp/danfe-conversa.ts", fronteira: "storage.chave-de-objeto" },
   // Chave de idempotência: os geradores (manda UUID) e os validadores (exige UUID).
   { arquivo: "app/onboarding/connect-whatsapp/_client.tsx", fronteira: "api.idempotency-key", papel: "gerador" },
   { arquivo: "components/extensions/ExtensionsManager.tsx", fronteira: "api.idempotency-key", papel: "gerador" },

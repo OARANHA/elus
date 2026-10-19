@@ -49,7 +49,7 @@ export interface ChannelSendInput {
    * mensagens, como em toda mídia — e é ele que confere a URL antes de buscar.
    */
   media?:
-    | { storagePath: string; mime: string }
+    | { storagePath: string; mime: string; type?: 'image' | 'document' }
     | { url: string; mime: string; type: 'image' | 'document' };
 }
 

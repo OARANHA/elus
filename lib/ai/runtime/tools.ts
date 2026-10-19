@@ -34,6 +34,11 @@ import { resolveActiveLeadForContact, type LeadCandidate } from "@/lib/leads/act
 import { podeChamarFerramenta, recusaParaOModelo } from "@/lib/leads/escopo-de-funil";
 import { escritaCabeNoTurno } from "./escopo-das-escritas";
 import {
+  auditarConsultaAdminWhatsapp,
+  ferramentaErpExigeAutoridadeAdminWhatsapp,
+  type AutoridadeAdminWhatsapp,
+} from "@/lib/integracoes-erp/autoridade-admin-whatsapp";
+import {
   chaveDaEscritaDoNegocio,
   criarFilaDeEscritasDoNegocio,
   EscritaDoNegocioSemDesfechoError,
@@ -73,6 +78,8 @@ export interface PickToolsInput {
    * vale como nenhuma, pela mesma razão de `modulosLigados`.
    */
   capacidadesLigadas?: readonly CapacidadeDaOrganizacao[];
+  /** Autoridade explícita obtida do número WhatsApp vinculado a admin ativo da org. */
+  autoridadeAdminWhatsapp?: AutoridadeAdminWhatsapp;
   /** Mutable signal — runtime checks after each step. */
   handoffSignal: RuntimeHandoffSignal;
   /**
@@ -263,6 +270,13 @@ function wrapMcpTool(
       try {
         ensureScope(input.auth.scopes, def.requiresScope);
         ensureRole(input.auth.role, def.requiresRole);
+        if (ferramentaErpExigeAutoridadeAdminWhatsapp(def.name) && !input.autoridadeAdminWhatsapp) {
+          return {
+            permitido: false,
+            motivo: "autoridade_admin_whatsapp_ausente",
+            mensagem: "esta consulta administrativa não está disponível nesta conversa.",
+          };
+        }
 
         // ── DE QUEM É O REGISTRO QUE ESTA ESCRITA ALCANÇA — do contato do turno
         //
@@ -452,6 +466,27 @@ function wrapMcpTool(
         //
         // Só quem declara é afetado: sem `motivoDoVazio` nada muda.
         const motivoDoVazio = def.motivoDoVazio?.(result) ?? null;
+        const erroDaResposta = def.erroParaAuditoria?.(result) ?? null;
+        if (erroDaResposta !== null) {
+          void auditMcpToolCall({
+            ctx: input.ctx,
+            toolName: def.name,
+            args: argsAudit,
+            durationMs: Date.now() - startedAt,
+            success: false,
+            errorMessage: `provider:${erroDaResposta}`,
+          });
+          if (input.autoridadeAdminWhatsapp && ferramentaErpExigeAutoridadeAdminWhatsapp(def.name)) {
+            await auditarConsultaAdminWhatsapp({
+              autoridade: input.autoridadeAdminWhatsapp,
+              toolName: def.name,
+              requestId: input.ctx.requestId,
+              success: false,
+              motivo: erroDaResposta,
+            });
+          }
+          return result;
+        }
 
         // O TERMO desta chamada, quando a tool declara um (#484, caminho 2).
         //
@@ -492,9 +527,27 @@ function wrapMcpTool(
             : { desfecho: "sem_resultado" as const, motivo: motivoDoVazio }),
           ...(termoBuscado === null ? {} : { termo: termoBuscado }),
         });
+        if (input.autoridadeAdminWhatsapp && ferramentaErpExigeAutoridadeAdminWhatsapp(def.name)) {
+          await auditarConsultaAdminWhatsapp({
+            autoridade: input.autoridadeAdminWhatsapp,
+            toolName: def.name,
+            requestId: input.ctx.requestId,
+            success: motivoDoVazio === null,
+            motivo: motivoDoVazio,
+          });
+        }
         return result;
       } catch (err) {
         const message = err instanceof Error ? err.message : "unknown_error";
+        if (input.autoridadeAdminWhatsapp && ferramentaErpExigeAutoridadeAdminWhatsapp(def.name)) {
+          await auditarConsultaAdminWhatsapp({
+            autoridade: input.autoridadeAdminWhatsapp,
+            toolName: def.name,
+            requestId: input.ctx.requestId,
+            success: false,
+            motivo: "falha_execucao",
+          });
+        }
         void auditMcpToolCall({
           ctx: input.ctx,
           toolName: def.name,
@@ -575,6 +628,11 @@ export function pickToolsFromMcp(input: PickToolsInput): Record<string, Tool> {
     // A marca era declaração sem efeito no runtime: eu a criei no catálogo e
     // não a apliquei aqui. Não montar é o que faz a declaração valer.
     if (catalogEntry(def.name)?.apenasHumano) continue;
+
+    // Consultas de cliente, pedido, NFe e DANFE só aparecem no turno de um
+    // número explicitamente vinculado a um admin ativo desta organização.
+    if (ferramentaErpExigeAutoridadeAdminWhatsapp(def.name) && !input.autoridadeAdminWhatsapp)
+      continue;
 
     // Módulo opcional desligado nesta instalação (doc 37): a capacidade não
     // existe aqui, então nem chega ao modelo — mesmo que a versão publicada do

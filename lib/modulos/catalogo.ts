@@ -15,6 +15,12 @@ export interface ModuloCatalogo {
 
 export const CATALOGO_DE_MODULOS: readonly ModuloCatalogo[] = [
   {
+    slug: "integracoes_erp",
+    nome: "Integrações ERP",
+    descricao:
+      "Conecte o VendaERP para consultas somente leitura de produtos, estoque, clientes, pedidos e notas fiscais.",
+  },
+  {
     slug: "honorarios",
     nome: "Honorários (advocacia)",
     descricao:

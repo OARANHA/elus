@@ -100,6 +100,10 @@ const ALLOWLIST: Record<string, string> = {
     "quantidade, reason em vocabulário do programa e idempotency_key são dado " +
     "do programa de fidelidade, e a pessoa por trás já está anônima na cascata " +
     "(contact_id vira contato anonimizado, não contato legível).",
+  "integracoes_erp.erp_admin_whatsapp_bindings":
+    "phone_e164 identifica o administrador autenticado que autorizou consultas ERP, não um " +
+    "cliente nem um registro ligado a contacts. O vínculo é removido junto com auth.users via " +
+    "ON DELETE CASCADE; apagar esse número ao anonimizar qualquer contato quebraria a autorização.",
 };
 
 /**

@@ -1,0 +1,652 @@
+import { chromium, type Browser } from "playwright-core";
+
+import { extractPdfText, PdfExtractError } from "@/lib/ai/rag/extractors/pdf";
+import { MAX_MEDIA_BYTES } from "@/lib/messaging/media/types";
+import { buscarRecursoBrowserPdfPinado } from "./recurso-browser-pdf-pinado";
+
+import {
+  abrirRedirectLocalParaDocumento,
+  ErroRenderizacaoDocumento,
+  type EtapaRenderizacaoDocumento,
+  type EvidenciaEgressBrowserDocumento,
+  type EvidenciaValidacaoPdfDocumento,
+  type EvidenciaTransporteBrowserDocumento,
+  type PoliticaRenderizacaoUrlPdf,
+  type RenderizadorUrlPdf,
+} from "./renderizar-url-pdf";
+import {
+  recursoPermitidoNoBrowserDeDocumento,
+  resolverIpPublicoFixadoParaBrowser,
+} from "./egress-browser-pdf";
+
+const LIMITE_TOTAL_MS = 28_000;
+const TETO_TOTAL_EXPLICITO_MS = 60_000;
+const LIMITE_ETAPA_MS = 12_000;
+
+/**
+ * A DANFE só pode ser entregue após conferência dos bytes impressos, e não
+ * apenas porque uma SPA colocou a chave de acesso no DOM. Esta função
+ * nunca devolve o texto extraído para auditoria, logs ou modelo.
+ */
+export function diagnosticarTextoPdfFiscal(
+  texto: string,
+  chaveEsperada: string,
+): EvidenciaValidacaoPdfDocumento | null {
+  if (!/^\d{44}$/.test(chaveEsperada)) return "chave_divergente";
+  const normalizado = texto
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toUpperCase();
+  const semEspacos = normalizado.replace(/\s+/g, "");
+  if (
+    /\b(?:DANFE|NOTA\s+FISCAL)\s+(?:INDISPONIVEL|NAO\s+ENCONTRAD[AO])\b/.test(normalizado) ||
+    /\bERRO\s+AO\s+(?:CARREGAR|CONSULTAR)\b/.test(normalizado)
+  )
+    return "pagina_de_erro";
+  if (normalizado.trim().length < 80) return "texto_insuficiente";
+  // PDFjs pode separar letras ou juntar palavras na mesma linha impressa.
+  // A chave inteira continua obrigatória, impedindo aceitar um HTML vazio.
+  if (!semEspacos.includes("DANFE")) return "marcador_danfe_ausente";
+  if (!semEspacos.includes("CHAVEDEACESSO")) return "rotulo_chave_ausente";
+  // O extrator de PDF nao garante ordem visual: a chave principal pode
+  // anteceder o rotulo "CHAVE DE ACESSO" na string retornada. O PDF real
+  // de 05/10 apresentou exatamente esse formato. A identidade continua
+  // vindo apenas da leitura fiscal estruturada do ERP.
+  const rotulo = /(?<![A-Z])C\s*H\s*A\s*V\s*E\s*D\s*E\s*A\s*C\s*E\s*S\s*S\s*O(?![A-Z])/.exec(
+    normalizado,
+  );
+  if (!rotulo) return "rotulo_chave_ausente";
+
+  // Uma chave de NFe referenciada nao pode satisfazer a validacao da NFe
+  // principal. Se houver zero ou mais de uma candidata no corpo principal,
+  // falhar fechado; nunca escolher pela ordem ou por mera coincidencia.
+  const corpoPrincipal =
+    normalizado.split(
+      /\b(?:DOCUMENTOS?\s+FISCAIS?\s+REFERENCIAD[OA]S?|NFE?\s+REFERENCIAD[OA]S?)\b/,
+      1,
+    )[0] ?? "";
+  // Os agrupadores tipograficos sao permitidos; palavras e sequencias
+  // maiores que 44 digitos nao podem formar uma chave artificial.
+  const candidatas = [...corpoPrincipal.matchAll(/(?<!\d)\d(?:[\s.\-]*\d){43}(?!\d)/g)];
+  if (candidatas.length !== 1 || candidatas[0]?.[0].replace(/\D/g, "") !== chaveEsperada) {
+    return "chave_divergente";
+  }
+  return null;
+}
+
+export function pdfImpressoComprovaDanfe(texto: string, chaveEsperada: string): boolean {
+  return diagnosticarTextoPdfFiscal(texto, chaveEsperada) === null;
+}
+
+/**
+ * Limite por operação, inclusive nas chamadas Playwright que não oferecem
+ * timeout nativo (ex.: PDF, context.newPage e encerramento).
+ * Promise.race limita a espera do chamador, mas NÃO encerra sozinho uma
+ * operação pendente. O finally fecha o Browser pela API oficial.
+ */
+async function executarDentroDoPrazo<T>(executar: () => Promise<T>, prazoMs: number): Promise<T> {
+  if (prazoMs <= 0 || !Number.isFinite(prazoMs)) {
+    throw new ErroRenderizacaoDocumento("timeout");
+  }
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      executar(),
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new ErroRenderizacaoDocumento("timeout")), prazoMs);
+      }),
+    ]);
+  } finally {
+    if (timer !== undefined) clearTimeout(timer);
+  }
+}
+
+/** page.pdf() não aceita 'timeout' nas opções de Playwright-core 1.63. */
+export async function imprimirPdfComPrazo(
+  imprimir: () => Promise<Buffer>,
+  prazoMs: number,
+): Promise<Buffer> {
+  return executarDentroDoPrazo(imprimir, prazoMs);
+}
+
+/**
+ * Renderização controlada: reutiliza o Chromium e o bootstrap 302 efêmero
+ * existentes; não cria fila, sender ou cliente ERP.
+ *
+ * A URL externa só é entregue ao browser em memória, nunca no argv, logs,
+ * conteúdo de exceção ou WebSocket de depuração público (Playwright usa pipe).
+ */
+export const renderizarUrlParaPdfControlado: RenderizadorUrlPdf = async (
+  url,
+  politica: PoliticaRenderizacaoUrlPdf,
+) => {
+  if (!politica.permiteUrl(url)) {
+    throw new ErroRenderizacaoDocumento("destino_inseguro");
+  }
+
+  const origem = new URL(url);
+  // Este renderer só aceita HTTPS público, sem credenciais e sem porta explícita.
+  if (
+    origem.protocol !== "https:" ||
+    origem.port !== "" ||
+    origem.username !== "" ||
+    origem.password !== "" ||
+    !origem.hostname
+  ) {
+    throw new ErroRenderizacaoDocumento("destino_inseguro");
+  }
+
+  // O prazo total inclui o DNS: anteriormente o relógio só começava
+  // DEPOIS da resolução, deixando o pedido travar sem deadline.
+  const maxBytes = politica.maxBytes ?? MAX_MEDIA_BYTES;
+  // Política explícita da DANFE pode usar até 60s; ausência mantém default genérico.
+  const limiteMs = Math.min(politica.timeoutMs ?? LIMITE_TOTAL_MS, TETO_TOTAL_EXPLICITO_MS);
+  const deadline = Date.now() + limiteMs;
+  const restante = () => {
+    const ms = Math.min(LIMITE_ETAPA_MS, deadline - Date.now());
+    if (ms <= 0) throw new ErroRenderizacaoDocumento("timeout");
+    return ms;
+  };
+
+  // DNS: confirmar todos os IPs e piná-los no Chromium antes de navegar.
+  // A consulta DNS subjacente pode terminar tardiamente, porém a resposta
+  // atrasada jamais será usada depois de expirar o prazo.
+  const hosts = [
+    ...new Set([origem.hostname, ...(politica.recursosBrowser?.hostsAutorizados ?? [])]),
+  ];
+  const ipsPinados = new Map<string, string>();
+  for (const host of hosts) {
+    // A lista adicional só existe no adapter do provider, nunca vem do modelo.
+    if (!/^[a-z0-9.-]+$/i.test(host) || host.length > 253)
+      throw new ErroRenderizacaoDocumento("destino_inseguro");
+    const ip = await executarDentroDoPrazo(
+      () => resolverIpPublicoFixadoParaBrowser(host),
+      Math.min(3_000, restante()),
+    );
+    if (!ip) throw new ErroRenderizacaoDocumento("destino_inseguro");
+    ipsPinados.set(host, ip);
+  }
+  const ipv4 = ipsPinados.get(origem.hostname)!;
+
+  // Identidade fiscal só pode vir da leitura estruturada ERP.
+  if (
+    !politica.impressaoDireta &&
+    politica.chaveFiscalEsperada !== undefined &&
+    !/^\d{44}$/.test(politica.chaveFiscalEsperada)
+  ) {
+    throw new ErroRenderizacaoDocumento("render_falhou");
+  }
+
+  let browser: Browser | null = null;
+  let redirect: Awaited<ReturnType<typeof abrirRedirectLocalParaDocumento>> | null = null;
+  let etapa: EtapaRenderizacaoDocumento = "loopback_inicializacao";
+  let domFiscalValidado = false;
+  let metodoBloqueado = false;
+  let destinoBloqueado = false;
+  let evidenciaTransporte: EvidenciaTransporteBrowserDocumento | undefined;
+  // A URL fica interna; somente classe finita de um HTTPS autorizado que falhou.
+  const registrarFalhaTransporte = (metodo: string, adicional: boolean, erro: unknown) => {
+    const familia = !adicional
+      ? "origem"
+      : metodo === "POST" || metodo === "OPTIONS"
+        ? "post"
+        : "get";
+    const causa =
+      erro instanceof Error && erro.message === "recurso_pdf_http_recusado"
+        ? "http_recusado"
+        : erro instanceof Error && erro.message === "recurso_pdf_timeout"
+          ? "timeout"
+          : "falhou";
+    const categoria = ("recurso_" + familia + "_" + causa) as EvidenciaTransporteBrowserDocumento;
+    const prioridade = (v: EvidenciaTransporteBrowserDocumento) =>
+      v.startsWith("recurso_post_") ? 3 : v.startsWith("recurso_get_") ? 2 : 1;
+    if (!evidenciaTransporte || prioridade(categoria) > prioridade(evidenciaTransporte))
+      evidenciaTransporte = categoria;
+  };
+  // Resumo finito de eventos interceptados; nao registra metodos, destinos ou URLs.
+  const evidenciaEgress = (): EvidenciaEgressBrowserDocumento => {
+    if (metodoBloqueado && destinoBloqueado) return "ambas_classes_bloqueadas";
+    if (metodoBloqueado) return "metodo_nao_permitido";
+    if (destinoBloqueado) return "destino_fora_origem";
+    return "nenhum_bloqueio_interceptado";
+  };
+  try {
+    redirect = await abrirRedirectLocalParaDocumento(url);
+    etapa = "chromium_lancamento";
+
+    // Não propagar process.env inteiro: contêiner tem tokens ERP e chaves privadas.
+    browser = await chromium.launch({
+      headless: true,
+      executablePath: process.env.CHROMIUM_PATH?.trim() || "/usr/bin/chromium-browser",
+      args: [
+        "--no-sandbox",
+        "--disable-dev-shm-usage",
+        "--disable-background-networking",
+        "--no-proxy-server",
+        `--host-resolver-rules=MAP ${origem.hostname} ${ipv4}`,
+      ],
+      timeout: restante(),
+      env: {
+        HOME: "/tmp",
+        XDG_CONFIG_HOME: "/tmp",
+        XDG_CACHE_HOME: "/tmp",
+        NODE_ENV: process.env.NODE_ENV ?? "production",
+        PATH: process.env.PATH ?? "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+      },
+    });
+
+    etapa = "chromium_contexto";
+    const context = await executarDentroDoPrazo(
+      () =>
+        browser!.newContext({
+          serviceWorkers: "block",
+          acceptDownloads: false,
+          javaScriptEnabled: true,
+          bypassCSP: false,
+        }),
+      restante(),
+    );
+
+    etapa = "chromium_politicas";
+    // WebRTC não atravessa context.route("**/*"). A DANFE não necessita
+    // PeerConnection; desabilitar antes de executar qualquer script da SPA.
+    await executarDentroDoPrazo(
+      () =>
+        context.addInitScript(() => {
+          Object.defineProperty(window, "RTCPeerConnection", {
+            value: undefined,
+            configurable: false,
+            writable: false,
+          });
+          Object.defineProperty(window, "webkitRTCPeerConnection", {
+            value: undefined,
+            configurable: false,
+            writable: false,
+          });
+        }),
+      restante(),
+    );
+
+    // Playwright intercepta requests antes do socket; nenhuma URL de rede
+    // interna, segundo host ou POST pode ser consumida pelo Chrome.
+    await executarDentroDoPrazo(
+      () =>
+        context.route("**/*", async (route) => {
+          const requisicao = route.request();
+          const metodo = requisicao.method();
+          const permitido = recursoPermitidoNoBrowserDeDocumento(
+            requisicao.url(),
+            origem.origin,
+            redirect!.url,
+            metodo,
+          );
+          // O bootstrap em loopback nunca passa pelo proxy remoto. Sem
+          // recursosBrowser, preservar o renderer genérico sem mudar seu fluxo.
+          if (!politica.recursosBrowser) {
+            if (!permitido) {
+              if (metodo !== "GET" && metodo !== "HEAD") metodoBloqueado = true;
+              else destinoBloqueado = true;
+              return route.abort("blockedbyclient");
+            }
+            return route.continue();
+          }
+
+          if (requisicao.url() === redirect!.url && metodo === "GET") {
+            try {
+              // Playwright não intercepta a continuação de um redirect, mesmo
+              // quando o 302 é entregue por fulfill. Validar o bootstrap local,
+              // mas iniciar uma navegação JS nova: ela passa pela policy e pelo
+              // transporte HTTPS pinado, sem socket remoto direto do Chromium.
+              const respostaInicial = await route.fetch({
+                maxRedirects: 0,
+                timeout: restante(),
+              });
+              if (
+                respostaInicial.status() !== 302 ||
+                respostaInicial.headers()["location"] !== url ||
+                !redirect!.houveRedirecionamento()
+              ) {
+                return route.abort("blockedbyclient");
+              }
+              const destino = JSON.stringify(url).replace(/</g, "\\u003c");
+              return route.fulfill({
+                status: 200,
+                contentType: "text/html; charset=utf-8",
+                headers: { "cache-control": "no-store", "referrer-policy": "no-referrer" },
+                body:
+                  '<!doctype html><meta charset="utf-8"><script>location.replace(' +
+                  destino +
+                  ")</script>",
+              });
+            } catch {
+              return route.abort("blockedbyclient");
+            }
+          }
+          const adicional = politica.recursosBrowser.permiteRecurso(requisicao.url(), metodo);
+          if (!permitido && !adicional) {
+            if (metodo !== "GET" && metodo !== "HEAD") metodoBloqueado = true;
+            else destinoBloqueado = true;
+            return route.abort("blockedbyclient");
+          }
+          let hostname: string;
+          try {
+            hostname = new URL(requisicao.url()).hostname;
+          } catch {
+            destinoBloqueado = true;
+            return route.abort("blockedbyclient");
+          }
+          const ip = ipsPinados.get(hostname);
+          if (!ip) {
+            destinoBloqueado = true;
+            return route.abort("blockedbyclient");
+          }
+          try {
+            // Via HTTPS pinado: sem segunda resolução, sem redirect e sem
+            // conexões externas diretas do Chromium.
+            const resposta = await buscarRecursoBrowserPdfPinado({
+              url: requisicao.url(),
+              metodo,
+              ip,
+              headers: await requisicao.allHeaders(),
+              body: metodo === "POST" ? requisicao.postDataBuffer() : null,
+              prazoMs: restante(),
+            });
+            return route.fulfill(resposta);
+          } catch (erro) {
+            registrarFalhaTransporte(metodo, adicional, erro);
+            // Nenhum detalhe de request/response fiscal chega ao log ou agente.
+            return route.abort("blockedbyclient");
+          }
+        }),
+      restante(),
+    );
+
+    // A API de routeWebSocket não depende do route HTTP e bloqueia egress
+    // paralelo criado por JavaScript da SPA para destinos de rede internos.
+    await executarDentroDoPrazo(
+      () => context.routeWebSocket("**/*", (socket) => socket.close()),
+      restante(),
+    );
+    etapa = "chromium_pagina";
+    const page = await executarDentroDoPrazo(() => context.newPage(), restante());
+    // Inscrever antes da navegação: a chamada AJAX pode acontecer antes do DOMContentLoaded.
+    // Só observa status de um recurso público allowlisted; nunca lê body, URL fiscal ou texto.
+    const respostaDeMontagem =
+      politica.impressaoDireta && politica.aguardarRecursoDeMontagem
+        ? page
+            .waitForResponse(
+              (resposta) =>
+                politica.aguardarRecursoDeMontagem!(resposta.url(), resposta.request().method()),
+              { timeout: restante() },
+            )
+            .then(
+              async (resposta) => resposta.ok() && (await resposta.finished()) === null,
+              () => false,
+            )
+        : null;
+    etapa = "chromium_bootstrap";
+    // O bootstrap 200 de recursosBrowser executa location.replace() para
+    // iniciar UMA SEGUNDA navegacao interceptavel. Esperar DOMContentLoaded na
+    // primeira goto pode observar a pagina local ou abortar durante a troca.
+    // "commit" confirma apenas a resposta do bootstrap; o destino exato
+    // precisa ser confirmado separadamente antes de qualquer leitura/impressao.
+    // Sem recursosBrowser, preservar o fluxo generico legado (302 HTTP direto).
+    const bootstrapControlado = Boolean(politica.recursosBrowser);
+    const resposta = await page.goto(redirect.url, {
+      waitUntil: bootstrapControlado ? "commit" : "domcontentloaded",
+      timeout: restante(),
+    });
+
+    if (!redirect.houveRedirecionamento() || !resposta?.ok()) {
+      throw new ErroRenderizacaoDocumento("render_falhou", "chromium_bootstrap");
+    }
+    if (bootstrapControlado) {
+      etapa = "chromium_destino_fiscal";
+      await page.waitForURL(url, {
+        waitUntil: "domcontentloaded",
+        timeout: restante(),
+      });
+    }
+    etapa = "chromium_apos_redirect";
+
+    if (new URL(page.url()).origin !== origem.origin) {
+      throw new ErroRenderizacaoDocumento("render_falhou");
+    }
+
+    if (politica.impressaoDireta) {
+      // Somente aguarda o evento load, sem inspecionar conteúdo.
+      etapa = "chromium_carga_pagina";
+      await executarDentroDoPrazo(
+        () => page.waitForLoadState("load", { timeout: restante() }),
+        restante(),
+      );
+      // A SPA busca os dados DEPOIS do evento load. Aguardar a resposta HTTP completa
+      // do recurso público autorizado; não inspecionar seu conteúdo nem conferir NFe.
+      if (respostaDeMontagem) {
+        etapa = "chromium_resposta_montagem";
+        const respostaOk = await executarDentroDoPrazo(() => respostaDeMontagem, restante());
+        if (!respostaOk) throw new ErroRenderizacaoDocumento("render_falhou", etapa);
+      }
+      // Renderiza o visual de tela, evitando CSS print que oculta a SPA.
+      etapa = "chromium_preparo_impressao";
+      await executarDentroDoPrazo(() => page.emulateMedia({ media: "screen" }), restante());
+      // Aguarda a rede assentar (incluindo microtarefas de renderização da SPA)
+      // em vez de imprimir assim que o HTML está carregado. Sem leitura de DOM fiscal.
+      etapa = "chromium_rede_estabilizacao";
+      await executarDentroDoPrazo(
+        () => page.waitForLoadState("networkidle", { timeout: restante() }),
+        restante(),
+      );
+      etapa = "chromium_preparo_impressao";
+      await executarDentroDoPrazo(
+        () =>
+          page.evaluate(
+            () =>
+              new Promise<void>((resolve) =>
+                requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+              ),
+          ),
+        restante(),
+      );
+    } else {
+      // Não imprimir uma SPA vazia, "Carregando..." ou tela de autenticação.
+      // A prontidão é medida no browser; nunca exportar texto fiscal para logs.
+      etapa = "chromium_validacao_conteudo";
+      try {
+        await page.waitForFunction(
+          (chaveEsperada) => {
+            const texto = document.body?.innerText ?? "";
+            const normalizado = texto
+              .normalize("NFD")
+              .replace(/[\u0300-\u036f]/g, "")
+              .toUpperCase();
+            // Nota Fiscal isolada e a chave repetida por uma tela de erro nao
+            // comprovam que a DANFE esta pronta para impressao.
+            if (
+              normalizado.trim().length < 80 ||
+              !/\bDANFE\b/.test(normalizado) ||
+              !/\bCHAVE\s+DE\s+ACESSO\b/.test(normalizado) ||
+              /\b(?:DANFE|NOTA\s+FISCAL)\s+(?:INDISPONIVEL|NAO\s+ENCONTRAD[AO])\b/.test(
+                normalizado,
+              ) ||
+              /\bERRO\s+AO\s+(?:CARREGAR|CONSULTAR)\b/.test(normalizado)
+            ) {
+              return false;
+            }
+            // Mesmo com marcadores de DANFE, exige a chave exata de 44 digitos
+            // comprovada na leitura estruturada ERP antes de gerar o PDF.
+            // Nenhum texto fiscal é devolvido ao Node, logs, auditoria ou modelo.
+            return !chaveEsperada || texto.replace(/\D/g, "").includes(chaveEsperada);
+          },
+          politica.chaveFiscalEsperada ?? null,
+          { timeout: restante() },
+        );
+        domFiscalValidado = true;
+      } catch (erro) {
+        // O HTML da SPA pode não expor texto selecionável, mesmo que a impressão
+        // contenha a DANFE. Só continuamos para imprimir se existir chave fiscal
+        // comprovada e a espera do DOM simplesmente tiver expirado.
+        const expirou =
+          erro instanceof Error &&
+          (erro.name === "TimeoutError" ||
+            (erro instanceof ErroRenderizacaoDocumento && erro.codigo === "timeout"));
+        if (!expirou || !politica.chaveFiscalEsperada || Date.now() >= deadline) throw erro;
+      }
+    }
+
+    etapa = "chromium_impressao_pdf";
+    const imprimir = () =>
+      imprimirPdfComPrazo(
+        () =>
+          page.pdf({
+            format: "A4",
+            printBackground: true,
+            displayHeaderFooter: false,
+          }),
+        restante(),
+      );
+    const conferirBytes = (arquivo: Buffer) => {
+      if (!arquivo.length) throw new ErroRenderizacaoDocumento("render_falhou");
+      if (arquivo.length > maxBytes) throw new ErroRenderizacaoDocumento("arquivo_grande");
+      if (
+        !arquivo.subarray(0, Math.min(arquivo.length, 1024)).includes(Buffer.from("%PDF-")) ||
+        !arquivo.subarray(-2048).includes(Buffer.from("%%EOF"))
+      ) {
+        throw new ErroRenderizacaoDocumento("tipo_nao_pdf");
+      }
+    };
+
+    let pdf = await imprimir();
+    // Impressão direta só dispensa o exame fiscal quando a política NÃO fornece
+    // chave comprovada. Para DANFE administrativa com chave estruturada do ERP,
+    // conferir os bytes impressos com o validador canônico antes da entrega.
+    // Não há nova navegação, consulta ERP ou egress nesta validação.
+    if (politica.impressaoDireta && !politica.chaveFiscalEsperada) return pdf;
+    etapa = "pdf_validacao";
+    conferirBytes(pdf);
+
+    // Nunca confiar no DOM sozinho: a impressão deve provar a mesma chave
+    // fiscal estruturada. O Chromium usa media=print por padrão; se a CSS
+    // de impressão esconder o texto, permitir UMA segunda impressão da
+    // MESMA página em media=screen, dentro do prazo total original.
+    if (politica.chaveFiscalEsperada) {
+      const extrairValidado = async (arquivo: Buffer, segundaImpressao: boolean) => {
+        const prazo = restante();
+        try {
+          return await executarDentroDoPrazo(
+            () =>
+              extractPdfText(arquivo, {
+                estrategia: "processo-a-parte",
+                heapMb: 96,
+                timeoutMs: prazo,
+              }),
+            prazo,
+          );
+        } catch (erro) {
+          // O extractor compartilhado do ELUS expõe apenas a distinção
+          // sanitizada entre PDF sem texto e falha de leitura. Não inferimos
+          // detalhes de infraestrutura a partir da mensagem do erro.
+          const origem = erro instanceof PdfExtractError ? erro.motivo : null;
+          const evidencia: EvidenciaValidacaoPdfDocumento =
+            erro instanceof ErroRenderizacaoDocumento && erro.codigo === "timeout"
+              ? "extracao_timeout"
+              : origem === "sem_texto"
+                ? segundaImpressao
+                  ? domFiscalValidado
+                    ? "extracao_sem_texto_apos_screen_dom_confirmado"
+                    : "extracao_sem_texto_apos_screen_dom_nao_confirmado"
+                  : "extracao_sem_texto"
+                : "extracao_falhou";
+          throw new ErroRenderizacaoDocumento(
+            "render_falhou",
+            "pdf_validacao",
+            undefined,
+            undefined,
+            evidencia,
+          );
+        }
+      };
+
+      let texto: string;
+      try {
+        texto = await extrairValidado(pdf, false);
+      } catch (erro) {
+        if (
+          !(erro instanceof ErroRenderizacaoDocumento) ||
+          erro.evidenciaValidacaoPdf !== "extracao_sem_texto"
+        ) {
+          throw erro;
+        }
+
+        // Não navegar de novo nem repetir chamada ERP: somente alterar
+        // a media CSS do contexto atual. A política de egress continua ativa.
+        etapa = "chromium_impressao_pdf";
+        await executarDentroDoPrazo(() => page.emulateMedia({ media: "screen" }), restante());
+        pdf = await imprimir();
+        etapa = "pdf_validacao";
+        conferirBytes(pdf);
+        texto = await extrairValidado(pdf, true);
+      }
+
+      const evidencia = diagnosticarTextoPdfFiscal(texto, politica.chaveFiscalEsperada);
+      if (evidencia) {
+        throw new ErroRenderizacaoDocumento(
+          "render_falhou",
+          "pdf_validacao",
+          undefined,
+          undefined,
+          evidencia,
+        );
+      }
+    }
+    return pdf;
+  } catch (erro) {
+    if (erro instanceof ErroRenderizacaoDocumento) {
+      const fase = erro.etapa ?? etapa;
+      throw new ErroRenderizacaoDocumento(
+        erro.codigo,
+        fase,
+        erro.evidenciaPdf,
+        erro.evidenciaEgress ??
+          ((erro.codigo === "timeout" && fase === "chromium_validacao_conteudo") ||
+          (fase === "pdf_validacao" &&
+            (erro.evidenciaValidacaoPdf === "extracao_sem_texto_apos_screen_dom_confirmado" ||
+              erro.evidenciaValidacaoPdf === "extracao_sem_texto_apos_screen_dom_nao_confirmado"))
+            ? evidenciaEgress()
+            : undefined),
+        erro.evidenciaValidacaoPdf,
+        erro.evidenciaTransporte ?? evidenciaTransporte,
+      );
+    }
+    const timeout =
+      erro instanceof Error && (erro.name === "TimeoutError" || Date.now() >= deadline);
+    // Nunca repassar a mensagem original: Playwright inclui endereço visitado,
+    // detalhes da navegação e argv (possível token na query).
+    throw new ErroRenderizacaoDocumento(
+      timeout ? "timeout" : "render_falhou",
+      etapa,
+      undefined,
+      timeout && etapa === "chromium_validacao_conteudo" ? evidenciaEgress() : undefined,
+      undefined,
+      evidenciaTransporte,
+    );
+  } finally {
+    if (browser) {
+      try {
+        // Limita a espera do chamador sem usar API privada de processo.
+        // browser.close() continua em andamento caso o prazo expire; um
+        // timeout aqui NÃO comprova que o subprocesso terminou.
+        await executarDentroDoPrazo(() => browser!.close(), 2_000);
+      } catch {
+        // Cleanup best-effort; nunca expor logs/argumentos do navegador.
+      }
+    }
+    if (redirect) {
+      try {
+        await executarDentroDoPrazo(() => redirect!.fechar(), 2_000);
+      } catch {
+        // Não manter o turno preso em conexões HTTP remanescentes.
+      }
+    }
+  }
+};

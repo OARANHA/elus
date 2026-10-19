@@ -17,7 +17,8 @@ import { claimOfJob } from '@/lib/agent-engine/queue/claim';
  *     durável + cancelamento de follow-ups — duas tools de handoff confundiriam
  *     o modelo e a variante do CRM não silencia o harness.
  */
-import type { Tool } from 'ai';
+import { tool, type Tool } from 'ai';
+import { z } from 'zod';
 
 import { carregarServidorMcpExternoDoTurno } from '@/lib/mcp/servidor-externo/carregar';
 import { pickToolsFromMcp, type RuntimeHandoffSignal } from '@/lib/ai/runtime/tools';
@@ -28,6 +29,12 @@ import type { McpContext } from '@/lib/mcp/types';
 import { modulosLigados } from '@/lib/instalacao/modulos';
 import { capacidadesDaOrganizacao } from '@/lib/organizacao/capacidades';
 import { filtrarToolsComCallbackDesabilitado } from '@/lib/followup/callback-policy';
+import {
+  ferramentaErpExigeAutoridadeAdminWhatsapp,
+  filtrarFerramentasErpPorAutoridadeAdminWhatsapp,
+  prepararDanfeAdminWhatsapp,
+  resolverAutoridadeAdminWhatsapp,
+} from '@/lib/integracoes-erp/autoridade-admin-whatsapp';
 
 import type { Logger } from '../../obs/logger';
 import type { CrmEdgeConfig } from './mcp-client';
@@ -71,13 +78,20 @@ export async function buildMcpTurnTools(
   },
   agentConfig: PublishedAgentConfig,
   log: Logger,
-  options?: { readOnly: boolean },
+  options?: {
+    readOnly: boolean;
+    onAdminDocumentPrepared?: (documento: {
+      storagePath: string;
+      mime: string;
+      filename: string;
+    }) => void;
+  },
 ): Promise<McpTurnTools | null> {
   const callbackFiltered = filtrarToolsComCallbackDesabilitado(
     agentConfig.toolIds,
     agentConfig.followup,
   );
-  const allowed = callbackFiltered.filter((id) => !BLOCKED_TOOL_IDS.has(id));
+  const allowedBeforeAdminGate = callbackFiltered.filter((id) => !BLOCKED_TOOL_IDS.has(id));
   const blocked = agentConfig.toolIds.filter((id) => BLOCKED_TOOL_IDS.has(id));
   if (blocked.length > 0) {
     // A tela não oferece mais estas capacidades (a rota serve `marcavel: false`
@@ -90,6 +104,16 @@ export async function buildMcpTurnTools(
       motivos: blocked.map((id) => motivoDoHarness(id)),
     });
   }
+  const precisaAutoridadeAdminWhatsapp = allowedBeforeAdminGate.some(
+    ferramentaErpExigeAutoridadeAdminWhatsapp,
+  );
+  const autoridadeAdminWhatsapp = ids.contactId && precisaAutoridadeAdminWhatsapp
+    ? await resolverAutoridadeAdminWhatsapp(cfg.supabase, ids.organizationId, ids.contactId)
+    : null;
+  const allowed = filtrarFerramentasErpPorAutoridadeAdminWhatsapp(
+    allowedBeforeAdminGate,
+    autoridadeAdminWhatsapp,
+  );
   if (allowed.length === 0) {
     return null;
   }
@@ -178,8 +202,39 @@ export async function buildMcpTurnTools(
     modulosLigados: await modulosLigados(cfg.supabase),
     capacidadesLigadas: await capacidadesDaOrganizacao(cfg.supabase, ids.organizationId),
     ...(ids.contactId ? { contatoDoTurno: ids.contactId } : {}),
+    ...(autoridadeAdminWhatsapp ? { autoridadeAdminWhatsapp } : {}),
     ...(servidorExterno ? { servidorMcpExterno: servidorExterno } : {}),
   });
+
+  if (
+    options?.readOnly !== true &&
+    autoridadeAdminWhatsapp &&
+    ids.conversationId &&
+    allowed.includes('crm_erp_get_invoice')
+  ) {
+    tools.crm_erp_prepare_admin_danfe = tool({
+      description:
+        'Prepara uma DANFE já emitida para esta conversa administrativa. Use quando o admin pedir a última NFe ou as DANFEs de NFes selecionadas. Prepare uma NFe por vez e chame send_message logo depois; o runtime anexa o PDF privado pelo sender canônico. Não exponha URL nem caminho do arquivo.',
+      inputSchema: z.object({ codigo_nfe: z.number().int().min(1).max(2_147_483_647) }),
+      execute: async ({ codigo_nfe }) => {
+        const preparado = await prepararDanfeAdminWhatsapp(
+          cfg.supabase,
+          autoridadeAdminWhatsapp,
+          ids.conversationId!,
+          codigo_nfe,
+          ids.jobId,
+        );
+        if (!preparado.ok) return preparado;
+        options?.onAdminDocumentPrepared?.({
+          storagePath: preparado.documento.storage_path,
+          mime: preparado.documento.media_mime,
+          filename: preparado.documento.filename,
+        });
+        const { storage_path: _interno, ...documentoPublico } = preparado.documento;
+        return { ok: true, documento: documentoPublico };
+      },
+    });
+  }
 
   return {
     tools,
