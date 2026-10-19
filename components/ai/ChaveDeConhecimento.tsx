@@ -84,7 +84,7 @@ export function ChaveDeConhecimento({ estado, onChaveCadastrada }: Props) {
   const [abrindo, setAbrindo] = useState(false);
   // A base já tem família e a chave dela sumiu: o cadastro começa nela.
   const semChave = estado.familia_sem_chave;
-  const [provedor, setProvedor] = useState<ProvedorDaChave>(semChave ?? "openai");
+  const [provedor, setProvedor] = useState<ProvedorDaChave>(semChave === "chutes" ? "openai" : (semChave ?? "openai"));
   const [rotulo, setRotulo] = useState("");
   const [chave, setChave] = useState("");
   const [enviando, setEnviando] = useState(false);
@@ -175,6 +175,22 @@ export function ChaveDeConhecimento({ estado, onChaveCadastrada }: Props) {
           />
         ) : null}
       </div>
+    );
+  }
+
+  // Familia Chutes gerenciada: ausência da chave central é problema da instalação,
+  // não instrução para a organização cadastrar outra chave (nem mudar de vetor).
+  if (semChave === "chutes") {
+    return (
+      <Card data-testid="conhecimento-sem-chave" className="space-y-2 border-warning-bg bg-warning-bg/20 p-4">
+        <div className="flex items-center gap-2 text-sm font-medium">
+          <TriangleAlert className="h-4 w-4 shrink-0 text-warning-fg" aria-hidden />
+          {t("A IA gerenciada da base de conhecimento está indisponível.")}
+        </div>
+        <p className="text-xs text-text-muted">
+          {t("Peça à administração da plataforma para restabelecer o serviço. Não altere o provedor da base: isto exigiria preparar todo o material novamente.")}
+        </p>
+      </Card>
     );
   }
 

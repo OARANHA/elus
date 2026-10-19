@@ -841,6 +841,11 @@ type CategoriaDeHost =
 type EntradaDeHost = { categoria: CategoriaDeHost; motivo: string };
 
 const HOSTS_DECLARADOS: Record<string, EntradaDeHost> = {
+  "chutes-qwen-qwen3-embedding-8b-tee.chutes.ai": {
+    categoria: "FORNECEDOR",
+    motivo:
+      "endpoint HTTPS oficial fixo do modelo Chutes Qwen3-Embedding-8B-TEE para indexar e consultar documentos. lib/ai/embeddings/chutes-qwen3-tee.ts envia apenas o texto autorizado e a chave da instalacao, sem aceitar URLs do tenant nem redirecionamentos. E destino real de API do fornecedor, nao marca da plataforma.",
+  },
   "chatgpt.com": {
     categoria: "CONSOLE",
     motivo:
