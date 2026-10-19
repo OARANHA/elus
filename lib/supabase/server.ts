@@ -9,7 +9,7 @@ import { createServerClient, type CookieOptions } from "@supabase/ssr";
 import { cookieSecure } from "@/lib/supabase/cookie-secure";
 import { cookies } from "next/headers";
 import { env } from "@/lib/env";
-import { fetchDoServidor } from "@/lib/supabase/fetch-do-servidor";
+import { fetchAuthComPrazo, fetchDoServidor } from "@/lib/supabase/fetch-do-servidor";
 import { urlDoSupabaseNoServidor } from "@/lib/supabase/url-do-servidor";
 
 /**
@@ -47,9 +47,11 @@ async function clienteDeServidor(sameSite: "strict" | "lax") {
     env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
     {
       global: {
-        fetch: fetchDoServidor(
-          urlDoSupabaseNoServidor(env.SUPABASE_SERVER_URL, env.NEXT_PUBLIC_SUPABASE_URL),
-          env.NEXT_PUBLIC_SUPABASE_URL,
+        fetch: fetchAuthComPrazo(
+          fetchDoServidor(
+            urlDoSupabaseNoServidor(env.SUPABASE_SERVER_URL, env.NEXT_PUBLIC_SUPABASE_URL),
+            env.NEXT_PUBLIC_SUPABASE_URL,
+          ),
         ),
       },
       cookies: {

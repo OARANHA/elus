@@ -130,6 +130,8 @@ acessibilidade).
 
 ## 6. Operar e instalar
 
+Incidente ELUS (19/10/2026): [Supabase Auth intermitente / Cloudflare 524](operations/elus-auth-upstream-timeouts-20261019.md) — evidências, mitigação fail-closed e aceite pós-deploy.
+
 | Doc | Conteúdo |
 |---|---|
 | [`SETUP.md`](SETUP.md) | Guia completo de env vars e setup local |

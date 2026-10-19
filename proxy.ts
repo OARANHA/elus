@@ -2,7 +2,8 @@ import { createServerClient, type CookieOptions } from "@supabase/ssr";
 import { cookieSecure } from "@/lib/supabase/cookie-secure";
 import { NextResponse, type NextRequest } from "next/server";
 import { env } from "@/lib/env";
-import { fetchDoServidor } from "@/lib/supabase/fetch-do-servidor";
+import { fetchAuthComPrazo, fetchDoServidor } from "@/lib/supabase/fetch-do-servidor";
+import { erroTransitorioDeAuth } from "@/lib/auth/erro-transitorio";
 import { urlDoSupabaseNoServidor } from "@/lib/supabase/url-do-servidor";
 import { isPublicPath } from "@/lib/auth/public-paths";
 import { CABECALHO_SEM_CSS, PARAMETRO_SEM_CSS } from "@/lib/branding/sem-css-personalizado";
@@ -12,6 +13,25 @@ import {
 } from "@/lib/impersonate/cookie-edge";
 
 const COOKIE_NAME = "sb-deskcomm-auth";
+
+/** Falha de upstream NÃO equivale a logout nem a proibição de admin. */
+function authIndisponivel(pathname: string, requestId: string): NextResponse {
+  const headers = {
+    "Cache-Control": "no-store",
+    "Retry-After": "5",
+    "X-Request-Id": requestId,
+  };
+  if (pathname.startsWith("/api/")) {
+    return NextResponse.json(
+      { error: { code: "upstream_unavailable", message: "Validação de sessão indisponível. Tente novamente." } },
+      { status: 503, headers },
+    );
+  }
+  return new NextResponse(
+    "A autenticação está temporariamente indisponível. Recarregue a página em alguns segundos.",
+    { status: 503, headers: { ...headers, "Content-Type": "text/plain; charset=utf-8" } },
+  );
+}
 
 export async function proxy(request: NextRequest) {
   // Saída de emergência do CSS personalizado. ANTES do `NextResponse.next`: ele
@@ -66,9 +86,11 @@ export async function proxy(request: NextRequest) {
     env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
     {
       global: {
-        fetch: fetchDoServidor(
-          urlDoSupabaseNoServidor(env.SUPABASE_SERVER_URL, env.NEXT_PUBLIC_SUPABASE_URL),
-          env.NEXT_PUBLIC_SUPABASE_URL,
+        fetch: fetchAuthComPrazo(
+          fetchDoServidor(
+            urlDoSupabaseNoServidor(env.SUPABASE_SERVER_URL, env.NEXT_PUBLIC_SUPABASE_URL),
+            env.NEXT_PUBLIC_SUPABASE_URL,
+          ),
         ),
       },
       cookies: {
@@ -92,11 +114,26 @@ export async function proxy(request: NextRequest) {
     },
   );
 
-  // Validate JWT server-side (NEVER use getSession on backend per CLAUDE.md).
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
+  // Falha de rede do GoTrue NÃO é prova de sessão inválida: devolve 503 sem
+  // aceitar JWT offline e sem transformar 524 em redirect /login.
+  let autenticacao: Awaited<ReturnType<typeof supabase.auth.getUser>>;
+  try {
+    autenticacao = await supabase.auth.getUser();
+  } catch {
+    console.warn("[auth] validação da sessão indisponível no proxy", { requestId });
+    return authIndisponivel(pathname, requestId);
+  }
+  if (erroTransitorioDeAuth(autenticacao.error)) {
+    console.warn("[auth] upstream do Supabase Auth indisponível", {
+      requestId,
+      codigo: autenticacao.error?.name ?? null,
+      status: autenticacao.error?.status ?? null,
+    });
+    return authIndisponivel(pathname, requestId);
+  }
+  // Sem identidade validada, seja sessão ausente/expirada ou credencial rejeitada,
+  // o comportamento seguro continua sendo 401 (API) ou login (página).
+  const user = autenticacao.data.user;
   if (!user) {
     // API routes must respond with JSON envelope (contract: {error:{code,message}})
     // — never redirect HTML to JSON consumers. UI routes redirect to /login as before.
@@ -146,8 +183,24 @@ export async function proxy(request: NextRequest) {
   // check is server-side in `requirePlatformAdmin`). Skip the RPC for
   // `/admin/forbidden` (rendered to non-admins, would otherwise loop).
   if (isAdminSurface && pathname.startsWith("/admin") && pathname !== "/admin/forbidden") {
-    const { data: isAdmin, error } = await supabase.rpc("fn_is_platform_admin");
-    if (error || !isAdmin) {
+    // Uma falha de transporte pode vir como PostgREST error OU como exceção.
+    // Nenhuma das duas comprova ausência de papel administrativo.
+    let permitido = false;
+    try {
+      const { data, error } = await supabase.rpc("fn_is_platform_admin");
+      if (error) {
+        console.warn("[auth] permissão de plataforma indisponível", {
+          requestId,
+          codigo: error.code ?? null,
+        });
+        return authIndisponivel(pathname, requestId);
+      }
+      permitido = data === true;
+    } catch {
+      console.warn("[auth] consulta de papel de plataforma sem resposta", { requestId });
+      return authIndisponivel(pathname, requestId);
+    }
+    if (!permitido) {
       return NextResponse.redirect(new URL("/admin/forbidden", request.url));
     }
   }

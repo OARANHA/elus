@@ -80,3 +80,53 @@ export function fetchDoServidor(urlInterna: string, urlPublica: string): typeof 
     return globalThis.fetch(new Request(destino, input as unknown as RequestInit), init);
   };
 }
+
+
+/**
+ * O proxy e o cliente SSR validam a sessão por `/auth/v1/user`. Na ocorrência
+ * real de 19/10/2026, o gateway do Supabase registrou respostas dessa rota
+ * acima de 60 s (pico de 224 s); uma navegação protegida esperava até o 524
+ * do Cloudflare. O timeout cobre a validação/renovação de sessão e as leituras de\n * autoridade indispensáveis ao layout. Consultas de negócio, uploads e\n * mutações continuam sem esse limite.
+ *
+ * Não usamos Promise.race: abortar o fetch evita deixar uma requisição órfã.
+ * Preservamos o AbortSignal do chamador, inclusive cancelamento de navegação.
+ * A falha continua FECHADA: nem cookie nem JWT passam a ser aceitos offline.
+ */
+export const PRAZO_AUTENTICACAO_MS = 10_000;
+
+export function fetchAuthComPrazo(
+  baseFetch: typeof globalThis.fetch,
+  prazoMs: number = PRAZO_AUTENTICACAO_MS,
+): typeof globalThis.fetch {
+  return (input, init) => {
+    const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+    let caminho: string;
+    try {
+      caminho = new URL(url).pathname;
+    } catch {
+      return baseFetch(input, init);
+    }
+    // GETs de identidade/membership e RPCs de autorização (POST somente leitura).
+    // Não interromper consultas de negócio, mutações nem uploads.
+    const caminhoDeAutenticacao = caminho === "/auth/v1/user" || caminho === "/auth/v1/token";
+    const leituraDeIdentidade =
+      caminho === "/rest/v1/user_organizations" ||
+      caminho === "/rest/v1/platform_admins" ||
+      caminho === "/rest/v1/organizations";
+    const rpcDeAutorizacao =
+      caminho === "/rest/v1/rpc/fn_support_context" ||
+      caminho === "/rest/v1/rpc/fn_is_platform_admin" ||
+      caminho === "/rest/v1/rpc/fn_user_role_in_org";
+    const metodo = (init?.method ?? (input instanceof Request ? input.method : "GET")).toUpperCase();
+    if (
+      !(caminhoDeAutenticacao || rpcDeAutorizacao || (leituraDeIdentidade && metodo === "GET"))
+    ) {
+      return baseFetch(input, init);
+    }
+
+    const anterior = init?.signal ?? (input instanceof Request ? input.signal : undefined);
+    const limite = AbortSignal.timeout(prazoMs);
+    const signal = anterior ? AbortSignal.any([anterior, limite]) : limite;
+    return baseFetch(input, { ...init, signal });
+  };
+}
