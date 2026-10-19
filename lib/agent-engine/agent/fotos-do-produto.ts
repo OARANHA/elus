@@ -41,6 +41,8 @@ export interface FotoParaEnvio {
   /** caminho em `whatsapp-media`, dentro da pasta da conversa */
   storagePath: string;
   mime: string;
+  /** Ausente = imagem de produto; PDF administrativo explícito = documento. */
+  type?: 'image' | 'document';
 }
 
 /**

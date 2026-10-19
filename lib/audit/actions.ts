@@ -1128,6 +1128,16 @@ export const AUDIT_ACTIONS = [
   // CONTAGENS (modo e número de fontes), nunca nomes de tabela ou de coluna.
   "external_db_sources.updated",
 
+  // Integração ERP opcional: administração da conexão/vínculo e consultas
+  // administrativas WhatsApp. Metadata é sanitizado pela própria operação.
+  "integracao_erp.conexao_salva",
+  "integracao_erp.conexao_testada",
+  "integracao_erp.admin_whatsapp_vinculado",
+  "integracao_erp.admin_whatsapp_desvinculado",
+  "integracao_erp.admin_consulta",
+  "integracao_erp.cliente_vinculado",
+  "integracao_erp.cliente_vinculo_invalidado",
+
   // Gestão de tenants pelo admin da plataforma (migration 0614).
   // A LÁPIDE, gravada pelo banco dentro de `fn_excluir_organizacao`, com
   // `organization_id` nulo e `resource_id` = a organização excluída.

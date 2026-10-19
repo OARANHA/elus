@@ -72,6 +72,8 @@ RUN pnpm build
 # de causa diferente dos dois symlinks, e só aparece testando o bundle real.
 RUN PDFJS_DIR=$(basename node_modules/.pnpm/pdfjs-dist@*) && \
     cp -a "node_modules/pdfjs-dist" ".next/standalone/node_modules/pdfjs-dist" && \
+    mkdir -p ".next/standalone/node_modules/playwright-core" && \
+    cp -a node_modules/playwright-core/. ".next/standalone/node_modules/playwright-core/" && \
     mkdir -p ".next/standalone/node_modules/.pnpm/$PDFJS_DIR/node_modules/@napi-rs" && \
     cp -a "node_modules/.pnpm/$PDFJS_DIR/node_modules/@napi-rs/canvas" \
           ".next/standalone/node_modules/.pnpm/$PDFJS_DIR/node_modules/@napi-rs/canvas" && \
@@ -107,12 +109,15 @@ LABEL org.opencontainers.image.source="https://github.com/melgarafael/DeskcommCR
 ENV NODE_ENV=production \
     PORT=3000 \
     HOSTNAME=0.0.0.0 \
+    CHROMIUM_PATH=/usr/local/bin/elus-chromium \
     NEXT_TELEMETRY_DISABLED=1 \
     KEEP_ALIVE_TIMEOUT=125000
 # ffmpeg: a derivação de vídeo (Onda 3.1) roda no processo do app — o cron
 # event-log-drain executa o media_derive handler, que chama `ffmpeg` via spawn
 # pra extrair áudio+frames. Sem o binário, todo vídeo recebido falha a derivação.
-RUN apk add --no-cache ffmpeg
+RUN apk add --no-cache ffmpeg chromium font-liberation && \
+    CHROMIUM_BIN="$(command -v chromium-browser || command -v chromium)" && \
+    ln -s "$CHROMIUM_BIN" /usr/local/bin/elus-chromium
 # non-root
 RUN addgroup -g 1001 -S nodejs && adduser -S nextjs -u 1001
 # A versão que /api/v1/health reporta (invariante 7). Precisa vir por ARG: a

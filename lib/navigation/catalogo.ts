@@ -1114,6 +1114,16 @@ export const NAV_CATALOG = [
     // existe onde quem administra o servidor o ligou, em `/admin/sistema`.
     modulo: "banco_externo",
   },
+  {
+    href: "/app/integracoes-erp",
+    label: "Integrações ERP",
+    description: "Conexões e consultas somente leitura ao VendaERP da empresa.",
+    icon: "PlugsConnected",
+    group: "organizacao",
+    section: "Dados e acesso",
+    minRole: "admin",
+    modulo: "integracoes_erp",
+  },
 ] as const satisfies readonly NavMetadata[];
 
 export type NavDestinationId = (typeof NAV_CATALOG)[number]["href"];

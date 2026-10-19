@@ -113,6 +113,19 @@ describe("modulosLigados — honorarios (módulo de tabela, ADR-0002)", () => {
   });
 });
 
+describe("modulosLigados — integracoes_erp (módulo de tabela, ADR-0002)", () => {
+  it("só oferece capacidades ERP quando a instalação do módulo está ativa", async () => {
+    expect(await modulosLigados(banco().db)).not.toContain("integracoes_erp");
+    expect(
+      await modulosLigados(
+        banco({
+          modulos_instalados: { data: [{ modulo: "integracoes_erp", estado: "ativo" }] },
+        }).db,
+      ),
+    ).toContain("integracoes_erp");
+  });
+});
+
 describe("abrirAcesso com o módulo desligado", () => {
   it("recusa antes de carregar a conexão — nenhuma credencial é lida", async () => {
     const { db, from } = banco();

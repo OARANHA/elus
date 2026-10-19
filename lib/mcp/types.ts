@@ -98,6 +98,8 @@ export interface McpToolDefinition<TInput extends z.ZodRawShape = z.ZodRawShape>
    * transformaria comportamento normal em alarme.
    */
   motivoDoVazio?: (resultado: unknown) => string | null;
+  /** Resposta de erro não lançada pelo provider: registra falha, não ausência. */
+  erroParaAuditoria?: (resultado: unknown) => string | null;
   /**
    * O que a tool DECLARA como o "termo" desta chamada — o que a pessoa escreveu
    * na busca, para o painel poder contar "não achei" POR TERMO e não só

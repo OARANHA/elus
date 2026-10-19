@@ -169,6 +169,20 @@ import {
   provideCaseUpdateInputSchema,
 } from './human-cases';
 import { buildMcpTurnTools } from '../edge/crm/mcp-tools';
+import {
+  AVISO_SEM_RECENCIA_FISCAL,
+  mencionaNfeNaoComprovada,
+  numerosDaBuscaFiscalComprovada,
+  numerosFiscaisPermitidosParaPedido,
+  normalizarResultadoFiscalComprovado,
+  pedidoDeNfeMaisRecente,
+  pedidoDeNotaFiscalVaga,
+  periodoDeBuscaFiscalVazia,
+  posicaoOrdinalDeNfePedida,
+  quantidadeDeNotasMaisRecentesPedida,
+  recenciaFiscalComprovada,
+} from './recencia-fiscal-gate';
+import { AVISO_FALHA_DANFE, GuardaFalhaDanfeNoTurno } from './danfe-failure-guard';
 import { definicaoNaConexao } from '@/lib/channels/linha-do-espelho';
 import { cancelPendingCronsForLead } from '../cron/scheduler';
 import {
@@ -1109,6 +1123,52 @@ export function blocosDeAgendaResidentes(toolIds: readonly string[]): string[] {
     blocos.push(AGENDA_CADEIA_SYSTEM_BLOCK);
   }
   return blocos;
+}
+
+export function blocosErpResidentes(toolIds: readonly string[]): string[] {
+  const orders = "crm_erp_search_orders";
+  const recent = "crm_erp_search_recent_invoices";
+  const customers = "crm_erp_search_customers";
+  const invoice = "crm_erp_get_invoice";
+
+  if (!toolIds.includes(orders) && !toolIds.includes(recent)) return [];
+
+  let bloco =
+    "## ERP — pedidos e notas por cliente\n" +
+    (toolIds.includes(recent)
+      ? "Se o administrador pedir pedidos ou compras de um cliente e informar apenas o "
+      : "Se o administrador pedir pedidos, compras, notas ou NFes de um cliente e informar apenas o ") +
+    "nome ou a razão social, chame crm_erp_search_orders DIRETAMENTE com cliente antes de responder. " +
+    "Se já houver um cliente_contact_id resolvido nesta conversa, prefira esse id. ";
+
+  if (toolIds.includes(recent)) {
+    bloco += "CONSULTA FISCAL: use crm_erp_search_recent_invoices para nota(s) de cliente, não pedidos comuns. Sem período informado, consulte somente os últimos 30 dias civis. Se notas=[] com consultaCompleta=true, diga que não encontrou no período pesquisado e PERGUNTE qual período deseja; NUNCA retroceda automaticamente. Preserve cliente_contact_id comprovado na continuação da conversa. Para dia exato, passe data_inicio=data_fim=AAAA-MM-DD; para período, ambas as datas (até 30 dias inclusivos); para mês informado, mes_ano. Para pedido singular vago sem data nem número, consulte com quantidade=2 e, se vier mais de uma NFe, pergunte qual número/data deseja, sem preparar DANFE. Para a última nota, use quantidade=1. Para a penúltima ou segunda mais recente, consulte quantidade=2 e selecione APENAS a segunda; para a antepenúltima ou terceira mais recente, consulte quantidade=3 e selecione APENAS a terceira. Todas exigem ranking fiscal completo e não autorizam envio de outra posição. Se vier menos que a quantidade pedida, informe somente o que foi encontrado no período, sem alegar ausência histórica. Nunca trate erro técnico ou consulta parcial como ausência. ";
+  }
+
+  if (toolIds.includes(customers)) {
+    bloco +=
+      "crm_erp_search_customers não é pré-requisito para uma pergunta que já é sobre pedidos/notas; " +
+      "use a resolução de cliente quando a identidade em si precisar ser confirmada ou quando a busca de pedidos não for suficiente. ";
+  }
+
+  if (toolIds.includes(invoice)) {
+    bloco +=
+      "Para consultar os dados fiscais de uma NFe específica, primeiro localize o número da nota nos pedidos e então use crm_erp_get_invoice com esse número. ";
+  }
+
+  if (toolIds.includes("crm_erp_prepare_admin_danfe")) {
+    bloco +=
+      "REGRA DE ENTREGA: quando o administrador pedir a última nota ou as últimas N notas, entenda que ele quer também os PDFs das DANFEs nesta própria conversa. " +
+      (toolIds.includes(recent)
+        ? "Para últimas NFes, use crm_erp_search_recent_invoices com quantidade=N e cliente (se informado). Nunca use pedidos comuns como ranking fiscal. "
+        : "Chame crm_erp_search_orders com ultimas_notas=N; se a busca por cliente não trouxer pedidos e você continuar pelo cliente_contact_id vinculado, REPITA a consulta com o mesmo ultimas_notas=N. ") +
+      "Se a ferramenta retornar continuacao_notas_sem_ranking, repita com ultimas_notas_necessarias, mantendo a identidade já comprovada. Nunca trate limite=20 ou a ordem de pedidos como recência fiscal. " +
+      "Para cada NFe comprovada retornada, em ordem, faça crm_erp_prepare_admin_danfe e IMEDIATAMENTE depois send_message para anexar aquele PDF antes de preparar a próxima. " +
+      "Não prepare duas DANFEs seguidas sem enviar a primeira, porque o documento preparado pertence à próxima send_message. " +
+      "Se uma DANFE falhar, informe exatamente qual NFe não pôde ser anexada e continue somente com as demais que foram comprovadas.";
+  }
+
+  return [bloco.trim()];
 }
 
 /**
@@ -2463,7 +2523,7 @@ async function executarTurnoDoAgente(
     blocosResidentes.push(
       'MODO PRÉVIA: proponha a resposta com send_message. Operações são propostas separadas; nunca diga que executou uma proposta. Nenhum envio real acontece.',
     );
-  const system = blocosResidentes.join('\n\n');
+  let system = blocosResidentes.join('\n\n');
   const openingContext = preview
     ? preview.context
     : await getLeadContext(
@@ -2788,6 +2848,16 @@ async function executarTurnoDoAgente(
 
   // Estado do RUN — vive só neste closure (isolamento por construção, acc 3).
   let seq = 0;
+  // DANFE administrativo fica privada no Storage da conversa. Só a próxima
+  // send_message consome esta referência e a envia pelo before_send/ledger/sender.
+  let documentoAdminPreparado:
+    | { storagePath: string; mime: string; filename: string }
+    | null = null;
+  let recenciaFiscalComprovadaNesteTurno = false;
+  let periodoFiscalVazioNesteTurno: { dataInicio: string; dataFim: string } | null = null;
+  let notaFiscalVagaAmbiguaNesteTurno = false;
+  const numerosNfeFiscaisComprovados = new Set<string>();
+  const guardaDanfe = new GuardaFalhaDanfeNoTurno();
   // O que o modelo de fato mandou neste turno (depois da cadeia). A trava "a
   // pergunta saiu?" do roteiro de atendimento lê daqui.
   const corposEnviados: string[] = [];
@@ -3292,7 +3362,40 @@ async function executarTurnoDoAgente(
         // `**negrito**` de Markdown na tela do cliente. Antes de qualquer gate,
         // para que o corpo vazio, as bolhas e a pausa humana meçam o que sai.
         // Ver `formato-whatsapp.ts`.
-        const body = formatarParaWhatsApp(corpoDoModelo);
+        let body = formatarParaWhatsApp(corpoDoModelo);
+        if (
+          agentConfig?.toolIds.some(
+            (id) => id === 'crm_erp_search_orders' || id === 'crm_erp_search_recent_invoices',
+          ) &&
+          pedidoDeNfeMaisRecente(mensagemDoJob) &&
+          (!recenciaFiscalComprovadaNesteTurno || mencionaNfeNaoComprovada(body, numerosNfeFiscaisComprovados))
+        ) {
+          body = periodoFiscalVazioNesteTurno
+            ? `Não encontrei NFes no período de ${periodoFiscalVazioNesteTurno.dataInicio} a ${periodoFiscalVazioNesteTurno.dataFim}. Qual período você deseja consultar?`
+            : AVISO_SEM_RECENCIA_FISCAL;
+          documentoAdminPreparado = null;
+        }
+        if (notaFiscalVagaAmbiguaNesteTurno) {
+          body = 'Encontrei mais de uma nota fiscal para esse cliente no período consultado. Qual número ou data da nota você deseja?';
+          documentoAdminPreparado = null;
+        }
+        if (
+          !preview &&
+          (!pedidoDeNfeMaisRecente(mensagemDoJob) || recenciaFiscalComprovadaNesteTurno) &&
+          guardaDanfe.deveInformarFalha(documentoAdminPreparado !== null)
+        ) {
+          if (guardaDanfe.avisoEnviado) {
+            return {
+              ok: false,
+              error: {
+                code: 'danfe_falha_ja_comunicada',
+                message: 'A falha do PDF já foi informada nesta conversa. Não prometa envio posterior nem mande outro texto neste turno.',
+              },
+            };
+          }
+          body = AVISO_FALHA_DANFE;
+        }
+        const avisoFalhaDanfeCandidato = body === AVISO_FALHA_DANFE;
         // CORPO VAZIO NÃO SAI. Medido ao vivo (2026-09-19): o `gpt-4o-mini`
         // chamou `send_message` várias vezes com corpo que virou vazio e o
         // WhatsApp do cliente recebeu bolhas em branco. O schema garante
@@ -3541,6 +3644,16 @@ async function executarTurnoDoAgente(
             // no runtime — null cai nos degraus de warm-up (conservadores). Injetar
             // aqui quando o drain expuser o limite da sessão.
             crmDailyLimit: null,
+            // Aviso técnico determinístico de DANFE pode contornar somente
+            // spinning; stop, LGPD, pacing, janela, ledger e before_send seguem ativos.
+            enforceSpinning:
+              !preview &&
+              guardaDanfe.permitirAvisoTecnicoSemSpinning(
+                body,
+                documentoAdminPreparado !== null,
+              )
+                ? false
+                : true,
             now: clock(),
             sleep: deps.sleep,
             lgpd,
@@ -3677,6 +3790,15 @@ async function executarTurnoDoAgente(
                   ...(media ? { media } : {}),
                 });
               };
+              if (documentoAdminPreparado !== null) {
+                const documento = documentoAdminPreparado;
+                documentoAdminPreparado = null;
+                return enviar(finalBody, {
+                  storagePath: documento.storagePath,
+                  mime: documento.mime,
+                  type: 'document',
+                });
+              }
               // Cada foto é uma mensagem física: só vão as que cabem no que resta do teto
               // do turno (a checagem de `max_sends_per_turn` acima roda uma vez, antes).
               // O resto é medido ANTES DE CADA FOTO, depois do texto: o texto acima do
@@ -3845,6 +3967,12 @@ async function executarTurnoDoAgente(
           }
           const outcome = chain.outcome;
           outcomes.push(outcome);
+          if (
+            avisoFalhaDanfeCandidato &&
+            (outcome.kind === 'sent' || outcome.kind === 'already_sent' || outcome.kind === 'queued')
+          ) {
+            guardaDanfe.avisoEnviado = true;
+          }
           // MEMÓRIA DE DUPLICATA: só o que saiu de fato vira referência para a régua.
           // sent/already_sent/queued = o corpo (ou quase) chegou/chegará ao cliente;
           // blocked/failed/unavailable não é resposta — não deve suprimir a próxima.
@@ -4417,7 +4545,14 @@ async function executarTurnoDoAgente(
           },
           configDoTurno,
           runLog,
-          preview ? { readOnly: true } : undefined,
+          preview
+            ? { readOnly: true }
+            : {
+                readOnly: false,
+                onAdminDocumentPrepared: (documento) => {
+                  documentoAdminPreparado = documento;
+                },
+              },
         );
         if (mcp !== null) {
           mcpCleanup = mcp.cleanup;
@@ -4437,6 +4572,127 @@ async function executarTurnoDoAgente(
                   if (name === 'crm_search_products') evidenciasComerciais.registrarCatalogo(resultado);
                   else evidenciasComerciais.registrarConhecimento(resultado);
                   return resultado;
+                }) as typeof mcpTool.execute,
+              };
+              continue;
+            }
+            if (
+              (name === 'crm_erp_search_recent_invoices' || name === 'crm_erp_search_orders') &&
+              typeof mcpTool.execute === 'function'
+            ) {
+              const executeOriginal = mcpTool.execute.bind(mcpTool);
+              rawTools[name] = {
+                ...mcpTool,
+                execute: (async (...args: Parameters<typeof executeOriginal>) => {
+                  // Uma falha ou nova busca invalida a prova anterior deste turno.
+                  recenciaFiscalComprovadaNesteTurno = false;
+                  periodoFiscalVazioNesteTurno = null;
+                  notaFiscalVagaAmbiguaNesteTurno = false;
+                  numerosNfeFiscaisComprovados.clear();
+                  const resultado = await executeOriginal(...args);
+                  if (name === 'crm_erp_search_recent_invoices') {
+                    periodoFiscalVazioNesteTurno = periodoDeBuscaFiscalVazia(resultado);
+                  }
+                  const entrada = args[0] as
+                    | { quantidade?: number; ultimas_notas?: number }
+                    | undefined;
+                  const quantidadeConsultada =
+                    name === 'crm_erp_search_recent_invoices'
+                      ? entrada?.quantidade ?? 3
+                      : entrada?.ultimas_notas ?? 0;
+                  const normalizado = normalizarResultadoFiscalComprovado(
+                    resultado,
+                    quantidadeConsultada,
+                  );
+                  if (
+                    pedidoDeNotaFiscalVaga(mensagemDoJob) &&
+                    resultado !== null &&
+                    typeof resultado === 'object' &&
+                    (('notas' in resultado && Array.isArray(resultado.notas)) ||
+                      ('pedidos' in resultado && Array.isArray(resultado.pedidos))) &&
+                    (('notas' in resultado && Array.isArray(resultado.notas) && resultado.notas.length > 1) ||
+                      ('pedidos' in resultado && Array.isArray(resultado.pedidos) && resultado.pedidos.length > 1)) &&
+                    'resumo' in resultado &&
+                    resultado.resumo !== null &&
+                    typeof resultado.resumo === 'object' &&
+                    (('consultaCompleta' in resultado.resumo && resultado.resumo.consultaCompleta === true) ||
+                      ('resultadoCompleto' in resultado.resumo && resultado.resumo.resultadoCompleto === true))
+                  ) {
+                    notaFiscalVagaAmbiguaNesteTurno = true;
+                  }
+                  if (normalizado && recenciaFiscalComprovada(normalizado)) {
+                    const limite = quantidadeDeNotasMaisRecentesPedida(mensagemDoJob);
+                    const ranqueadas = numerosDaBuscaFiscalComprovada(normalizado);
+                    const permitidas = numerosFiscaisPermitidosParaPedido(normalizado, mensagemDoJob);
+                    const ordinal = posicaoOrdinalDeNfePedida(mensagemDoJob);
+                    if (ranqueadas.length >= limite && permitidas.length === (ordinal === null ? limite : 1)) {
+                      recenciaFiscalComprovadaNesteTurno = true;
+                      for (const numero of permitidas) numerosNfeFiscaisComprovados.add(numero);
+                    }
+                  }
+                  return resultado;
+                }) as typeof mcpTool.execute,
+              };
+              continue;
+            }
+            if (name === 'crm_erp_prepare_admin_danfe' && typeof mcpTool.execute === 'function') {
+              const executeOriginal = mcpTool.execute.bind(mcpTool);
+              rawTools[name] = {
+                ...mcpTool,
+                execute: (async (...args: Parameters<typeof executeOriginal>) => {
+                  if (notaFiscalVagaAmbiguaNesteTurno) {
+                    return {
+                      ok: false,
+                      error: {
+                        code: 'nota_ambigua',
+                        message: 'Mais de uma NFe foi encontrada. Peça número ou data antes de preparar a DANFE.',
+                      },
+                    };
+                  }
+                  if (
+                    pedidoDeNfeMaisRecente(mensagemDoJob) &&
+                    !recenciaFiscalComprovadaNesteTurno
+                  ) {
+                    return {
+                      ok: false,
+                      error: {
+                        code: 'recencia_fiscal_nao_comprovada',
+                        message: 'A busca fiscal completa deste turno não comprovou a recência. Não prepare nem anexe esta DANFE.',
+                      },
+                    };
+                  }
+                  const numero = String(
+                    (args[0] as { codigo_nfe?: number } | undefined)?.codigo_nfe ?? '',
+                  );
+                  if (
+                    pedidoDeNfeMaisRecente(mensagemDoJob) &&
+                    !numerosNfeFiscaisComprovados.has(numero)
+                  ) {
+                    return {
+                      ok: false,
+                      error: {
+                        code: 'nfe_nao_comprovada',
+                        message: 'Esta NFe não está entre as posições fiscais comprovadas para o pedido atual. Não prepare nem anexe o documento.',
+                      },
+                    };
+                  }
+                  if (!guardaDanfe.iniciarTentativa(numero)) {
+                    return {
+                      ok: false,
+                      error: {
+                        code: 'danfe_tentativa_repetida_no_turno',
+                        message: 'A preparação desta DANFE já foi tentada neste atendimento. Não repita a renderização.',
+                      },
+                    };
+                  }
+                  try {
+                    const resultado = await executeOriginal(...args);
+                    guardaDanfe.registrarResultado(resultado);
+                    return resultado;
+                  } catch (erro) {
+                    guardaDanfe.registrarExcecao();
+                    throw erro;
+                  }
                 }) as typeof mcpTool.execute,
               };
               continue;
@@ -4499,6 +4755,13 @@ async function executarTurnoDoAgente(
       runLog.info('capacidades entregues ao operador — fora do turno do conversador', {
         entregues,
       });
+    }
+
+    // O ensino ERP é derivado das ferramentas reais que sobreviveram aos gates
+    // de módulo, autoridade administrativa e capacidade do turno.
+    const blocosErpDoTurno = blocosErpResidentes(Object.keys(rawTools));
+    if (blocosErpDoTurno.length > 0) {
+      system = [system, ...blocosErpDoTurno].join("\n\n");
     }
 
     // Circuit breaker de tools (F2-15): estado no closure DESTA invocação — zera
