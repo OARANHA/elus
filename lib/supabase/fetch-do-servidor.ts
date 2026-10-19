@@ -107,7 +107,22 @@ export function fetchAuthComPrazo(
     } catch {
       return baseFetch(input, init);
     }
-    if (caminho !== "/auth/v1/user" && caminho !== "/auth/v1/token") {
+    // As leituras de identidade/RBAC compõem o mesmo gate de navegação.
+    // NÃO aplicar prazo de autenticação a consultas de negócio nem a escritas.
+    const protegido =
+      caminho === "/auth/v1/user" ||
+      caminho === "/auth/v1/token" ||
+      caminho === "/rest/v1/user_organizations" ||
+      caminho === "/rest/v1/platform_admins" ||
+      caminho === "/rest/v1/organizations" ||
+      caminho === "/rest/v1/rpc/fn_support_context" ||
+      caminho === "/rest/v1/rpc/fn_is_platform_admin" ||
+      caminho === "/rest/v1/rpc/fn_user_role_in_org";
+    if (!protegido || (init?.method ?? (input instanceof Request ? input.method : "GET")).toUpperCase() !== "GET" &&
+      caminho !== "/auth/v1/token" &&
+      caminho !== "/rest/v1/rpc/fn_is_platform_admin" &&
+      caminho !== "/rest/v1/rpc/fn_support_context" &&
+      caminho !== "/rest/v1/rpc/fn_user_role_in_org") {
       return baseFetch(input, init);
     }
 
