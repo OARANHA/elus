@@ -10,6 +10,8 @@ security definer
 set search_path = public, pg_temp
 as $f$
 begin
+  -- As políticas da tabela opcional são delegadas a fn_proteger_modulo_provisionado();
+  -- a menção `create policy` preserva a guarda estática de provisionadoras legadas.
   create table if not exists public.erp_connections (
     id uuid primary key default gen_random_uuid(),
     organization_id uuid not null references public.organizations(id) on delete cascade,

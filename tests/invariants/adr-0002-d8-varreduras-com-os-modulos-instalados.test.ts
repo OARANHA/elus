@@ -209,6 +209,21 @@ const PROVA_DE_MODULO: Record<string, { readonly arquivo: string; readonly razao
       "lista org-scoped: vizinho vê zero movimentações. A leitura é medida aqui; a decisão de " +
       "NÃO redigir (razão `manter` do #1504) mora no redact-unificado, e é outra régua.",
   },
+  erp_connections: {
+    arquivo: "tests/invariants/integracoes-erp-provisionadora.test.ts",
+    razao:
+      "Tabela server-only sem grants de sessão nem policies; o teste de provisionamento mede RLS ligada e recusa de anon/authenticated. Como sessões não podem ler linhas de nenhum tenant, a prova é de isolamento por negação explícita.",
+  },
+  erp_admin_whatsapp_bindings: {
+    arquivo: "tests/invariants/integracoes-erp-provisionadora.test.ts",
+    razao:
+      "Tabela server-only sem grants de sessão nem policies; o teste mede o fechamento a anon/authenticated e a resolução administrativa só aceita organização, membership e número correspondentes. A sessão não consegue ler linha de outro tenant.",
+  },
+  erp_customer_identity_links: {
+    arquivo: "tests/invariants/integracoes-erp-provisionadora.test.ts",
+    razao:
+      "Tabela server-only fechada a papéis de sessão; o teste da provisionadora mede RLS e negação de leitura, enquanto o caso retry/tenant mede criação isolada por organization_id e recusa explícita de contato de outra organização.",
+  },
 };
 
 /* ── probe 1: a varredura de RLS, copiada do irmão (rls-completude-varredura.test.ts) ── */

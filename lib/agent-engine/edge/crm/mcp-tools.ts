@@ -30,6 +30,7 @@ import { modulosLigados } from '@/lib/instalacao/modulos';
 import { capacidadesDaOrganizacao } from '@/lib/organizacao/capacidades';
 import { filtrarToolsComCallbackDesabilitado } from '@/lib/followup/callback-policy';
 import {
+  ferramentaErpExigeAutoridadeAdminWhatsapp,
   filtrarFerramentasErpPorAutoridadeAdminWhatsapp,
   prepararDanfeAdminWhatsapp,
   resolverAutoridadeAdminWhatsapp,
@@ -103,7 +104,10 @@ export async function buildMcpTurnTools(
       motivos: blocked.map((id) => motivoDoHarness(id)),
     });
   }
-  const autoridadeAdminWhatsapp = ids.contactId
+  const precisaAutoridadeAdminWhatsapp = allowedBeforeAdminGate.some(
+    ferramentaErpExigeAutoridadeAdminWhatsapp,
+  );
+  const autoridadeAdminWhatsapp = ids.contactId && precisaAutoridadeAdminWhatsapp
     ? await resolverAutoridadeAdminWhatsapp(cfg.supabase, ids.organizationId, ids.contactId)
     : null;
   const allowed = filtrarFerramentasErpPorAutoridadeAdminWhatsapp(

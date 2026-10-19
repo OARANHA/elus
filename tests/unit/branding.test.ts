@@ -841,6 +841,21 @@ type CategoriaDeHost =
 type EntradaDeHost = { categoria: CategoriaDeHost; motivo: string };
 
 const HOSTS_DECLARADOS: Record<string, EntradaDeHost> = {
+  "app.vendaerp.com.br": {
+    categoria: "FORNECEDOR",
+    motivo:
+      "Origem pública da aplicação DANFE do VendaERP, usada apenas para materializar o documento fiscal solicitado; a organização fornece credenciais e o pipeline valida origem, tipo e conteúdo do PDF antes do sender WhatsApp.",
+  },
+  "d1fkuoqvag3bur.cloudfront.net": {
+    categoria: "FORNECEDOR",
+    motivo:
+      "CDN de assets públicos observado na aplicação DANFE do VendaERP; é consultado somente durante a renderização controlada do DANFE e permanece limitado pelo manifesto de egress do renderizador, sem receber credenciais do ERP.",
+  },
+  "novaapi.vendaerp.com.br": {
+    categoria: "FORNECEDOR",
+    motivo:
+      "API pública observada no fluxo de DANFE do VendaERP para carregar os dados exibidos no documento fiscal; o uso está restrito à materialização de PDF e passa pelas validações e controles de egress documentados no adaptador.",
+  },
   "chutes-qwen-qwen3-embedding-8b-tee.chutes.ai": {
     categoria: "FORNECEDOR",
     motivo:
