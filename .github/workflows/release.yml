@@ -108,23 +108,51 @@ jobs:
       # Leitura só — quem escreve continua sendo o token do App.
       pull-requests: read
     steps:
+      # O workflow recebe TODO push na main. Só um PR de release consome
+      # fragmentos .changes/. Um push comum não precisa de GitHub App, e não
+      # pode falhar porque a instalação forkada ainda não tem RELEASE_APP_ID.
+      # A checagem é local e falha alto se não conseguir ler o pai do commit.
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 2
+          persist-credentials: false
+
+      - name: Este push removeu fragmentos de release?
+        id: preflight
+        run: |
+          set -euo pipefail
+          git rev-parse --verify HEAD^ >/dev/null
+          removidos=$(git diff --find-renames --diff-filter=D --name-only HEAD^ HEAD -- .changes/ | grep -c '\.md$' || true)
+          if [ "${removidos}" -gt 0 ]; then
+            echo "precisa_app=sim" >> "${GITHUB_OUTPUT}"
+          else
+            echo "precisa_app=nao" >> "${GITHUB_OUTPUT}"
+            echo "::notice::Push comum sem fragmentos consumidos; não exige token de release."
+          fi
+
+      # Só um possível corte exige App real. Nunca usar GITHUB_TOKEN para
+      # empurrar tag: isso suprimiria o gatilho de publicação das imagens.
       - uses: actions/create-github-app-token@v3
+        if: steps.preflight.outputs.precisa_app == 'sim'
         id: token
         with:
           app-id: ${{ secrets.RELEASE_APP_ID }}
           private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
 
       - uses: actions/checkout@v7
+        if: steps.preflight.outputs.precisa_app == 'sim'
         with:
           fetch-depth: 0
           token: ${{ steps.token.outputs.token }}
 
       - uses: ./.github/actions/preparar-node
+        if: steps.preflight.outputs.precisa_app == 'sim'
         # O teto do preâmbulo mora aqui porque passo de composite action não
         # aceita `timeout-minutes`. Razão e medições: o cabeçalho da action.
         timeout-minutes: 5
 
       - name: Este push foi um corte de release?
+        if: steps.preflight.outputs.precisa_app == 'sim'
         id: pendente
         env:
           # Token de leitura para perguntar à API do GitHub quem abriu o PR de
