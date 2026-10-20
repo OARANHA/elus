@@ -22,6 +22,10 @@ const consultas: { platformAdmins: unknown; memberships: unknown } = {
   memberships: { data: [], error: null },
 };
 
+const fatoresDoGoTrue: { atual: Array<{ factor_type: string; status: string }> } = {
+  atual: [],
+};
+
 // `get` entrou junto com a cadeia de idioma (usuário → organização): o
 // resolvedor pergunta ao cookie qual organização está ativa. O dublê tinha
 // `getAll`/`set` e não `get` — menos completo que a API real, e o teste caía
@@ -47,7 +51,7 @@ vi.mock("@/lib/supabase/server", () => ({
     rpc: async () => ({ data: null, error: null }),
     auth: {
       getUser: async () => ({
-        data: { user: { id: "u1", email: "a@b.c", user_metadata: {} } },
+        data: { user: { id: "u1", email: "a@b.c", user_metadata: {}, factors: fatoresDoGoTrue.atual } },
         error: null,
       }),
     },
@@ -76,11 +80,26 @@ vi.mock("@/lib/supabase/server", () => ({
   }),
 }));
 
-const { loadAuthUser, resolveActiveOrg } = await import("@/lib/auth/server");
+const { loadAuthUser, resolveActiveOrg, totpVerificadoNoUsuario } = await import("@/lib/auth/server");
 
 beforeEach(() => {
   consultas.platformAdmins = { data: null, error: null };
   consultas.memberships = { data: [], error: null };
+  fatoresDoGoTrue.atual = [];
+});
+
+describe("getUser validado — fatores MFA sem outra ida ao GoTrue", () => {
+  it("só TOTP verificado conta; telefone e fator pendente não contam", () => {
+    expect(totpVerificadoNoUsuario(undefined)).toBe(false);
+    expect(totpVerificadoNoUsuario([{ factor_type: "totp", status: "unverified" }])).toBe(false);
+    expect(totpVerificadoNoUsuario([{ factor_type: "phone", status: "verified" }])).toBe(false);
+    expect(totpVerificadoNoUsuario([{ factor_type: "totp", status: "verified" }])).toBe(true);
+  });
+
+  it("leva o estado MFA da resposta getUser para o layout, sem listFactors()", async () => {
+    fatoresDoGoTrue.atual = [{ factor_type: "totp", status: "verified" }];
+    expect((await loadAuthUser())?.mfa_enrolled).toBe(true);
+  });
 });
 
 describe("loadAuthUser — falha de permissão não vira 'sem organização'", () => {
