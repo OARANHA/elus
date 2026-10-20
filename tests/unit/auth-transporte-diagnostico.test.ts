@@ -40,6 +40,24 @@ describe("diagnóstico do transporte Auth: só metadados seguros", () => {
     expect(registro).not.toContain(PUBLICA);
   });
 
+  it("correlaciona UUID do proxy, mas rejeita um identificador arbitrário", async () => {
+    const base = vi.fn(async () => new Response("{}", { status: 503 }));
+    const uuid = "f7486d94-8d7a-4d59-8ff4-31dcb78cd505";
+    const identificado = fetchAuthComPrazo(base as typeof fetch, 1000, "proxy", uuid);
+    await identificado(PUBLICA + "/auth/v1/user");
+    expect(registrar.warn).toHaveBeenCalledWith(
+      "[auth] transporte Supabase respondeu lento ou com erro",
+      expect.objectContaining({ origem: "proxy", request_id: uuid }),
+    );
+
+    registrar.warn.mockClear();
+    const suspeito = fetchAuthComPrazo(base as typeof fetch, 1000, "proxy", "email@segredo.invalid");
+    await suspeito(PUBLICA + "/auth/v1/user");
+    const contexto = registrar.warn.mock.calls[0]![1] as { request_id?: string };
+    expect(contexto.request_id).toBeUndefined();
+    expect(JSON.stringify(registrar.warn.mock.calls)).not.toContain("email@segredo.invalid");
+  });
+
   it("mantém o erro original e identifica cancelamento do chamador", async () => {
     const erro = new Error("conteúdo sensível que não deve ser logado");
     const controlador = new AbortController();
