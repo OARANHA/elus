@@ -238,13 +238,11 @@ export function TenantAiPlatformDefault({ organizationId }: { organizationId: st
       <div>
         <h3 className="text-lg font-semibold">{t("IA fornecida pela plataforma")}</h3>
         <p className="text-sm text-muted-foreground">
-          O padrão desta empresa vale onde não existir escolha específica. Versões de agentes
-          publicadas e configurações próprias dos pontos continuam prevalecendo. As permissões de
-          autonomia são controladas separadamente acima.
+          {t("O padrão desta empresa vale onde não existir escolha específica. Versões de agentes publicadas e configurações próprias dos pontos continuam prevalecendo. As permissões de autonomia são controladas separadamente acima.")}
         </p>
         {data && (
           <p className="mt-2 text-sm font-medium">
-            Organização selecionada: {data.organization_name}
+            {t("Organização selecionada:")} {data.organization_name}
           </p>
         )}
       </div>
@@ -255,7 +253,7 @@ export function TenantAiPlatformDefault({ organizationId }: { organizationId: st
           <div className="grid gap-4 md:grid-cols-2">
             <div className="space-y-2">
               <label htmlFor="ai-platform-provider" className="block text-sm font-medium">
-                Provedor padrão
+                {t("Provedor padrão")}
               </label>
               <Select
                 value={provider}
@@ -282,7 +280,7 @@ export function TenantAiPlatformDefault({ organizationId }: { organizationId: st
             </div>
             <div className="space-y-2">
               <label htmlFor="ai-platform-model" className="block text-sm font-medium">
-                Modelo padrão
+                {t("Modelo padrão")}
               </label>
               {models.length > 0 && (model === "" || models.some((m) => m.model_id === model)) ? (
                 <Select value={model} disabled={disabled} onValueChange={setModel}>
@@ -311,7 +309,7 @@ export function TenantAiPlatformDefault({ organizationId }: { organizationId: st
           </div>
           <div className="space-y-2">
             <label htmlFor="ai-platform-credential" className="block text-sm font-medium">
-              Credencial da organização
+              {t("Credencial da organização")}
             </label>
             <Select
               value={credentialId || (provider === "custom" ? undefined : "__installation__")}
@@ -328,13 +326,13 @@ export function TenantAiPlatformDefault({ organizationId }: { organizationId: st
               <SelectContent>
                 {provider !== "custom" && (
                   <SelectItem value="__installation__">
-                    Chave da instalação (se disponível)
+                    {t("Chave da instalação (se disponível)")}
                   </SelectItem>
                 )}
                 {credentials.map((c) => (
                   <SelectItem key={c.id} value={c.id} disabled={!c.is_active || !c.validated_at}>
                     {c.label} · final {c.api_key_last4} ·
-                    {c.is_active && c.validated_at ? " validada" : " aguardando validação"}
+                    {c.is_active && c.validated_at ? " validada" : t(" aguardando validação")}
                   </SelectItem>
                 ))}
                 {provider === "custom" && credentials.length === 0 && (
@@ -346,10 +344,10 @@ export function TenantAiPlatformDefault({ organizationId }: { organizationId: st
             </Select>
             {selected && (
               <p className="text-xs text-muted-foreground">
-                Endpoint: {selected.base_url ?? "padrão do provedor"}.{" "}
+                Endpoint: {selected.base_url ?? t("padrão do provedor")}.{" "}
                 {selectedReady
                   ? "Credencial validada."
-                  : "Validação pendente; não pode ser ativada."}
+                  : t("Validação pendente; não pode ser ativada.")}
               </p>
             )}
           </div>
@@ -359,12 +357,10 @@ export function TenantAiPlatformDefault({ organizationId }: { organizationId: st
               aria-label={t("Cadastrar provedor personalizado")}
             >
               <h4 className="font-semibold">
-                Cadastrar IA personalizada para {data.organization_name}
+                {t("Cadastrar IA personalizada para")} {data.organization_name}
               </h4>
               <p className="text-sm text-muted-foreground">
-                Endpoint HTTPS público compatível com OpenAI, com GET /models autenticado. A chave
-                será cifrada na credencial da organização, não nas variáveis da VPS. Endereços de
-                rede interna e destinos não autorizados são bloqueados.
+                {t("Endpoint HTTPS público compatível com OpenAI, com GET /models autenticado. A chave será cifrada na credencial da organização, não nas variáveis da VPS. Endereços de rede interna e destinos não autorizados são bloqueados.")}
               </p>
               <div className="grid gap-3 md:grid-cols-3">
                 <div className="space-y-1">
@@ -421,7 +417,7 @@ export function TenantAiPlatformDefault({ organizationId }: { organizationId: st
                   }
                   onClick={() => void testCustom()}
                 >
-                  {testing ? "Processando…" : "Testar conexão"}
+                  {testing ? "Processando…" : t("Testar conexão")}
                 </Button>
                 <Button
                   type="button"
@@ -448,24 +444,22 @@ export function TenantAiPlatformDefault({ organizationId }: { organizationId: st
             <p>
               Origem:{" "}
               {data.padrao.configured
-                ? "configuração da organização"
-                : "fallback da instalação (não salvo)"}
+                ? t("configuração da organização")
+                : t("fallback da instalação (não salvo)")}
               .
             </p>
             {provider === "custom" && (
               <p>
-                Provedor personalizado significa uma API compatível com OpenAI. Configure acima a
-                Base URL, a chave e o modelo para esta organização. Cadastrar a credencial não ativa
-                o padrão: após a validação, selecione-a e clique em Ativar padrão.
+                {t("Provedor personalizado significa uma API compatível com OpenAI. Configure acima a Base URL, a chave e o modelo para esta organização. Cadastrar a credencial não ativa o padrão: após a validação, selecione-a e clique em Ativar padrão.")}
               </p>
             )}
             <p>
               Credencial de {PROVEDOR_POR_ID.get(provider)?.rotulo ?? provider}:{" "}
               {ready
                 ? availability?.credencial_organizacao_validada
-                  ? "credencial própria validada"
-                  : "chave da instalação presente"
-                : "nenhuma credencial confirmada. Salvar o modelo não cria chaves."}
+                  ? t("credencial própria validada")
+                  : t("chave da instalação presente")
+                : t("nenhuma credencial confirmada. Salvar o modelo não cria chaves.")}
             </p>
             <p>
               {data.agentes_publicados} agente(s) publicado(s),{" "}
@@ -474,8 +468,7 @@ export function TenantAiPlatformDefault({ organizationId }: { organizationId: st
             </p>
             {!ready && availability?.gateway_instalacao && (
               <p>
-                Gateway da instalação configurado; não foi comprovado que ele suporta este
-                provedor/modelo.
+                {t("Gateway da instalação configurado; não foi comprovado que ele suporta este provedor/modelo.")}
               </p>
             )}
             {models.length === 0 && (
@@ -497,11 +490,11 @@ export function TenantAiPlatformDefault({ organizationId }: { organizationId: st
                 void save();
               }}
             >
-              {saving ? "Salvando…" : "Ativar padrão nesta organização"}
+              {saving ? "Salvando…" : t("Ativar padrão nesta organização")}
             </Button>
           ) : (
             <p className="text-sm text-muted-foreground">
-              Somente o Superadmin full pode alterar este padrão.
+              {t("Somente o Superadmin full pode alterar este padrão.")}
             </p>
           )}
         </>
