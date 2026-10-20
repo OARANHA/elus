@@ -1,5 +1,5 @@
 ---
-impacto: correcao
+impacto: nada_mudou
 secao: corrigido
 titulo: Redução de chamadas redundantes de autenticação no ELUS
 ---
