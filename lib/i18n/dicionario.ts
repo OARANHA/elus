@@ -37,6 +37,14 @@ import type { Idioma } from "./idiomas";
 type Traducoes = Record<string, Partial<Record<Exclude<Idioma, "pt-BR">, string>>>;
 
 export const DICIONARIO: Traducoes = {
+  " validada": { es: " validada" },
+  "Cadastre uma credencial abaixo": { es: "Registra una credencial abajo" },
+  "Credencial validada.": { es: "Credencial validada." },
+  "Processando…": { es: "Procesando…" },
+  "Salvar credencial validada": { es: "Guardar credencial validada" },
+  "Atualizar credenciais": { es: "Actualizar credenciales" },
+  "Origem:": { es: "Origen:" },
+  "Credencial de": { es: "Credencial de" },
   "A plataforma gerencia a IA por padrão. Libere apenas as escolhas técnicas que esta empresa pode modificar. Desligar uma permissão não exclui chaves ou versões já publicadas.": { es: "La plataforma gestiona la IA de forma predeterminada. Autoriza solo las opciones técnicas que esta empresa puede modificar. Revocar un permiso no elimina claves ni versiones publicadas." },
   "Salvar permissões": { es: "Guardar permisos" },
   "O padrão desta empresa vale onde não existir escolha específica. Versões de agentes publicadas e configurações próprias dos pontos continuam prevalecendo. As permissões de autonomia são controladas separadamente acima.": { es: "La configuración predeterminada de esta empresa se aplica donde no haya una selección específica. Las versiones publicadas de agentes y las configuraciones específicas de los puntos siguen prevaleciendo. Los permisos se gestionan por separado arriba." },
