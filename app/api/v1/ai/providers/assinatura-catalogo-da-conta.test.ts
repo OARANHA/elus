@@ -19,6 +19,8 @@ const banco = vi.hoisted(() => ({
   gravacoes: [] as Array<{ tabela: string; payload: unknown }>,
 }));
 
+// Estes cenários exercitam o provider com autonomia técnica previamente concedida.
+vi.mock("@/lib/ai/governanca-da-ia", () => ({ recusaConfiguracaoDeIa: vi.fn(async () => null) }));
 vi.mock("@/lib/auth/require-role", () => ({ requireRole: vi.fn() }));
 vi.mock("@/lib/impersonate/support", () => ({ requireSupportWrite: vi.fn(async () => null) }));
 vi.mock("@/lib/audit", () => ({ audit: vi.fn(async () => undefined) }));
