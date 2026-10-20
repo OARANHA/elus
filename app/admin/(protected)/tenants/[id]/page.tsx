@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { TenantAiPermissions } from "@/components/admin/tenants/TenantAiPermissions";
 
 import {
   CardDeCobranca,
@@ -23,6 +24,7 @@ export default async function TenantDetailPage({ params }: TenantDetailPageProps
   return (
     <div className="space-y-6">
       <TenantOverviewClient id={id} cobrancaLigada={cobranca !== null} />
+      <TenantAiPermissions organizationId={id} />
       {cobranca && <CardDeCobranca orgId={id} {...cobranca} />}
     </div>
   );
