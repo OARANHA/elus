@@ -18,7 +18,7 @@
 
 import { createClient as createSupabaseClient, type SupabaseClient } from "@supabase/supabase-js";
 import { env } from "@/lib/env";
-import { fetchDoServidor } from "@/lib/supabase/fetch-do-servidor";
+import { fetchAuthComPrazo, fetchDoServidor } from "@/lib/supabase/fetch-do-servidor";
 import { urlDoSupabaseNoServidor } from "@/lib/supabase/url-do-servidor";
 
 let _admin: SupabaseClient | null = null;
@@ -39,9 +39,14 @@ export function createAdminClient(): SupabaseClient {
         detectSessionInUrl: false,
       },
       global: {
-        fetch: fetchDoServidor(
-          urlDoSupabaseNoServidor(env.SUPABASE_SERVER_URL, env.NEXT_PUBLIC_SUPABASE_URL),
-          env.NEXT_PUBLIC_SUPABASE_URL,
+        // Leituras GET de identidade e organizações também ocorrem via service role
+        // no layout. Não deixar uma dessas chamadas ficar 119 s pendente até
+        // Cloudflare 524; fetchAuthComPrazo não limita mutações nem outros módulos.
+        fetch: fetchAuthComPrazo(
+          fetchDoServidor(
+            urlDoSupabaseNoServidor(env.SUPABASE_SERVER_URL, env.NEXT_PUBLIC_SUPABASE_URL),
+            env.NEXT_PUBLIC_SUPABASE_URL,
+          ),
         ),
         headers: {
           "X-Client-Info": "deskcomm-crm/admin",

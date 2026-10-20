@@ -1,6 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const estado = vi.hoisted(() => ({ linha: null as unknown, erro: null as unknown }));
+const estado = vi.hoisted(() => ({
+  linha: null as unknown,
+  erro: null as unknown,
+  mfaDoGetUser: undefined as boolean | undefined,
+  leiturasExtrasMfa: 0,
+}));
 const adminClient = {
   from: () => ({
     select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: estado.linha, error: estado.erro }) }) }),
@@ -9,9 +14,9 @@ const adminClient = {
 vi.mock("@/lib/channels/health", () => ({ listarConexoesCaidas: async () => [] }));
 vi.mock("@/lib/supabase/admin", () => ({ createAdminClient: () => adminClient }));
 vi.mock("@/lib/auth/server", () => ({
-  loadAuthUser: async () => ({ id: "user-1", idioma: "pt-BR", is_platform_admin: false, support: null, organizations: [] }),
+  loadAuthUser: async () => ({ id: "user-1", idioma: "pt-BR", is_platform_admin: false, support: null, organizations: [], mfa_enrolled: estado.mfaDoGetUser }),
   resolveActiveOrg: async () => ({ orgId: "org-1", role: "admin", interface_settings: null }),
-  isMfaEnrolled: async () => true,
+  isMfaEnrolled: async () => { estado.leiturasExtrasMfa += 1; return true; },
   requiresMfa: async () => false,
 }));
 vi.mock("@/lib/auth/vinculo-revogado", () => ({ acessoFoiRevogado: async () => false }));
@@ -32,6 +37,8 @@ vi.mock("@/lib/branding/organizacao", () => ({
 beforeEach(() => {
   estado.linha = { onboarded_at: "2026-01-01", status: "active", settings: null };
   estado.erro = null;
+  estado.mfaDoGetUser = undefined;
+  estado.leiturasExtrasMfa = 0;
 });
 
 describe("layout de /app × org parada", () => {
@@ -46,6 +53,20 @@ describe("layout de /app × org parada", () => {
     estado.erro = { message: "connection reset" };
     const { default: AppLayout } = await import("@/app/app/layout");
     await expect(AppLayout({ children: null })).rejects.toThrow(/organizacao_ilegivel/);
+  });
+
+  it("não revalida via listFactors quando getUser já trouxe MFA verificada", async () => {
+    estado.mfaDoGetUser = true;
+    const { default: AppLayout } = await import("@/app/app/layout");
+    await expect(AppLayout({ children: null })).resolves.toBeTruthy();
+    expect(estado.leiturasExtrasMfa).toBe(0);
+  });
+
+  it("mock sem sinal MFA mantém leitura canônica e fail-closed", async () => {
+    estado.mfaDoGetUser = undefined;
+    const { default: AppLayout } = await import("@/app/app/layout");
+    await expect(AppLayout({ children: null })).resolves.toBeTruthy();
+    expect(estado.leiturasExtrasMfa).toBe(1);
   });
 
   it("CONTROLE: org ativa e onboardada renderiza", async () => {

@@ -135,6 +135,20 @@ export function ehSessaoAusente(error: { name?: string } | null | undefined): bo
   return error?.name === "AuthSessionMissingError";
 }
 
+/**
+ * Mesmo critério usado por auth.mfa.listFactors(): a implementação do SDK
+ * consulta getUser() novamente para ler user.factors. Aqui já recebemos
+ * esse usuário da validação remota e não precisamos repetir a requisição.
+ * Só o objeto vindo do getUser() confiável pode alimentar esta função no layout.
+ */
+export function totpVerificadoNoUsuario(
+  fatores: readonly { factor_type: string; status: string }[] | null | undefined,
+): boolean {
+  return (fatores ?? []).some(
+    (fator) => fator.factor_type === "totp" && fator.status === "verified",
+  );
+}
+
 export const loadAuthUser = cache(async (): Promise<AuthUser | null> => {
   const supabase = await createClient();
   const {
@@ -189,7 +203,7 @@ export const loadAuthUser = cache(async (): Promise<AuthUser | null> => {
   // ⚠️ `ORDER BY` NÃO É ENFEITE AQUI: esta lista decide QUAL ORGANIZAÇÃO FICA
   // ATIVA para quem não tem o cookie `active_org` — `resolveActiveOrg` pega
   // `organizations[0]`. Sem ordenação, "a primeira" é o que o Postgres devolver.
-  const [{ data: paRow, error: paErro }, { data: rawMemberships, error: membErro }] =
+  const [{ data: paRow, error: paErro }, { data: rawMemberships, error: membErro }, support] =
     await Promise.all([
       supabase
         .from("platform_admins")
@@ -213,6 +227,10 @@ export const loadAuthUser = cache(async (): Promise<AuthUser | null> => {
         .is("revoked_at", null)
         .order("accepted_at", { ascending: true, nullsFirst: true })
         .order("organization_id", { ascending: true }),
+      // A autoridade do acompanhamento é lida em paralelo às memberships:
+      // antes pagávamos mais um round-trip serial em CADA carregamento de página.
+      // A falha continua bloqueando, nunca equivale a "sem acompanhamento".
+      readSupportContext(supabase),
     ]);
 
   /**
@@ -270,7 +288,6 @@ export const loadAuthUser = cache(async (): Promise<AuthUser | null> => {
     };
   });
 
-  const support = await readSupportContext(supabase);
   const fullName = (user.user_metadata?.full_name as string | undefined) ?? null;
   const avatarUrl = (user.user_metadata?.avatar_url as string | undefined) ?? null;
   const locale = (user.user_metadata?.locale as string | undefined) ?? null;
@@ -293,6 +310,9 @@ export const loadAuthUser = cache(async (): Promise<AuthUser | null> => {
     avatar_url: avatarUrl,
     is_platform_admin: !!paRow,
     platform_admin_scope: paRow?.scope ?? null,
+    // Derivado da resposta de getUser() já verificada no Supabase, sem mfa.listFactors()
+    // e sem aceitar MFA como comprovada quando o fator está "unverified".
+    mfa_enrolled: totpVerificadoNoUsuario(user.factors),
     locale,
     idioma,
     timezone,
@@ -531,13 +551,18 @@ export async function sessionAal(): Promise<"aal1" | "aal2" | null> {
  * cadastrar. Quem ainda não tem fator continua sendo tratado pelo gate de
  * cadastro do `app/app/layout.tsx`.
  */
-export async function mfaEmDivida(): Promise<boolean> {
+export async function mfaEmDivida(usuarioValidado?: AuthUser): Promise<boolean> {
+  // O requireRole já recebeu o user de loadAuthUser() nesta requisição.
+  // A resposta veio do getUser() REMOTO (não do cookie): reutilizar os fatores
+  // comprovados evita que cada chamada de API faça outra ida ao GoTrue.
+  // Sem esta prova (código legado e outras guards), listFactors() segue
+  // obrigatório e uma falha continua bloqueando o acesso.
   // ⚠️ NÃO PERGUNTA MAIS A POLÍTICA, e a mudança é o que impede o cadastro
   // opcional de virar um buraco: começava por `requiresMfa(...)`, então, com a
   // exigência desligada, quem ativasse a verificação POR VONTADE PRÓPRIA teria o
   // fator ignorado na sessão — o mesmo que não ter.
   //
   // Cadastrar e provar são perguntas diferentes. Quem TEM fator prova, sempre.
-  if (!(await isMfaEnrolled())) return false;
+  if (!(usuarioValidado?.mfa_enrolled ?? (await isMfaEnrolled()))) return false;
   return (await sessionAal()) !== "aal2";
 }

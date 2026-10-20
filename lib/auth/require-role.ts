@@ -218,7 +218,7 @@ export async function requireRole(min: Role, opts: RequireRoleOpts = {}): Promis
   if (user.is_platform_admin && !user.support && allowPlatformAdmin !== false) {
     if (allowPlatformAdmin === "leitura") return { ok: true, user, org };
     if (user.platform_admin_scope === "full") {
-      if (await mfaEmDivida()) {
+      if (await mfaEmDivida(user)) {
         void audit({
           action: "authz.denied",
           actorUserId: user.id,
@@ -240,7 +240,7 @@ export async function requireRole(min: Role, opts: RequireRoleOpts = {}): Promis
   // permissões com a de MFA em cada botão/consulta. Nenhuma decisão é cacheada.
   // Capturar a rejeição mantém a precedência: papel insuficiente continua 403,
   // e uma falha de MFA só é propagada quando essa checagem seria necessária.
-  const mfaPendente = mfaEmDivida().then(
+  const mfaPendente = mfaEmDivida(user).then(
     (required) => ({ required }),
     (error: unknown) => ({ error }),
   );
