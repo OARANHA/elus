@@ -249,7 +249,7 @@ export function TenantAiPlatformDefault({ organizationId }: { organizationId: st
         <>
           <div className="grid gap-4 md:grid-cols-2">
             <div className="space-y-2">
-              <label htmlFor="ai-platform-provider" className="text-sm font-medium">
+              <label htmlFor="ai-platform-provider" className="block text-sm font-medium">
                 Provedor padrão
               </label>
               <Select
@@ -287,7 +287,7 @@ export function TenantAiPlatformDefault({ organizationId }: { organizationId: st
                   <SelectContent>
                     {models.map((m) => (
                       <SelectItem key={m.provider + "/" + m.model_id} value={m.model_id}>
-                        {m.display_name || m.model_id}
+                        {m.display_name ?? m.model_id}
                       </SelectItem>
                     ))}
                   </SelectContent>
