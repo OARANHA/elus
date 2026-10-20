@@ -276,7 +276,7 @@ export function TenantAiPlatformDefault({ organizationId }: { organizationId: st
               </Select>
             </div>
             <div className="space-y-2">
-              <label htmlFor="ai-platform-model" className="text-sm font-medium">
+              <label htmlFor="ai-platform-model" className="block text-sm font-medium">
                 Modelo padrão
               </label>
               {models.length > 0 && (model === "" || models.some((m) => m.model_id === model)) ? (
@@ -305,7 +305,7 @@ export function TenantAiPlatformDefault({ organizationId }: { organizationId: st
             </div>
           </div>
           <div className="space-y-2">
-            <label htmlFor="ai-platform-credential" className="text-sm font-medium">
+            <label htmlFor="ai-platform-credential" className="block text-sm font-medium">
               Credencial da organização
             </label>
             <Select
@@ -363,7 +363,7 @@ export function TenantAiPlatformDefault({ organizationId }: { organizationId: st
               </p>
               <div className="grid gap-3 md:grid-cols-3">
                 <div className="space-y-1">
-                  <label htmlFor="custom-label">Nome da conexão</label>
+                  <label htmlFor="custom-label" className="block">Nome da conexão</label>
                   <Input
                     id="custom-label"
                     value={label}
@@ -377,7 +377,7 @@ export function TenantAiPlatformDefault({ organizationId }: { organizationId: st
                   />
                 </div>
                 <div className="space-y-1">
-                  <label htmlFor="custom-url">Base URL HTTPS</label>
+                  <label htmlFor="custom-url" className="block">Base URL HTTPS</label>
                   <Input
                     id="custom-url"
                     value={baseUrl}
@@ -392,7 +392,7 @@ export function TenantAiPlatformDefault({ organizationId }: { organizationId: st
                   />
                 </div>
                 <div className="space-y-1">
-                  <label htmlFor="custom-key">Token/API Key</label>
+                  <label htmlFor="custom-key" className="block">Token/API Key</label>
                   <Input
                     id="custom-key"
                     type="password"
