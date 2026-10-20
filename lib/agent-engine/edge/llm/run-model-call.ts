@@ -788,6 +788,25 @@ export async function runModelCall(db: pg.Pool, cfg: LlmEdgeConfig, input: RunMo
   if (config.enabledModels.length > 0 && !config.enabledModels.includes(model)) {
     throw new LlmModelNotEnabledError(model);
   }
+  // Chutes usa a chave compartilhada da instalação. Um modelo sem preço
+  // comprovado no catálogo ESPECÍFICO de Chutes não pode gastar com custo NULL:
+  // o teto mensal do tenant soma cost_cents e seria contornado.
+  // Catraca ANTES de chamar o provider; falha de leitura também nega.
+  if (config.provider === 'chutes') {
+    const { rows: precosChutes } = await db.query<{ model_id: string }>(
+      `select model_id from public.ai_models
+        where provider = 'chutes' and model_id = $1 and deprecated_at is null
+          and input_price_per_million_cents is not null
+          and output_price_per_million_cents is not null
+          and input_price_per_million_cents >= 0
+          and output_price_per_million_cents >= 0
+        limit 1`,
+      [model],
+    );
+    if (precosChutes.length !== 1) {
+      throw new Error('chutes_model_without_verified_pricing');
+    }
+  }
   const factory = registry[config.provider];
   if (factory === undefined) {
     throw new LlmProviderUnknownError(config.provider);
