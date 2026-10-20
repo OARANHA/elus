@@ -24,6 +24,7 @@ import { z } from "zod";
 import { fail, ok } from "@/lib/api/wrappers";
 import { audit } from "@/lib/audit";
 import { requireRole } from "@/lib/auth/require-role";
+import { recusaConfiguracaoDeIa } from "@/lib/ai/governanca-da-ia";
 import { roleAtLeast } from "@/lib/auth/types";
 import {
   decidirBinding,
@@ -345,6 +346,8 @@ export async function PUT(req: NextRequest): Promise<Response> {
   if (!authz.ok) return authz.response;
   const t = (texto: string) => traduzir(texto, authz.user.idioma);
   const { user, org } = authz;
+  const platformDenied = await recusaConfiguracaoDeIa(user, org.orgId, "provider");
+  if (platformDenied) return platformDenied;
 
   const parsed = corpoDoPut.safeParse(await req.json().catch(() => null));
   if (!parsed.success) {
