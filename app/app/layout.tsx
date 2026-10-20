@@ -36,6 +36,13 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const user = await loadAuthUser();
   if (!user) redirect("/login");
 
+  // getUser() já devolveu os fatores verificados. listFactors() chamaria
+  // getUser() NOVAMENTE, podendo reproduzir o timeout de Auth por navegação.
+  // Somente usuários validados por loadAuthUser carregam este campo.
+  // Mocks/consumidores sem o campo preservam a leitura canônica e fail-closed.
+  const fatoresNoLayout = () =>
+    user.mfa_enrolled === undefined ? isMfaEnrolled() : Promise.resolve(user.mfa_enrolled);
+
   let activeOrg = await resolveActiveOrg(user);
 
   // Sem organização ativa existem DOIS estados, e eles pedem telas opostas:
@@ -107,7 +114,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         .eq("id", activeOrg.orgId)
         .maybeSingle(),
       listarConexoesCaidas(admin, activeOrg.orgId),
-      isMfaEnrolled(),
+      fatoresNoLayout(),
       requiresMfa(
         activeOrg.role,
         user.is_platform_admin,
@@ -249,7 +256,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     }
   } else {
     const [isEnrolled, mfaRequired] = await Promise.all([
-      isMfaEnrolled(),
+      fatoresNoLayout(),
       requiresMfa(undefined, user.is_platform_admin, user.id, undefined),
     ]);
     enrolled = isEnrolled;
