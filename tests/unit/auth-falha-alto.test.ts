@@ -25,6 +25,10 @@ const consultas: { platformAdmins: unknown; memberships: unknown } = {
 const fatoresDoGoTrue: { atual: Array<{ factor_type: string; status: string }> } = {
   atual: [],
 };
+const mfa: { aal: "aal1" | "aal2"; consultasExtras: number } = {
+  aal: "aal1",
+  consultasExtras: 0,
+};
 
 // `get` entrou junto com a cadeia de idioma (usuário → organização): o
 // resolvedor pergunta ao cookie qual organização está ativa. O dublê tinha
@@ -54,6 +58,13 @@ vi.mock("@/lib/supabase/server", () => ({
         data: { user: { id: "u1", email: "a@b.c", user_metadata: {}, factors: fatoresDoGoTrue.atual } },
         error: null,
       }),
+      mfa: {
+        getAuthenticatorAssuranceLevel: async () => ({ data: { currentLevel: mfa.aal } }),
+        listFactors: async () => {
+          mfa.consultasExtras += 1;
+          throw new Error("listFactors nao deveria ser chamada com usuario validado");
+        },
+      },
     },
     from: (tabela: string) => {
       const alvo = tabela === "platform_admins" ? "platformAdmins" : "memberships";
@@ -80,12 +91,14 @@ vi.mock("@/lib/supabase/server", () => ({
   }),
 }));
 
-const { loadAuthUser, resolveActiveOrg, totpVerificadoNoUsuario } = await import("@/lib/auth/server");
+const { loadAuthUser, resolveActiveOrg, totpVerificadoNoUsuario, mfaEmDivida } = await import("@/lib/auth/server");
 
 beforeEach(() => {
   consultas.platformAdmins = { data: null, error: null };
   consultas.memberships = { data: [], error: null };
   fatoresDoGoTrue.atual = [];
+  mfa.aal = "aal1";
+  mfa.consultasExtras = 0;
 });
 
 describe("getUser validado — fatores MFA sem outra ida ao GoTrue", () => {
@@ -99,6 +112,27 @@ describe("getUser validado — fatores MFA sem outra ida ao GoTrue", () => {
   it("leva o estado MFA da resposta getUser para o layout, sem listFactors()", async () => {
     fatoresDoGoTrue.atual = [{ factor_type: "totp", status: "verified" }];
     expect((await loadAuthUser())?.mfa_enrolled).toBe(true);
+  });
+
+  it("role guard reutiliza o TOTP validado e bloqueia sessao aal1", async () => {
+    fatoresDoGoTrue.atual = [{ factor_type: "totp", status: "verified" }];
+    const user = await loadAuthUser();
+    expect(user?.mfa_enrolled).toBe(true);
+    expect(await mfaEmDivida(user!)).toBe(true);
+    expect(mfa.consultasExtras).toBe(0);
+  });
+
+  it("com TOTP verificado, sessao aal2 continua autorizada", async () => {
+    fatoresDoGoTrue.atual = [{ factor_type: "totp", status: "verified" }];
+    mfa.aal = "aal2";
+    expect(await mfaEmDivida((await loadAuthUser())!)).toBe(false);
+    expect(mfa.consultasExtras).toBe(0);
+  });
+
+  it("sem TOTP verificado, sessao aal1 nao ganha falsa exigencia", async () => {
+    fatoresDoGoTrue.atual = [{ factor_type: "totp", status: "unverified" }];
+    expect(await mfaEmDivida((await loadAuthUser())!)).toBe(false);
+    expect(mfa.consultasExtras).toBe(0);
   });
 });
 
