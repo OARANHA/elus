@@ -114,6 +114,7 @@ export function fetchAuthComPrazo(
   baseFetch: typeof globalThis.fetch,
   prazoMs: number = PRAZO_AUTENTICACAO_MS,
   origem: OrigemAuth = "desconhecida",
+  requestId?: string,
 ): typeof globalThis.fetch {
   return (input, init) => {
     const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
@@ -146,6 +147,12 @@ export function fetchAuthComPrazo(
     const signal = anterior ? AbortSignal.any([anterior, limite]) : limite;
     // A duração do fetch termina no recebimento dos cabeçalhos, não no parse
     // do corpo nem na decisão final do SDK (medidos nos chamadores getUser).
+    // O request ID do proxy pode ter vindo de cabeçalho não confiável.
+    // Aceitar somente UUID (sem IDs arbitrários, URLs ou dados pessoais em logs).
+    const correlacao =
+      requestId && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(requestId)
+        ? requestId
+        : undefined;
     const inicio = Date.now();
     const concorrentesNoInicio = ++authFetchEmVoo;
     return (async () => {
@@ -154,7 +161,7 @@ export function fetchAuthComPrazo(
         const duracaoMs = Date.now() - inicio;
         if (duracaoMs >= LIMIAR_AUTH_LENTA_MS || resposta.status === 429 || resposta.status >= 500) {
           logger.warn("[auth] transporte Supabase respondeu lento ou com erro", {
-            origem, endpoint: caminho, metodo, fase: "cabecalhos",
+            origem, request_id: correlacao, endpoint: caminho, metodo, fase: "cabecalhos",
             duracao_ms: duracaoMs,
             concorrentes_inicio: concorrentesNoInicio,
             concorrentes_fim: authFetchEmVoo,
