@@ -551,13 +551,18 @@ export async function sessionAal(): Promise<"aal1" | "aal2" | null> {
  * cadastrar. Quem ainda não tem fator continua sendo tratado pelo gate de
  * cadastro do `app/app/layout.tsx`.
  */
-export async function mfaEmDivida(): Promise<boolean> {
+export async function mfaEmDivida(usuarioValidado?: AuthUser): Promise<boolean> {
+  // O requireRole já recebeu o user de loadAuthUser() nesta requisição.
+  // A resposta veio do getUser() REMOTO (não do cookie): reutilizar os fatores
+  // comprovados evita que cada chamada de API faça outra ida ao GoTrue.
+  // Sem esta prova (código legado e outras guards), listFactors() segue
+  // obrigatório e uma falha continua bloqueando o acesso.
   // ⚠️ NÃO PERGUNTA MAIS A POLÍTICA, e a mudança é o que impede o cadastro
   // opcional de virar um buraco: começava por `requiresMfa(...)`, então, com a
   // exigência desligada, quem ativasse a verificação POR VONTADE PRÓPRIA teria o
   // fator ignorado na sessão — o mesmo que não ter.
   //
   // Cadastrar e provar são perguntas diferentes. Quem TEM fator prova, sempre.
-  if (!(await isMfaEnrolled())) return false;
+  if (!(usuarioValidado?.mfa_enrolled ?? (await isMfaEnrolled()))) return false;
   return (await sessionAal()) !== "aal2";
 }
