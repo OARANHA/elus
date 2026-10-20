@@ -38,7 +38,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 
 import { generateTotp } from "../tests/e2e/utils/totp";
-import { anunciarDestino, credenciaisSupabaseDeTeste } from "./lib/env-de-teste";
+import { anunciarDestino, credenciaisSupabaseDeTeste, destinoEhLocal } from "./lib/env-de-teste";
 
 // `process.env` VENCE o `.env.local` (ver scripts/lib/env-de-teste.ts).
 //
@@ -326,6 +326,30 @@ async function garantirTotp(
 
 async function main(): Promise<void> {
   const orgId = await ensureOrg();
+
+  // Exclusivamente a organização FIXA dos testes locais recebe a autonomia
+  // técnica necessária para exercitar fluxos legados de escrita de IA.
+  // Organizações novas continuam deny-by-default e usuários admin NÃO ganham
+  // papel de platform admin. Não conceder estes grants em Supabase remoto.
+  if (destinoEhLocal(SUPABASE_URL)) {
+    const { error: erroAutonomia } = await admin
+      .from("organizations")
+      .update({
+        ai_autonomy: {
+          provider: true,
+          model: true,
+          credentials: true,
+          operator_model: true,
+        },
+      } as never)
+      .eq("id", orgId)
+      .eq("slug", ORG_SLUG);
+    if (erroAutonomia) {
+      throw new Error("seed E2E: não foi possível aplicar autonomia técnica à org de teste: " + erroAutonomia.message);
+    }
+    console.info("[seed] autonomia de IA concedida somente ao tenant E2E local");
+  }
+
 
   const users: Record<string, { id: string; email: string; role: string }> = {};
   for (const u of USERS) {
