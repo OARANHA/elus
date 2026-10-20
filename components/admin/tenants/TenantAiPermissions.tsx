@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { useT } from "@/hooks/i18n/useT";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 
@@ -35,6 +36,7 @@ const ITEMS: Array<{ key: keyof Permissions; label: string; note: string }> = [
 type ApiResult = { data?: { permissions: Permissions }; error?: { message: string } };
 
 export function TenantAiPermissions({ organizationId }: { organizationId: string }) {
+  const t = useT();
   const [values, setValues] = React.useState<Permissions | null>(null);
   const [loading, setLoading] = React.useState(true);
   const [saving, setSaving] = React.useState(false);
@@ -85,23 +87,23 @@ export function TenantAiPermissions({ organizationId }: { organizationId: string
   }
 
   return (
-    <section className="space-y-4 rounded-lg border p-5" aria-label="Autonomia técnica de IA">
+    <section className="space-y-4 rounded-lg border p-5" aria-label={t("Autonomia técnica de IA")}>
       <div>
-        <h3 className="text-lg font-semibold">Autonomia técnica de IA</h3>
+        <h3 className="text-lg font-semibold">{t("Autonomia técnica de IA")}</h3>
         <p className="text-sm text-muted-foreground">
           A plataforma gerencia a IA por padrão. Libere apenas as escolhas técnicas que esta empresa
           pode modificar. Desligar uma permissão não exclui chaves ou versões já publicadas.
         </p>
       </div>
       {loading ? (
-        <p className="text-sm text-muted-foreground">Carregando permissões…</p>
+        <p className="text-sm text-muted-foreground">{t("Carregando permissões…")}</p>
       ) : values ? (
         <>
           <div className="space-y-3">
             {ITEMS.map((item) => (
               <label key={item.key} className="flex items-start gap-3">
                 <Switch
-                  aria-label={item.label}
+                  aria-label={t(item.label)}
                   checked={values[item.key]}
                   disabled={saving}
                   onCheckedChange={(checked: boolean) => {
@@ -109,8 +111,8 @@ export function TenantAiPermissions({ organizationId }: { organizationId: string
                   }}
                 />
                 <span>
-                  <span className="block text-sm font-medium">{item.label}</span>
-                  <span className="block text-xs text-muted-foreground">{item.note}</span>
+                  <span className="block text-sm font-medium">{t(item.label)}</span>
+                  <span className="block text-xs text-muted-foreground">{t(item.note)}</span>
                 </span>
               </label>
             ))}
