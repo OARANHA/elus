@@ -37,6 +37,14 @@ import type { Idioma } from "./idiomas";
 type Traducoes = Record<string, Partial<Record<Exclude<Idioma, "pt-BR">, string>>>;
 
 export const DICIONARIO: Traducoes = {
+  "Escolher provedor de IA": { es: "Elegir proveedor de IA" },
+  "Autoriza trocar a empresa de IA dos agentes.": { es: "Permite cambiar el proveedor de IA de los agentes." },
+  "Escolher modelo": { es: "Elegir modelo" },
+  "Autoriza escolher modelos sem alterar as permissões de credenciais.": { es: "Permite elegir modelos sin modificar los permisos de credenciales." },
+  "Gerenciar chaves próprias (BYOK)": { es: "Gestionar claves propias (BYOK)" },
+  "Autoriza cadastrar, testar e gerenciar credenciais da organização.": { es: "Permite registrar, probar y gestionar las credenciales de la organización." },
+  "Escolher modelo do operador": { es: "Elegir modelo del operador" },
+  "Autoriza um modelo específico para operações, em vez de herdar o conversador.": { es: "Permite un modelo específico para operaciones, en lugar de heredar el modelo conversacional." },
   " validada": { es: " validada" },
   "Cadastre uma credencial abaixo": { es: "Registra una credencial abajo" },
   "Credencial validada.": { es: "Credencial validada." },
