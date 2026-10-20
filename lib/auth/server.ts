@@ -135,6 +135,20 @@ export function ehSessaoAusente(error: { name?: string } | null | undefined): bo
   return error?.name === "AuthSessionMissingError";
 }
 
+/**
+ * Mesmo critério usado por auth.mfa.listFactors(): a implementação do SDK
+ * consulta getUser() novamente para ler user.factors. Aqui já recebemos
+ * esse usuário da validação remota e não precisamos repetir a requisição.
+ * Só o objeto vindo do getUser() confiável pode alimentar esta função no layout.
+ */
+export function totpVerificadoNoUsuario(
+  fatores: readonly { factor_type: string; status: string }[] | null | undefined,
+): boolean {
+  return (fatores ?? []).some(
+    (fator) => fator.factor_type === "totp" && fator.status === "verified",
+  );
+}
+
 export const loadAuthUser = cache(async (): Promise<AuthUser | null> => {
   const supabase = await createClient();
   const {
@@ -189,7 +203,7 @@ export const loadAuthUser = cache(async (): Promise<AuthUser | null> => {
   // ⚠️ `ORDER BY` NÃO É ENFEITE AQUI: esta lista decide QUAL ORGANIZAÇÃO FICA
   // ATIVA para quem não tem o cookie `active_org` — `resolveActiveOrg` pega
   // `organizations[0]`. Sem ordenação, "a primeira" é o que o Postgres devolver.
-  const [{ data: paRow, error: paErro }, { data: rawMemberships, error: membErro }] =
+  const [{ data: paRow, error: paErro }, { data: rawMemberships, error: membErro }, support] =
     await Promise.all([
       supabase
         .from("platform_admins")
@@ -213,6 +227,10 @@ export const loadAuthUser = cache(async (): Promise<AuthUser | null> => {
         .is("revoked_at", null)
         .order("accepted_at", { ascending: true, nullsFirst: true })
         .order("organization_id", { ascending: true }),
+      // A autoridade do acompanhamento é lida em paralelo às memberships:
+      // antes pagávamos mais um round-trip serial em CADA carregamento de página.
+      // A falha continua bloqueando, nunca equivale a "sem acompanhamento".
+      readSupportContext(supabase),
     ]);
 
   /**
@@ -270,7 +288,6 @@ export const loadAuthUser = cache(async (): Promise<AuthUser | null> => {
     };
   });
 
-  const support = await readSupportContext(supabase);
   const fullName = (user.user_metadata?.full_name as string | undefined) ?? null;
   const avatarUrl = (user.user_metadata?.avatar_url as string | undefined) ?? null;
   const locale = (user.user_metadata?.locale as string | undefined) ?? null;
@@ -293,6 +310,9 @@ export const loadAuthUser = cache(async (): Promise<AuthUser | null> => {
     avatar_url: avatarUrl,
     is_platform_admin: !!paRow,
     platform_admin_scope: paRow?.scope ?? null,
+    // Derivado da resposta de getUser() já verificada no Supabase, sem mfa.listFactors()
+    // e sem aceitar MFA como comprovada quando o fator está "unverified".
+    mfa_enrolled: totpVerificadoNoUsuario(user.factors),
     locale,
     idioma,
     timezone,
