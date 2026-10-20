@@ -37,6 +37,28 @@ import type { Idioma } from "./idiomas";
 type Traducoes = Record<string, Partial<Record<Exclude<Idioma, "pt-BR">, string>>>;
 
 export const DICIONARIO: Traducoes = {
+  "A plataforma gerencia a IA por padrão. Libere apenas as escolhas técnicas que esta empresa pode modificar. Desligar uma permissão não exclui chaves ou versões já publicadas.": { es: "La plataforma gestiona la IA de forma predeterminada. Autoriza solo las opciones técnicas que esta empresa puede modificar. Revocar un permiso no elimina claves ni versiones publicadas." },
+  "Salvar permissões": { es: "Guardar permisos" },
+  "O padrão desta empresa vale onde não existir escolha específica. Versões de agentes publicadas e configurações próprias dos pontos continuam prevalecendo. As permissões de autonomia são controladas separadamente acima.": { es: "La configuración predeterminada de esta empresa se aplica donde no haya una selección específica. Las versiones publicadas de agentes y las configuraciones específicas de los puntos siguen prevaleciendo. Los permisos se gestionan por separado arriba." },
+  "Organização selecionada:": { es: "Organización seleccionada:" },
+  "Provedor padrão": { es: "Proveedor predeterminado" },
+  "Credencial da organização": { es: "Credencial de la organización" },
+  "Chave da instalação (se disponível)": { es: "Clave de la instalación (si está disponible)" },
+  " aguardando validação": { es: " pendiente de validación" },
+  "padrão do provedor": { es: "predeterminado del proveedor" },
+  "Validação pendente; não pode ser ativada.": { es: "Validación pendiente; no se puede activar." },
+  "Cadastrar IA personalizada para": { es: "Registrar IA personalizada para" },
+  "Endpoint HTTPS público compatível com OpenAI, com GET /models autenticado. A chave será cifrada na credencial da organização, não nas variáveis da VPS. Endereços de rede interna e destinos não autorizados são bloqueados.": { es: "Endpoint HTTPS público compatible con OpenAI y GET /models autenticado. La clave se cifra en la credencial de la organización, no en las variables del VPS. Se bloquean las direcciones de red interna y los destinos no autorizados." },
+  "configuração da organização": { es: "configuración de la organización" },
+  "fallback da instalação (não salvo)": { es: "respaldo de la instalación (no guardado)" },
+  "Provedor personalizado significa uma API compatível com OpenAI. Configure acima a Base URL, a chave e o modelo para esta organização. Cadastrar a credencial não ativa o padrão: após a validação, selecione-a e clique em Ativar padrão.": { es: "Un proveedor personalizado es una API compatible con OpenAI. Configura arriba la URL base, la clave y el modelo de esta organización. Registrar la credencial no activa la configuración predeterminada: tras validarla, selecciónala y pulsa Activar configuración." },
+  "credencial própria validada": { es: "credencial propia validada" },
+  "chave da instalação presente": { es: "clave de la instalación disponible" },
+  "nenhuma credencial confirmada. Salvar o modelo não cria chaves.": { es: "no hay credenciales verificadas. Guardar el modelo no crea claves." },
+  "ponto(s) com modelo próprio. Nenhum desses registros será sobrescrito.": { es: "punto(s) con modelo propio. Ninguno de estos registros será sobrescrito." },
+  "Gateway da instalação configurado; não foi comprovado que ele suporta este provedor/modelo.": { es: "Pasarela de la instalación configurada; no se ha verificado que admita este proveedor o modelo." },
+  "Ativar padrão nesta organização": { es: "Activar configuración predeterminada en esta organización" },
+  "Somente o Superadmin full pode alterar este padrão.": { es: "Solo un Superadmin con acceso completo puede modificar esta configuración." },
   // Governança de IA gerenciada por plataforma (PR #18).
   "Autonomia técnica de IA": { es: "Autonomía técnica de IA" },
   "Carregando permissões…": { es: "Cargando permisos…" },
