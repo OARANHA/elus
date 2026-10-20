@@ -172,6 +172,8 @@ export const AUDIT_ACTIONS = [
   "lgpd.sla_watcher_run",
   "platform_admin.inbox_listed",
   "platform_admin.conversation_viewed",
+  "platform_admin.ai_default_updated",
+  "platform_admin.ai_autonomy_updated",
   "platform_admin.tenants_listed",
   "platform_admin.tenant_viewed",
   "tenant.created_by_platform_admin",
