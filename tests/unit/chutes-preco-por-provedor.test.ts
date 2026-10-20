@@ -41,8 +41,9 @@ describe("precificação Chutes por par provedor/modelo", () => {
   });
 
   it("falha fechado quando o banco não pode comprovar o preço", async () => {
-    const db = { query: vi.fn().mockRejectedValue(new Error("catalogo_indisponivel")) }
-      as unknown as Pick<pg.Pool, "query">;
+    const db = {
+      query: vi.fn().mockRejectedValue(new Error("catalogo_indisponivel")),
+    } as unknown as Pick<pg.Pool, "query">;
     await expect(resolverTarifaChutes(db, "modelo")).rejects.toThrow("catalogo_indisponivel");
   });
 });

@@ -3,6 +3,13 @@
 -- Valores em centavos de USD por MILHÃO de tokens; a tarifa do fornecedor
 -- poderá mudar, por isso reconciliar catálogo antes do canário/ativação.
 -- Chutes nativo só aceita modelos com preço comprovado na linha provider=chutes.
+-- Centavos fracionários comprovados pelo Chutes exigem a mesma precisão do
+-- ai_pricing (numeric(10,4)); integer arredondava 10.4/41.6 para 10/42.
+-- Ampliação de precisão sem arredondar tarifas e sem trocar unidade monetária.
+alter table public.ai_models
+  alter column input_price_per_million_cents type numeric(10,4),
+  alter column output_price_per_million_cents type numeric(10,4);
+
 insert into public.ai_models
   (provider, model_id, display_name, description, context_window,
    input_price_per_million_cents, output_price_per_million_cents, supports_tools)
