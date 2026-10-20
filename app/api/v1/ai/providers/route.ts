@@ -25,6 +25,7 @@ import { fail, ok } from "@/lib/api/wrappers";
 import { audit } from "@/lib/audit";
 import { requireRole } from "@/lib/auth/require-role";
 import { recusaConfiguracaoDeIa } from "@/lib/ai/governanca-da-ia";
+import { lerPadraoLlmDaOrganizacao, mesclarPadraoLlmDaOrganizacao } from "@/lib/ai/padrao-llm-da-organizacao";
 import { roleAtLeast } from "@/lib/auth/types";
 import {
   decidirBinding,
@@ -317,6 +318,30 @@ export async function GET(): Promise<Response> {
   });
 }
 
+/**
+ * O Chutes nativo só executa modelos com as DUAS tarifas conhecidas no
+ * catálogo exato do provedor. Não herdar preço de outro gateway nem gravar
+ * configuração cuja conta só descobriria o defeito no primeiro atendimento.
+ */
+function tarifaChutesConhecida(
+  modelo: {
+    input_price_per_million_cents: number | string | null;
+    output_price_per_million_cents: number | string | null;
+  } | null,
+): boolean {
+  if (!modelo) return false;
+  const entrada = modelo.input_price_per_million_cents;
+  const saida = modelo.output_price_per_million_cents;
+  return (
+    entrada != null &&
+    saida != null &&
+    Number.isFinite(Number(entrada)) &&
+    Number.isFinite(Number(saida)) &&
+    Number(entrada) >= 0 &&
+    Number(saida) >= 0
+  );
+}
+
 const corpoDoPut = z.object({
   purpose: z.string().min(1),
   // A migration 0127 removeu os CHECKs do banco dizendo que "a garantia de que
@@ -364,13 +389,18 @@ export async function PUT(req: NextRequest): Promise<Response> {
 
   // A capacidade vem do catálogo (o que o FABRICANTE declara), nunca de
   // heurística sobre o nome do modelo.
-  const { data: modelo } = await db
+  const { data: modelo, error: erroModelo } = await db
     .from("ai_models")
-    .select("model_id, supports_tools, supports_vision")
+    .select("model_id, supports_tools, supports_vision, input_price_per_million_cents, output_price_per_million_cents")
     .eq("provider", corpo.provider)
     .eq("model_id", corpo.model_id)
     .is("deprecated_at", null)
     .maybeSingle();
+  if (corpo.provider === "chutes") {
+    if (erroModelo) return fail("catalogo_indisponivel", "Catálogo de preços Chutes indisponível.", 503);
+    if (!tarifaChutesConhecida(modelo))
+      return fail("chutes_model_without_verified_pricing", "Modelo Chutes sem preço comprovado.", 422);
+  }
 
   // Modelos da assinatura são por organização e não entram no catálogo global
   // `ai_models`. Resolva o catálogo da conta conectada para validar capacidades
@@ -516,6 +546,36 @@ export async function PATCH(req: NextRequest): Promise<Response> {
     return fail("invalid_body", t("corpo inválido"), 422, { details: parsed.error.issues });
   }
   const corpo = parsed.data;
+
+  // Esta rota legada escreve com service_role. A ausência desta guarda deixava
+  // o tenant contornar os grants usados pelo PUT e pelo painel Superadmin.
+  // Ler o estado corrente ANTES de consultar catálogo/assinatura e checar só
+  // o campo realmente alterado preserva concessões parciais (provider/model).
+  const admin = createAdminClient();
+  const { data: orgAtual, error: erroOrg } = await admin
+    .from("organizations")
+    .select("settings")
+    .eq("id", org.orgId)
+    .maybeSingle();
+  if (erroOrg || !orgAtual)
+    return fail("configuracao_ia_indisponivel", "Não foi possível ler o padrão da organização.", 503);
+  const anterior = lerPadraoLlmDaOrganizacao(orgAtual.settings);
+  if (anterior.provider !== corpo.provider) {
+    const negado = await recusaConfiguracaoDeIa(user, org.orgId, "provider");
+    if (negado) return negado;
+  }
+  if (anterior.default_model !== corpo.default_model) {
+    const negado = await recusaConfiguracaoDeIa(user, org.orgId, "model");
+    if (negado) return negado;
+  }
+  if (
+    anterior.configured &&
+    anterior.provider === corpo.provider &&
+    anterior.default_model === corpo.default_model
+  ) {
+    return ok({ padrao: { provider: corpo.provider, defaultModel: corpo.default_model }, avisos: [] });
+  }
+
   const desligado = await provedorDesligado(corpo.provider);
   if (desligado) return desligado;
 
@@ -524,12 +584,18 @@ export async function PATCH(req: NextRequest): Promise<Response> {
   // O modelo tem de existir no catálogo DAQUELE provedor. Sem esta conferência,
   // um erro de digitação vira padrão da organização e derruba todo ponto
   // herdado — o mesmo modo de falha que o `PUT` já evita ponto a ponto.
-  const { data: modelo } = await db
+  const { data: modelo, error: erroModelo } = await db
     .from("ai_models")
-    .select("model_id")
+    .select("model_id, input_price_per_million_cents, output_price_per_million_cents")
     .eq("provider", corpo.provider)
     .eq("model_id", corpo.default_model)
+    .is("deprecated_at", null)
     .maybeSingle();
+  if (corpo.provider === "chutes") {
+    if (erroModelo) return fail("catalogo_indisponivel", "Catálogo de preços Chutes indisponível.", 503);
+    if (!tarifaChutesConhecida(modelo))
+      return fail("chutes_model_without_verified_pricing", "Modelo Chutes sem preço comprovado.", 422);
+  }
 
   const modeloDaAssinatura =
     corpo.provider === PROVEDOR_POR_ASSINATURA
@@ -594,28 +660,19 @@ export async function PATCH(req: NextRequest): Promise<Response> {
   // service role passa por cima da RLS, então o filtro de tenant vira
   // responsabilidade deste arquivo. `org.orgId` vem do `requireRole` (cookie/
   // JWT), nunca do corpo.
-  const admin = createAdminClient();
-
-  // MERGE, nunca sobrescrita. `organizations.settings` é um jsonb compartilhado
-  // — `branding` (a marca da instalação) e `security` (a política de MFA) moram
-  // nele. Um `update({ settings: { llm } })` ingênuo apaga os dois em silêncio, e
-  // o sintoma aparece dias depois, longe daqui.
-  const { data: orgAtual } = await admin
-    .from("organizations")
-    .select("settings")
-    .eq("id", org.orgId)
-    .maybeSingle();
-
-  const settingsAtuais = ((orgAtual?.settings ?? {}) as Record<string, unknown>) || {};
-  const settings = {
-    ...settingsAtuais,
-    llm: { provider: corpo.provider, default_model: corpo.default_model },
-  };
+  // MERGE da configuração técnica e CAS no snapshot lido acima: preservar
+  // credential_id, enabled_models, branding e security; concorrência retorna
+  // 409 em vez de sobrescrever uma concessão ou outro ajuste recente.
+  const settings = mesclarPadraoLlmDaOrganizacao(orgAtual.settings, {
+    provider: corpo.provider,
+    default_model: corpo.default_model,
+  });
 
   const { data: gravado, error } = await admin
     .from("organizations")
     .update({ settings })
     .eq("id", org.orgId)
+    .eq("settings", JSON.stringify(orgAtual.settings ?? {}))
     .select("settings")
     .maybeSingle();
 
@@ -623,7 +680,7 @@ export async function PATCH(req: NextRequest): Promise<Response> {
   if (!gravado) {
     // Mesma armadilha do PUT: no PostgREST, update que casa zero linhas volta
     // como sucesso, e a tela diria "salvo" sem nada ter sido gravado.
-    return fail("save_failed", t("nada foi gravado — verifique as permissões da organização"), 500);
+    return fail("conflict", t("configuração alterada em paralelo — recarregue a tela"), 409);
   }
 
   void audit({
