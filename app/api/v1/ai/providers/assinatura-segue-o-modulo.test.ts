@@ -20,6 +20,9 @@ const banco = vi.hoisted(() => ({
 }));
 
 vi.mock("@/lib/auth/require-role", () => ({ requireRole: vi.fn() }));
+// Neste teste o tenant recebeu grant explícito para alterar provedores;
+// recusas da governança são cobertas por sua própria suíte.
+vi.mock("@/lib/ai/governanca-da-ia", () => ({ recusaConfiguracaoDeIa: vi.fn(async () => null) }));
 vi.mock("@/lib/impersonate/support", () => ({ requireSupportWrite: vi.fn(async () => null) }));
 vi.mock("@/lib/audit", () => ({ audit: vi.fn(async () => undefined) }));
 
