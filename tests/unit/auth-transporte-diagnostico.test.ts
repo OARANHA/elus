@@ -80,7 +80,9 @@ describe("diagnóstico do transporte Auth: só metadados seguros", () => {
   });
 
   it("não instrumenta nem limita chamadas de negócios", async () => {
-    const base = vi.fn(async () => new Response("{}", { status: 503 }));
+    const base = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) =>
+      new Response("{}", { status: 503 }),
+    );
     const fetchSeguro = fetchAuthComPrazo(base as typeof fetch, 1000, "admin");
     await fetchSeguro(PUBLICA + "/rest/v1/orders", { method: "GET" });
     expect(registrar.warn).not.toHaveBeenCalled();
