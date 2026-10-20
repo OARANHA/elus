@@ -151,10 +151,15 @@ export function totpVerificadoNoUsuario(
 
 export const loadAuthUser = cache(async (): Promise<AuthUser | null> => {
   const supabase = await createClient();
+  const inicioGetUser = Date.now();
   const {
     data: { user },
     error,
   } = await supabase.auth.getUser();
+  const duracaoGetUserMs = Date.now() - inicioGetUser;
+  if (duracaoGetUserMs >= 2_000) {
+    logger.warn("[auth] getUser lento no servidor", { duracao_ms: duracaoGetUserMs });
+  }
   // ⚠️ O `error` era DESCARTADO — nem chegava a ser desestruturado —, e aqui
   // `user: null` é tão ambíguo quanto o `data: null` que a query logo abaixo
   // trata com todo o cuidado: significa "não está logado" (estado normal) E
@@ -188,6 +193,7 @@ export const loadAuthUser = cache(async (): Promise<AuthUser | null> => {
       name: error.name,
       code: error.code ?? null,
       status: error.status ?? null,
+      duracao_ms: duracaoGetUserMs,
       message: error.message,
     });
   }

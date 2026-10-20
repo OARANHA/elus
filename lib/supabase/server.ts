@@ -52,6 +52,8 @@ async function clienteDeServidor(sameSite: "strict" | "lax") {
             urlDoSupabaseNoServidor(env.SUPABASE_SERVER_URL, env.NEXT_PUBLIC_SUPABASE_URL),
             env.NEXT_PUBLIC_SUPABASE_URL,
           ),
+          undefined,
+          "ssr",
         ),
       },
       cookies: {

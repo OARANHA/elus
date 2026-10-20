@@ -47,6 +47,8 @@ export function createAdminClient(): SupabaseClient {
             urlDoSupabaseNoServidor(env.SUPABASE_SERVER_URL, env.NEXT_PUBLIC_SUPABASE_URL),
             env.NEXT_PUBLIC_SUPABASE_URL,
           ),
+          undefined,
+          "admin",
         ),
         headers: {
           "X-Client-Info": "deskcomm-crm/admin",
