@@ -15,6 +15,7 @@ describe("createDefaultRegistry", () => {
       // Provedor personalizado (#1642): endpoint do operador, sem endpoint
       // canônico — a factory recusa a chamada quando falta o endereço.
       "custom",
+      "chutes",
       "deepseek",
       "google",
       "openai",
