@@ -136,6 +136,12 @@ export interface UserOrgMembership {
 
 export interface AuthUser {
   support?: import("@/lib/impersonate/support").SupportContext | null;
+  /**
+   * Presença de TOTP verificado no MESMO getUser() já validado pelo GoTrue.
+   * Ausência da propriedade em mocks/consumidores antigos exige fallback seguro
+   * para isMfaEnrolled(); nunca significa que a MFA foi dispensada.
+   */
+  mfa_enrolled?: boolean;
   id: string;
   email: string;
   full_name: string | null;
