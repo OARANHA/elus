@@ -37,6 +37,22 @@ import type { Idioma } from "./idiomas";
 type Traducoes = Record<string, Partial<Record<Exclude<Idioma, "pt-BR">, string>>>;
 
 export const DICIONARIO: Traducoes = {
+  // Governança de IA gerenciada por plataforma (PR #18).
+  "Autonomia técnica de IA": { es: "Autonomía técnica de IA" },
+  "Carregando permissões…": { es: "Cargando permisos…" },
+  "IA fornecida pela plataforma": { es: "IA proporcionada por la plataforma" },
+  "Consultando configuração…": { es: "Consultando configuración…" },
+  "Escolha o provedor": { es: "Elige el proveedor" },
+  "Escolha o modelo": { es: "Elige el modelo" },
+  "Identificador exato do modelo": { es: "Identificador exacto del modelo" },
+  "Escolha a credencial": { es: "Elige la credencial" },
+  "Cadastrar provedor personalizado": { es: "Registrar proveedor personalizado" },
+  "Gateway de IA": { es: "Pasarela de IA" },
+  "Base URL HTTPS": { es: "URL base HTTPS" },
+  "Token/API Key": { es: "Token/clave de API" },
+  "Conexão comprovada. Você pode cadastrar a credencial.": { es: "Conexión verificada. Puedes registrar la credencial." },
+  "Catálogo de modelos vazio para este provedor. Confirme o ID antes de usar.": { es: "El catálogo de modelos está vacío para este proveedor. Confirma el ID antes de usarlo." },
+  "Modelos conversacionais do Chutes, com chave gerenciada pela instalação ELUS ou chave específica autorizada para a organização.": { es: "Modelos conversacionales de Chutes, con clave gestionada por la instalación ELUS o una clave específica autorizada para la organización." },
   "Conexão salva. Agora você pode testar sem alterar nenhum dado no ERP.": { es: "Conexión guardada. Ahora puedes probarla sin cambiar ningún dato en el ERP." },
   "Conexão com o VendaERP confirmada em modo somente leitura.": { es: "Conexión con VendaERP confirmada en modo de solo lectura." },
   "WhatsApp administrativo vinculado. O acesso continua limitado a consultas do ERP desta organização.": { es: "WhatsApp administrativo vinculado. El acceso sigue limitado a consultas del ERP de esta organización." },
