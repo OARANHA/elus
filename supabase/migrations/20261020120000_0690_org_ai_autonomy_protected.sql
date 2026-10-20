@@ -1,3 +1,4 @@
+-- manifest: Cria organizations.ai_autonomy e protege concessões técnicas de IA contra escrita direta de tenants, permitindo somente serviço autorizado pelo Superadmin full/MFA.
 -- 0690 ELUS: autonomia tecnica de IA isolada das settings mutaveis do tenant.
 -- Nao armazenar grants em organizations.settings: rotas manager+ gravam snapshots
 -- inteiros dessa coluna e podem ressuscitar um grant que o Superadmin revogou.
