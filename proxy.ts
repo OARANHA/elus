@@ -93,6 +93,7 @@ export async function proxy(request: NextRequest) {
           ),
           undefined,
           "proxy",
+          requestId,
         ),
       },
       cookies: {
