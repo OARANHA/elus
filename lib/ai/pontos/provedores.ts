@@ -142,6 +142,15 @@ export const PROVEDORES = [
     prefixoDaChave: "rqsty-…",
   },
   {
+    id: "chutes",
+    rotulo: "Chutes (IA de conversação)",
+    quandoUsar: "Modelos conversacionais do Chutes, com chave gerenciada pela instalação ELUS ou chave específica autorizada para a organização.",
+    aceitaEndpointProprio: false,
+    catalogoSincronizavel: true,
+    ondePegarAChave: "https://chutes.ai/app/settings/api-keys",
+    prefixoDaChave: "cpk_…",
+  },
+  {
     id: "custom",
     rotulo: "Provedor personalizado (compatível com OpenAI)",
     quandoUsar:
