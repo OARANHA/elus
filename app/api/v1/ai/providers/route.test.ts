@@ -120,6 +120,14 @@ function stubDoBanco(estado: EstadoDoBanco) {
           limit() {
             return this;
           },
+          is(coluna: string, valor: null) {
+            // A rota agora ignora modelos depreciados. O stub só contém
+            // modelos ativos; aceitamos exclusivamente o mesmo filtro da API.
+            if (coluna !== "deprecated_at" || valor !== null) {
+              throw new Error("filtro de catálogo inesperado");
+            }
+            return this;
+          },
           maybeSingle() {
             const alvo = filtros.model_id;
             const achado =
