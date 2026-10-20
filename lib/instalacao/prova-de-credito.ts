@@ -24,6 +24,7 @@ import {
   DEEPSEEK_ENDPOINT,
   OPENROUTER_ENDPOINT,
   REQUESTY_ENDPOINT,
+  CHUTES_CHAT_ENDPOINT,
 } from "@/lib/agent-engine/edge/llm/providers";
 
 export type ResultadoDaProva =
@@ -100,6 +101,12 @@ export function montarRequisicaoDeProva(
         url: `${baseUrl ?? DEEPSEEK_ENDPOINT}/chat/completions`,
         headers: { authorization: `Bearer ${apiKey}`, "content-type": "application/json" },
         body: { model: modelo, max_tokens: 1, messages: msg },
+      };
+    case "chutes":
+      return {
+        url: `${CHUTES_CHAT_ENDPOINT}/chat/completions`,
+        headers: { authorization: `Bearer ${apiKey}`, "content-type": "application/json" },
+        body: { model: modelo, max_tokens: 16, messages: msg },
       };
     case "requesty":
       // OpenAI-compatível. `max_tokens: 16` e não 1: os modelos da OpenAI
