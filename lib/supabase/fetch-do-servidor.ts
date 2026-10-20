@@ -32,6 +32,8 @@
  */
 
 /** Tira a barra que o `.env` pode trazer: `https://x/` + `storage/…` viraria `//`. */
+import { logger } from "@/lib/logger";
+
 function semBarraFinal(url: string): string {
   return url.trim().replace(/\/+$/, "");
 }
@@ -92,11 +94,26 @@ export function fetchDoServidor(urlInterna: string, urlPublica: string): typeof 
  * Preservamos o AbortSignal do chamador, inclusive cancelamento de navegação.
  * A falha continua FECHADA: nem cookie nem JWT passam a ser aceitos offline.
  */
+// Observação por PROCESSO, não contador global entre réplicas ou entre Node e Edge.
+// Os caminhos registrados são allowlisted: nunca registrar URLs, query params ou tokens.
+let authFetchEmVoo = 0;
+const LIMIAR_AUTH_LENTA_MS = 2_000;
+type OrigemAuth = "proxy" | "ssr" | "admin" | "desconhecida";
+
+function tipoSeguroDoErro(erro: unknown): string {
+  const nome = erro && typeof erro === "object" && "name" in erro ? erro.name : null;
+  return nome === "TimeoutError" || nome === "AbortError" ||
+    nome === "TypeError" || nome === "AuthRetryableFetchError"
+    ? nome
+    : "desconhecido";
+}
+
 export const PRAZO_AUTENTICACAO_MS = 10_000;
 
 export function fetchAuthComPrazo(
   baseFetch: typeof globalThis.fetch,
   prazoMs: number = PRAZO_AUTENTICACAO_MS,
+  origem: OrigemAuth = "desconhecida",
 ): typeof globalThis.fetch {
   return (input, init) => {
     const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
@@ -127,6 +144,37 @@ export function fetchAuthComPrazo(
     const anterior = init?.signal ?? (input instanceof Request ? input.signal : undefined);
     const limite = AbortSignal.timeout(prazoMs);
     const signal = anterior ? AbortSignal.any([anterior, limite]) : limite;
-    return baseFetch(input, { ...init, signal });
+    // A duração do fetch termina no recebimento dos cabeçalhos, não no parse
+    // do corpo nem na decisão final do SDK (medidos nos chamadores getUser).
+    const inicio = Date.now();
+    const concorrentesNoInicio = ++authFetchEmVoo;
+    return (async () => {
+      try {
+        const resposta = await baseFetch(input, { ...init, signal });
+        const duracaoMs = Date.now() - inicio;
+        if (duracaoMs >= LIMIAR_AUTH_LENTA_MS || resposta.status === 429 || resposta.status >= 500) {
+          logger.warn("[auth] transporte Supabase respondeu lento ou com erro", {
+            origem, endpoint: caminho, metodo, fase: "cabecalhos",
+            duracao_ms: duracaoMs,
+            concorrentes_inicio: concorrentesNoInicio,
+            concorrentes_fim: authFetchEmVoo,
+            http_status: resposta.status,
+          });
+        }
+        return resposta;
+      } catch (erro) {
+        logger.warn("[auth] transporte Supabase sem resposta", {
+          origem, endpoint: caminho, metodo, fase: "cabecalhos",
+          duracao_ms: Date.now() - inicio,
+          concorrentes_inicio: concorrentesNoInicio,
+          concorrentes_fim: authFetchEmVoo,
+          motivo: limite.aborted ? "prazo" : anterior?.aborted ? "chamador" : "transporte",
+          tipo_erro: tipoSeguroDoErro(erro),
+        });
+        throw erro; // não alterar o erro, o cancelamento, nem a autorização
+      } finally {
+        authFetchEmVoo -= 1;
+      }
+    })();
   };
 }
