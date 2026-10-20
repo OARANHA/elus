@@ -91,6 +91,8 @@ export async function proxy(request: NextRequest) {
             urlDoSupabaseNoServidor(env.SUPABASE_SERVER_URL, env.NEXT_PUBLIC_SUPABASE_URL),
             env.NEXT_PUBLIC_SUPABASE_URL,
           ),
+          undefined,
+          "proxy",
         ),
       },
       cookies: {
@@ -116,11 +118,18 @@ export async function proxy(request: NextRequest) {
 
   // Falha de rede do GoTrue NÃO é prova de sessão inválida: devolve 503 sem
   // aceitar JWT offline e sem transformar 524 em redirect /login.
+  const inicioGetUser = Date.now();
   let autenticacao: Awaited<ReturnType<typeof supabase.auth.getUser>>;
   try {
     autenticacao = await supabase.auth.getUser();
+    const duracaoMs = Date.now() - inicioGetUser;
+    if (duracaoMs >= 2_000) {
+      console.warn("[auth] getUser lento no proxy", { requestId, duracao_ms: duracaoMs });
+    }
   } catch {
-    console.warn("[auth] validação da sessão indisponível no proxy", { requestId });
+    console.warn("[auth] validação da sessão indisponível no proxy", {
+      requestId, duracao_ms: Date.now() - inicioGetUser,
+    });
     return authIndisponivel(pathname, requestId);
   }
   if (erroTransitorioDeAuth(autenticacao.error)) {
@@ -128,6 +137,7 @@ export async function proxy(request: NextRequest) {
       requestId,
       codigo: autenticacao.error?.name ?? null,
       status: autenticacao.error?.status ?? null,
+      duracao_ms: Date.now() - inicioGetUser,
     });
     return authIndisponivel(pathname, requestId);
   }
