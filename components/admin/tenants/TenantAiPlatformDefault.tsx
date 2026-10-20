@@ -332,12 +332,12 @@ export function TenantAiPlatformDefault({ organizationId }: { organizationId: st
                 {credentials.map((c) => (
                   <SelectItem key={c.id} value={c.id} disabled={!c.is_active || !c.validated_at}>
                     {c.label} · final {c.api_key_last4} ·
-                    {c.is_active && c.validated_at ? " validada" : t(" aguardando validação")}
+                    {c.is_active && c.validated_at ? t(" validada") : t(" aguardando validação")}
                   </SelectItem>
                 ))}
                 {provider === "custom" && credentials.length === 0 && (
                   <SelectItem value="__missing__" disabled>
-                    Cadastre uma credencial abaixo
+                    {t("Cadastre uma credencial abaixo")}
                   </SelectItem>
                 )}
               </SelectContent>
@@ -346,7 +346,7 @@ export function TenantAiPlatformDefault({ organizationId }: { organizationId: st
               <p className="text-xs text-muted-foreground">
                 Endpoint: {selected.base_url ?? t("padrão do provedor")}.{" "}
                 {selectedReady
-                  ? "Credencial validada."
+                  ? t("Credencial validada.")
                   : t("Validação pendente; não pode ser ativada.")}
               </p>
             )}
@@ -417,14 +417,14 @@ export function TenantAiPlatformDefault({ organizationId }: { organizationId: st
                   }
                   onClick={() => void testCustom()}
                 >
-                  {testing ? "Processando…" : t("Testar conexão")}
+                  {testing ? t("Processando…") : t("Testar conexão")}
                 </Button>
                 <Button
                   type="button"
                   disabled={disabled || testing || !tested || !label.trim()}
                   onClick={() => void createCustom()}
                 >
-                  Salvar credencial validada
+                  {t("Salvar credencial validada")}
                 </Button>
                 <Button
                   type="button"
@@ -432,7 +432,7 @@ export function TenantAiPlatformDefault({ organizationId }: { organizationId: st
                   disabled={disabled || testing}
                   onClick={() => void refreshCredentials()}
                 >
-                  Atualizar credenciais
+                  {t("Atualizar credenciais")}
                 </Button>
               </div>
               {tested && (
@@ -442,7 +442,7 @@ export function TenantAiPlatformDefault({ organizationId }: { organizationId: st
           )}
           <div className="space-y-2 text-sm text-muted-foreground">
             <p>
-              Origem:{" "}
+              {t("Origem:")}{" "}
               {data.padrao.configured
                 ? t("configuração da organização")
                 : t("fallback da instalação (não salvo)")}
@@ -454,7 +454,7 @@ export function TenantAiPlatformDefault({ organizationId }: { organizationId: st
               </p>
             )}
             <p>
-              Credencial de {PROVEDOR_POR_ID.get(provider)?.rotulo ?? provider}:{" "}
+              {t("Credencial de")} {PROVEDOR_POR_ID.get(provider)?.rotulo ?? provider}:{" "}
               {ready
                 ? availability?.credencial_organizacao_validada
                   ? t("credencial própria validada")
@@ -463,8 +463,7 @@ export function TenantAiPlatformDefault({ organizationId }: { organizationId: st
             </p>
             <p>
               {data.agentes_publicados} agente(s) publicado(s),{" "}
-              {data.pontos_com_configuracao_propria} ponto(s) com modelo próprio. Nenhum desses
-              registros será sobrescrito.
+              {data.pontos_com_configuracao_propria} {t("ponto(s) com modelo próprio. Nenhum desses registros será sobrescrito.")}
             </p>
             {!ready && availability?.gateway_instalacao && (
               <p>
@@ -490,7 +489,7 @@ export function TenantAiPlatformDefault({ organizationId }: { organizationId: st
                 void save();
               }}
             >
-              {saving ? "Salvando…" : t("Ativar padrão nesta organização")}
+              {saving ? t("Salvando…") : t("Ativar padrão nesta organização")}
             </Button>
           ) : (
             <p className="text-sm text-muted-foreground">
