@@ -856,6 +856,8 @@ const HOSTS_DECLARADOS: Record<string, EntradaDeHost> = {
     motivo:
       "API pública observada no fluxo de DANFE do VendaERP para carregar os dados exibidos no documento fiscal; o uso está restrito à materialização de PDF e passa pelas validações e controles de egress documentados no adaptador.",
   },
+  "llm.chutes.ai": { categoria: "FORNECEDOR", motivo: "API HTTPS nativa de conversação Chutes, com endpoint fixo e chave da instalação protegida no servidor, sem URL editável pelo tenant." },
+  "chutes.ai": { categoria: "CONSOLE", motivo: "Painel oficial de credenciais do Chutes; URL visível no seletor de provedores para obtenção da chave." },
   "chutes-qwen-qwen3-embedding-8b-tee.chutes.ai": {
     categoria: "FORNECEDOR",
     motivo:
