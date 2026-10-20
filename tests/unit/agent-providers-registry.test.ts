@@ -14,8 +14,8 @@ describe("createDefaultRegistry", () => {
       "anthropic",
       // Provedor personalizado (#1642): endpoint do operador, sem endpoint
       // canônico — a factory recusa a chamada quando falta o endereço.
-      "custom",
       "chutes",
+      "custom",
       "deepseek",
       "google",
       "openai",
