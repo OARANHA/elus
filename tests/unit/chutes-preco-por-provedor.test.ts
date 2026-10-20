@@ -28,13 +28,15 @@ describe("precificação Chutes por par provedor/modelo", () => {
   });
 
   it.each([
-    [],
-    [{ input_price_per_million_cents: null, output_price_per_million_cents: 50 }],
-    [{ input_price_per_million_cents: -1, output_price_per_million_cents: 50 }],
-    [{ input_price_per_million_cents: "NaN", output_price_per_million_cents: 50 }],
-    [{ input_price_per_million_cents: 1, output_price_per_million_cents: 2 },
-     { input_price_per_million_cents: 1, output_price_per_million_cents: 2 }],
-  ])("recusa preço ausente, inválido ou ambíguo antes do egress", async (rows) => {
+    { rows: [] },
+    { rows: [{ input_price_per_million_cents: null, output_price_per_million_cents: 50 }] },
+    { rows: [{ input_price_per_million_cents: -1, output_price_per_million_cents: 50 }] },
+    { rows: [{ input_price_per_million_cents: "NaN", output_price_per_million_cents: 50 }] },
+    { rows: [
+      { input_price_per_million_cents: 1, output_price_per_million_cents: 2 },
+      { input_price_per_million_cents: 1, output_price_per_million_cents: 2 },
+    ] },
+  ])("recusa preço ausente, inválido ou ambíguo antes do egress", async ({ rows }) => {
     await expect(resolverTarifaChutes(bancoComLinhas(rows), "modelo")).rejects.toThrow(
       "chutes_model_without_verified_pricing",
     );
