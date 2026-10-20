@@ -41,6 +41,18 @@ vi.mock("@/lib/supabase/admin", () => ({ createAdminClient: vi.fn() }));
 vi.mock("@/lib/audit", () => ({ audit: vi.fn(async () => undefined) }));
 vi.mock("@/lib/impersonate/support", () => ({ requireSupportWrite: vi.fn(async () => null) }));
 
+// As permissões técnicas nascem REVOGADAS em produção. Os casos de escrita
+// abaixo recebem grants de provider/model explicitamente; os negativos
+// comprovam que retirar qualquer um deles impede a mutação do tenant.
+const grantsDaPlataforma = vi.hoisted(() => ({
+  permitidos: new Set<string>(),
+}));
+vi.mock("@/lib/ai/governanca-da-ia", () => ({
+  recusaConfiguracaoDeIa: vi.fn(async (_user: unknown, _orgId: string, chave: string) =>
+    grantsDaPlataforma.permitidos.has(chave) ? null : new Response(null, { status: 403 }),
+  ),
+}));
+
 const ORG_ID = "22222222-2222-4222-8222-222222222222";
 
 /** O que o `baseline.sql` semeia para openai — o catálogo "já existente". */
@@ -154,6 +166,7 @@ describe("PATCH /api/v1/ai/providers — padrão da organização", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    grantsDaPlataforma.permitidos = new Set(["provider", "model"]);
     estado = { atualizacao: null, catalogo: CATALOGO_SEMEADO };
     estadoDeSessao = { atualizacao: null, catalogo: CATALOGO_SEMEADO };
     vi.mocked(requireSupportWrite).mockResolvedValue(null);
@@ -176,7 +189,11 @@ describe("PATCH /api/v1/ai/providers — padrão da organização", () => {
 
     const settings = (estado.atualizacao?.settings ?? {}) as Record<string, unknown>;
     // O que mudou:
-    expect(settings.llm).toEqual({ provider: "openai", default_model: "gpt-5.4-mini" });
+    expect(settings.llm).toEqual({
+      provider: "openai",
+      default_model: "gpt-5.4-mini",
+      credential_id: null,
+    });
     // O que NÃO podia ser tocado:
     expect(settings.branding).toEqual(SETTINGS_EXISTENTES.branding);
     expect(settings.security).toEqual(SETTINGS_EXISTENTES.security);
@@ -235,7 +252,11 @@ describe("PATCH /api/v1/ai/providers — padrão da organização", () => {
     expect(res.status).toBe(200);
 
     const settings = (estado.atualizacao?.settings ?? {}) as Record<string, unknown>;
-    expect(settings.llm).toEqual({ provider: "openrouter", default_model: modelo });
+    expect(settings.llm).toEqual({
+      provider: "openrouter",
+      default_model: modelo,
+      credential_id: null,
+    });
 
     const json = (await res.json()) as { data: { avisos: string[] } };
     expect(json.data.avisos).toHaveLength(1);
@@ -252,6 +273,41 @@ describe("PATCH /api/v1/ai/providers — padrão da organização", () => {
     expect(res.status).toBe(200);
     const json = (await res.json()) as { data: { avisos: string[] } };
     expect(json.data.avisos).toEqual([]);
+  });
+
+  it("sem qualquer grant, recusa troca de modelo/provedor e não grava", async () => {
+    grantsDaPlataforma.permitidos.clear();
+    const { PATCH } = await import("./route");
+    const res = await PATCH(requisicao({ provider: "openai", default_model: "gpt-5.4-mini" }));
+    expect(res.status).toBe(403);
+    expect(estado.atualizacao).toBeNull();
+  });
+
+  it("grant de provider não autoriza mudar modelo", async () => {
+    grantsDaPlataforma.permitidos = new Set(["provider"]);
+    const { PATCH } = await import("./route");
+    const res = await PATCH(requisicao({ provider: "openai", default_model: "gpt-5.4-mini" }));
+    expect(res.status).toBe(403);
+    expect(estado.atualizacao).toBeNull();
+  });
+
+  it("grant de model não autoriza mudar provider", async () => {
+    grantsDaPlataforma.permitidos = new Set(["model"]);
+    const { PATCH } = await import("./route");
+    const res = await PATCH(requisicao({ provider: "openai", default_model: "gpt-5.4-mini" }));
+    expect(res.status).toBe(403);
+    expect(estado.atualizacao).toBeNull();
+  });
+
+  it("reenvio idêntico não exige grant nem escreve settings", async () => {
+    grantsDaPlataforma.permitidos.clear();
+    const { PATCH } = await import("./route");
+    const res = await PATCH(requisicao({
+      provider: SETTINGS_EXISTENTES.llm.provider,
+      default_model: SETTINGS_EXISTENTES.llm.default_model,
+    }));
+    expect(res.status).toBe(200);
+    expect(estado.atualizacao).toBeNull();
   });
 
   it("exige papel admin — a troca do padrão muda todo ponto herdado", async () => {
