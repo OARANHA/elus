@@ -158,13 +158,32 @@ export async function PATCH(req: NextRequest, ctx: Ctx): Promise<Response> {
 
   const { data: knownModel, error: lookupError } = await db
     .from("ai_models")
-    .select("model_id")
+    .select("model_id, input_price_per_million_cents, output_price_per_million_cents")
     .eq("provider", body.data.provider)
     .eq("model_id", body.data.default_model)
     .is("deprecated_at", null)
     .maybeSingle();
   if (lookupError)
     return fail("internal_error", "Catálogo de modelos indisponível", 500, { requestId });
+  // Chutes só pode ser padrão quando o próprio provedor tem tarifa comprovada.
+  // Não herdar preço de outro gateway e não aceitar ausência de catálogo.
+  if (
+    body.data.provider === "chutes" &&
+    (!knownModel ||
+      knownModel.input_price_per_million_cents == null ||
+      knownModel.output_price_per_million_cents == null ||
+      !Number.isFinite(Number(knownModel.input_price_per_million_cents)) ||
+      !Number.isFinite(Number(knownModel.output_price_per_million_cents)) ||
+      Number(knownModel.input_price_per_million_cents) < 0 ||
+      Number(knownModel.output_price_per_million_cents) < 0)
+  ) {
+    return fail(
+      "chutes_model_without_verified_pricing",
+      "O modelo Chutes precisa de preço comprovado no catálogo antes de ser ativado.",
+      422,
+      { requestId },
+    );
+  }
   let catalogoIncompleto = false;
   if (!knownModel) {
     const { data: anyModel, error: anyError } = await db
