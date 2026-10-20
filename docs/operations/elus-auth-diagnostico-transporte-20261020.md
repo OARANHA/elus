@@ -11,6 +11,7 @@
 - `fetchAuthComPrazo` mede o tempo **até os cabeçalhos HTTP** somente nas rotas allowlisted de identidade/autorização já sujeitas ao deadline.
 - Loga exclusivamente respostas com tempo >=2 segundos, status 429/5xx, ou exceção de transporte.
 - Campos: `origem` (proxy, ssr, admin), `endpoint` fixo (sem query string), `metodo`, `fase=cabecalhos`, `duracao_ms`, `http_status` se houver, `motivo` de aborto (prazo/chamador/transporte), `tipo_erro` allowlisted, `concorrentes_inicio`/`concorrentes_fim` no **processo local**.
+- No `proxy`, `request_id` conecta o evento de transporte ao aviso `AuthRetryableFetchError` da mesma requisição. Só UUID estritamente formatado é aceito; outros valores, possivelmente dados pessoais, são descartados. SSR/admin não inventam correlação inexistente.
 - `proxy.ts` e `loadAuthUser()` medem separadamente o tempo da operação inteira `getUser()` (SDK, incluindo possíveis requisições adicionais). Se a duração do SDK for maior que a duração do fetch, a etapa seguinte merece inspeção; isso não prova automaticamente problema no SDK.
 - Não registrar usuário, token, cookie, URL completa, cabeçalhos, payload nem mensagem de erro arbitrária. Os contadores não somam processos, não agregam Edge com Node e não equivalem ao número total de sessões.
 - O comportamento do SDK e da autenticação é preservado: o erro/AbortSignal original é propagado; nunca usar `getSession()` nem liberar acesso durante indisponibilidade.
