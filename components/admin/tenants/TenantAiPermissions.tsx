@@ -91,8 +91,7 @@ export function TenantAiPermissions({ organizationId }: { organizationId: string
       <div>
         <h3 className="text-lg font-semibold">{t("Autonomia técnica de IA")}</h3>
         <p className="text-sm text-muted-foreground">
-          A plataforma gerencia a IA por padrão. Libere apenas as escolhas técnicas que esta empresa
-          pode modificar. Desligar uma permissão não exclui chaves ou versões já publicadas.
+          {t("A plataforma gerencia a IA por padrão. Libere apenas as escolhas técnicas que esta empresa pode modificar. Desligar uma permissão não exclui chaves ou versões já publicadas.")}
         </p>
       </div>
       {loading ? (
@@ -124,7 +123,7 @@ export function TenantAiPermissions({ organizationId }: { organizationId: string
               void save();
             }}
           >
-            {saving ? "Salvando…" : "Salvar permissões"}
+            {saving ? t("Salvando…") : t("Salvar permissões")}
           </Button>
         </>
       ) : null}
