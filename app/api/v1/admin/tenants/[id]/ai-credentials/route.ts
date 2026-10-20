@@ -84,7 +84,7 @@ export async function POST(req: NextRequest, ctx: Ctx): Promise<Response> {
     apiKey: body.data.api_key,
     baseUrl: body.data.base_url.trim().replace(/\/+$/, ""),
     requestId,
-    validacaoConfirmada: { models: modelosConfirmados },
+
   });
   if (!created.ok) {
     if (created.motivo === "label_em_uso")
