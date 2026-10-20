@@ -1,5 +1,6 @@
 "use client";
 import * as React from "react";
+import { useT } from "@/hooks/i18n/useT";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { PROVEDOR_POR_ID } from "@/lib/ai/pontos/provedores";
@@ -50,6 +51,7 @@ type Data = {
 type Result = { data?: Data; error?: { message?: string } };
 
 export function TenantAiPlatformDefault({ organizationId }: { organizationId: string }) {
+  const t = useT();
   const endpoint = "/api/v1/admin/tenants/" + encodeURIComponent(organizationId) + "/ai-default";
   const [data, setData] = React.useState<Data | null>(null);
   const [provider, setProvider] = React.useState("");
@@ -232,9 +234,9 @@ export function TenantAiPlatformDefault({ organizationId }: { organizationId: st
     }
   }
   return (
-    <section className="space-y-4 rounded-lg border p-5" aria-label="IA fornecida pela plataforma">
+    <section className="space-y-4 rounded-lg border p-5" aria-label={t("IA fornecida pela plataforma")}>
       <div>
-        <h3 className="text-lg font-semibold">IA fornecida pela plataforma</h3>
+        <h3 className="text-lg font-semibold">{t("IA fornecida pela plataforma")}</h3>
         <p className="text-sm text-muted-foreground">
           O padrão desta empresa vale onde não existir escolha específica. Versões de agentes
           publicadas e configurações próprias dos pontos continuam prevalecendo. As permissões de
@@ -247,7 +249,7 @@ export function TenantAiPlatformDefault({ organizationId }: { organizationId: st
         )}
       </div>
       {loading ? (
-        <p className="text-sm text-muted-foreground">Consultando configuração…</p>
+        <p className="text-sm text-muted-foreground">{t("Consultando configuração…")}</p>
       ) : data ? (
         <>
           <div className="grid gap-4 md:grid-cols-2">
@@ -267,7 +269,7 @@ export function TenantAiPlatformDefault({ organizationId }: { organizationId: st
                 }}
               >
                 <SelectTrigger id="ai-platform-provider">
-                  <SelectValue placeholder="Escolha o provedor" />
+                  <SelectValue placeholder={t("Escolha o provedor")} />
                 </SelectTrigger>
                 <SelectContent>
                   {data.provedores.map((id) => (
@@ -285,7 +287,7 @@ export function TenantAiPlatformDefault({ organizationId }: { organizationId: st
               {models.length > 0 && (model === "" || models.some((m) => m.model_id === model)) ? (
                 <Select value={model} disabled={disabled} onValueChange={setModel}>
                   <SelectTrigger id="ai-platform-model">
-                    <SelectValue placeholder="Escolha o modelo" />
+                    <SelectValue placeholder={t("Escolha o modelo")} />
                   </SelectTrigger>
                   <SelectContent>
                     {models.map((m) => (
@@ -302,7 +304,7 @@ export function TenantAiPlatformDefault({ organizationId }: { organizationId: st
                   maxLength={120}
                   disabled={disabled}
                   onChange={(e) => setModel(e.target.value)}
-                  placeholder="Identificador exato do modelo"
+                  placeholder={t("Identificador exato do modelo")}
                 />
               )}
             </div>
@@ -321,7 +323,7 @@ export function TenantAiPlatformDefault({ organizationId }: { organizationId: st
               }}
             >
               <SelectTrigger id="ai-platform-credential">
-                <SelectValue placeholder="Escolha a credencial" />
+                <SelectValue placeholder={t("Escolha a credencial")} />
               </SelectTrigger>
               <SelectContent>
                 {provider !== "custom" && (
@@ -354,7 +356,7 @@ export function TenantAiPlatformDefault({ organizationId }: { organizationId: st
           {provider === "custom" && data.pode_editar && (
             <div
               className="space-y-3 rounded-md border p-4"
-              aria-label="Cadastrar provedor personalizado"
+              aria-label={t("Cadastrar provedor personalizado")}
             >
               <h4 className="font-semibold">
                 Cadastrar IA personalizada para {data.organization_name}
@@ -366,7 +368,7 @@ export function TenantAiPlatformDefault({ organizationId }: { organizationId: st
               </p>
               <div className="grid gap-3 md:grid-cols-3">
                 <div className="space-y-1">
-                  <label htmlFor="custom-label" className="block">Nome da conexão</label>
+                  <label htmlFor="custom-label" className="block">{t("Nome da conexão")}</label>
                   <Input
                     id="custom-label"
                     value={label}
@@ -376,11 +378,11 @@ export function TenantAiPlatformDefault({ organizationId }: { organizationId: st
                       setLabel(e.target.value);
                       setTested(false);
                     }}
-                    placeholder="Gateway de IA"
+                    placeholder={t("Gateway de IA")}
                   />
                 </div>
                 <div className="space-y-1">
-                  <label htmlFor="custom-url" className="block">Base URL HTTPS</label>
+                  <label htmlFor="custom-url" className="block">{t("Base URL HTTPS")}</label>
                   <Input
                     id="custom-url"
                     value={baseUrl}
@@ -395,7 +397,7 @@ export function TenantAiPlatformDefault({ organizationId }: { organizationId: st
                   />
                 </div>
                 <div className="space-y-1">
-                  <label htmlFor="custom-key" className="block">Token/API Key</label>
+                  <label htmlFor="custom-key" className="block">{t("Token/API Key")}</label>
                   <Input
                     id="custom-key"
                     type="password"
@@ -406,7 +408,7 @@ export function TenantAiPlatformDefault({ organizationId }: { organizationId: st
                       setTested(false);
                     }}
                     autoComplete="off"
-                    placeholder="Chave de acesso"
+                    placeholder={t("Chave de acesso")}
                   />
                 </div>
               </div>
@@ -438,7 +440,7 @@ export function TenantAiPlatformDefault({ organizationId }: { organizationId: st
                 </Button>
               </div>
               {tested && (
-                <p className="text-sm">Conexão comprovada. Você pode cadastrar a credencial.</p>
+                <p className="text-sm">{t("Conexão comprovada. Você pode cadastrar a credencial.")}</p>
               )}
             </div>
           )}
@@ -477,7 +479,7 @@ export function TenantAiPlatformDefault({ organizationId }: { organizationId: st
               </p>
             )}
             {models.length === 0 && (
-              <p>Catálogo de modelos vazio para este provedor. Confirme o ID antes de usar.</p>
+              <p>{t("Catálogo de modelos vazio para este provedor. Confirme o ID antes de usar.")}</p>
             )}
           </div>
           {data.pode_editar ? (
