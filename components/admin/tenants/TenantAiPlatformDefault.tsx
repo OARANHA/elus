@@ -12,6 +12,9 @@ import {
 } from "@/components/ui/select";
 
 type Model = { provider: string; model_id: string; display_name: string };
+function nomeDoModelo(modelo: Model): string {
+  return modelo.display_name?.trim() ? modelo.display_name : modelo.model_id;
+}
 type Readiness = {
   provider: string;
   chave_instalacao: boolean;
@@ -287,7 +290,7 @@ export function TenantAiPlatformDefault({ organizationId }: { organizationId: st
                   <SelectContent>
                     {models.map((m) => (
                       <SelectItem key={m.provider + "/" + m.model_id} value={m.model_id}>
-                        {m.display_name ?? m.model_id}
+                        {nomeDoModelo(m)}
                       </SelectItem>
                     ))}
                   </SelectContent>
