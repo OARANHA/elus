@@ -20,6 +20,14 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const fetchMock = vi.fn();
 vi.stubGlobal("fetch", fetchMock);
 
+// A resolução DNS é uma dependência de transporte, não o assunto deste teste.
+// O guard real continua validando o IP público retornado pelo resolvedor offline.
+vi.mock("node:dns/promises", async (importOriginal) => {
+  const original = await importOriginal<typeof import("node:dns/promises")>();
+  const lookup = vi.fn(async () => [{ address: "93.184.216.34", family: 4 }]);
+  return { ...original, lookup, default: { ...original, lookup } };
+});
+
 vi.mock("@/lib/supabase/admin", () => ({ createAdminClient: () => ({}) }));
 
 const credsRef: { current: unknown } = { current: null };
@@ -55,7 +63,10 @@ function respondeOk(status = 200) {
 
 const ultimaChamada = () => ({
   url: String(fetchMock.mock.calls.at(-1)?.[0] ?? ""),
-  init: (fetchMock.mock.calls.at(-1)?.[1] ?? {}) as { headers?: Record<string, string>; body?: string },
+  init: (fetchMock.mock.calls.at(-1)?.[1] ?? {}) as {
+    headers?: Record<string, string>;
+    body?: string;
+  },
 });
 const corpo = () => JSON.parse(ultimaChamada().init.body ?? "{}") as Record<string, unknown>;
 

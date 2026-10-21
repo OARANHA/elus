@@ -29,6 +29,13 @@ exit 2
 `,
         { mode: 0o700 },
       );
+      // A rotação de chave consulta o banco pelo psql. Este teste só verifica
+      // o arquivo gerado: fornecer a resposta sintética evita iniciar Docker.
+      writeFileSync(
+        path.join(destino, "bin/psql"),
+        "#!/usr/bin/env bash\nprintf '%s\\n' '" + "0".repeat(64) + "'\n",
+        { mode: 0o700 },
+      );
       const chave = Buffer.alloc(32, 1).toString("base64");
       writeFileSync(
         path.join(destino, ".env.e2e"),
