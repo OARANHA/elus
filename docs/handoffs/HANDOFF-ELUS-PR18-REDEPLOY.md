@@ -137,3 +137,15 @@ A checagem de colisão foi repetida depois de a 0692 entrar no histórico local.
 3. Somente após gates de deploy, executar canário limitado e não remunerado de governança/catalogação, respeitando autorização, tenant e fail-closed; não alterar embeddings nem usar VendaERP para investigação.
 4. Antes de qualquer nova ação root no target `vigia-managed-admin`, criar um ticket próprio e obter aprovação explícita `APPROVE adm_...`. Nenhum novo deploy/rollback é autorizado por este registro.
 
+
+### Fechamento de gate técnico do deploy — 21/10/2026
+
+- **Aprovação administrativa exata:** o proprietário autorizou `APPROVE adm_98bcb1d58a5fe3aee3728430`. A única ação administrativa executada foi `docker inspect --type=container --format` no target `vigia-managed-admin`, para `elus-app`, `elus-worker` e `elus-scheduler`, sem qualquer escrita ou reinício. Resultado `executed=true`, `exit_code=0`, sem stderr.
+- **Verificação pós-deploy:** os três contêineres retornaram `health=healthy`, `status=running`, `restarts=0` e rótulo OCI de revisão **exatamente** `1cb5fa3692588ccdd7d7831cf9b494eca0ba623f`.
+- **Imagem real app:** `ghcr.io/oaranha/deskcommcrm@sha256:fc4f3ff6b60a7a8e1d481fa67706c0cced773721613cd92f81fd972d24494109`.
+- **Imagem real worker:** `ghcr.io/oaranha/deskcomm-worker@sha256:d9b10bd31dce23598ea11fcf0563fe1f3e3aee04cbad97ace1825386fa1e95a2`.
+- **Imagem real scheduler:** `ghcr.io/oaranha/deskcomm-scheduler@sha256:b2ff4e2532899dbbd56be3effe0d8fe38302d714fb94e603ded296644d2f6d86`.
+- **Health HTTP público verificado anteriormente:** resposta `/api/v1/health` `status=healthy`, `version=1cb5fa3`, `supabase/redis/waha=ok`. A versão HTTP curta foi conciliada com o rótulo OCI completo em Docker. As imagens correspondem às digests GHCR publicadas na main. **Gate técnico de versão/imagem/health concluído.**
+- **Limites:** não foram lidos logs operacionais recentes nesta verificação; tampouco houve canário funcional da governança de IA/Chutes, testes reais de tenant, entrega ERP/DANFE ou restauração do backup. A documentação não afirma que essas validações foram concluídas. PR documental permanece sujeita a CI e merge governados; nenhum workflow será consultado em polling.
+
+Esta seção **supersede somente** os itens anteriores que registravam verificação pós-deploy de contêineres/imagens como pendente. Não muda as demais restrições ou decisões.
