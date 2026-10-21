@@ -102,3 +102,50 @@ A implementação fica tecnicamente preparada para a revisão da PR; liberação
 - A documentação deste handoff é consolidada em um commit próprio posterior aos três acima.
 
 A checagem de colisão foi repetida depois de a 0692 entrar no histórico local. A base `origin/main` foi reconciliada e não tem commits à frente desta branch; a enumeração de PRs abertos continua indisponível pela API. O hook também avisou que a main do produto upstream DeskcommCRM não foi consultada: nenhum remoto upstream foi criado ou alterado para silenciar esse aviso. Isso deve ser considerado se houver integração futura com upstream; o alvo desta entrega é `OARANHA/elus`.
+
+## Adendo operacional — verificação de 21/10/2026
+
+> Registro de continuidade baseado em consultas ao GitHub, Supabase e Docker da VPS Vigia. Não substitui a doutrina, o código nem os controles atuais da produção. O handoff acima é histórico da implementação da PR #18, e este adendo registra somente as etapas comprovadas posteriores.
+
+### Entrega, imagem e schema
+
+- **GitHub:** PR [#18](https://github.com/OARANHA/elus/pull/18) integrada por squash na `main`, SHA `1cb5fa3692588ccdd7d7831cf9b494eca0ba623f`. CI, E2E, performance, release e publicação Docker pós-merge concluídas com sucesso na verificação anterior. Não repetir polling de Actions.
+- **Publicação GHCR comprovada no job de manifestos do workflow pós-merge** (`39528481292`): app `ghcr.io/oaranha/deskcommcrm@sha256:fc4f3ff6b60a7a8e1d481fa67706c0cced773721613cd92f81fd972d24494109`; worker `ghcr.io/oaranha/deskcomm-worker@sha256:d9b10bd31dce23598ea11fcf0563fe1f3e3aee04cbad97ace1825386fa1e95a2`; scheduler `ghcr.io/oaranha/deskcomm-scheduler@sha256:b2ff4e2532899dbbd56be3effe0d8fe38302d714fb94e603ded296644d2f6d86`. Estes são os digests registrados na publicação; não confundir com a posição atual de tags móveis.
+- **Backup:** proprietário informou `BACKUP LEGÍVEL` após `pg_dump` PostgreSQL 17 e leitura com `pg_restore --list`, realizado fora desta sessão na máquina `28server`. A existência, tamanho e restauração integral do artefato não foram testados pelo agente; o teste de listagem não garante recuperação real. Backup de banco não cobre arquivos do Supabase Storage.
+- **Supabase correto:** projeto `tbwcgdmenrcnghogqkqi` (`elus`), PostgreSQL 17. Migrations SQL oficiais `0690`, `0691` e `0692` da `main` foram aplicadas sequencialmente pela capability oficial Supabase e cada ação retornou `success:true`. Readback `list_migrations` registrou versões geradas `20261021025530`, `20261021025551`, `20261021025613` (nomes `elus_0690_org_ai_autonomy_protected`, `elus_0691_chutes_chat_catalog`, `elus_0692_chutes_catalog_sync`); estes timestamps diferem dos filenames no Git. **Não reaplicar automaticamente as migrations por causa dessa diferença.**
+- **Readback SQL:** `organizations.ai_autonomy` e trigger de proteção existem, `ai_models` passou de 516 para 518 registros, sendo exatamente 2 modelos Chutes com `source='chutes'`; `ai_pricing` passou de 40 para 42 registros; preços dos modelos usam `numeric(10,4)`; a organização preexistente foi preservada. A função `fn_sincronizar_catalogo_chutes(jsonb)` existe; `EXECUTE` somente para `service_role`, negado para `anon` e `authenticated`. Projeto retornou `ACTIVE_HEALTHY` após as migrations.
+
+### VPS Vigia, rollback e Portainer
+
+- **Ambiente correto:** instalação ELUS roda na VPS **Vigia**, stack existente `elus`; não confundir com o Portainer Wandora `portainer.wandora.com.br`, cuja conexão MCP listou somente a stack `wandora-identity`.
+- **Inspeção read-only aprovada pelo proprietário:** `elus-app`, `elus-worker` e `elus-scheduler` foram observados `healthy` antes da atualização de imagens, todos com OCI revision `2a9aaf02c6e4e5def64c19f9c84890aa4e400f7a` e arquitetura `amd64`.
+- **RepoDigests antigos confirmados por `docker image inspect`**, para rollback: app `ghcr.io/oaranha/deskcommcrm@sha256:8cee0102ed9f59221ed8292bd3f2ed7081483644a389cdb8a30c095a9d0ebcf5`; worker `ghcr.io/oaranha/deskcomm-worker@sha256:ba87b3a6e7f2f4fc335ac60a25885b814656f36e42f11c37462714d2a2bd3c35`; scheduler `ghcr.io/oaranha/deskcomm-scheduler@sha256:8ed53df36a24e9659e5cee2a47f406cd70b48288ef28f3ccdaa4134a93e5266c`.
+- **Rastreamento da stack:** etiquetas do contêiner `elus-app` apontaram `com.docker.compose.project=elus`, `working_dir=/data/compose/5`, `config_files=/data/compose/5/compose.portainer.yml`. O `vigia-portainer` monta o volume persistente `vigia_portainer_data` em `/data`. O caminho sugere ID 5, mas `io.portainer.stack.id` não estava informado; não tratar o ID como confirmado pela API.
+- **Última instrução operacional ao proprietário:** substituir exclusivamente `APP_IMAGE`, `WORKER_IMAGE` e `SCHEDULER_IMAGE` pelas três referências GHCR imutáveis acima na stack **existente** do Portainer Vigia, mantendo as demais variáveis, pull de imagens habilitado e `prune:false`. **O proprietário informou posteriormente que executou o redeploy e que a aplicação abriu normalmente. A atualização das três imagens e os SHAs exatos dos contêineres ainda não foram inspecionados pós-deploy.**
+
+### Pós-deploy — novo relato e verificação pública (21/10/2026)
+
+- **Relato do proprietário:** informou textualmente que o deploy no Portainer Vigia já foi concluído e a aplicação abre. Isto comprova relato operacional, não substitui inspeção das três imagens.
+- **Verificação externa real, sem autenticação e somente GET:** `https://elus.wandora.com.br/api/v1/health` retornou JSON `{data:{status:'healthy',version:'1cb5fa3',checks:{supabase:{status:'ok'},redis:{status:'ok'},waha:{status:'ok'}}}}`, timestamp `2026-10-21T03:31:15.668Z` (UTC). Esses checks são suficientes para confirmar resposta pública e três dependências, não provam que worker e scheduler executam as imagens alvo.
+- **Conciliação de versão:** o endpoint expõe `APP_VERSION` curta (`1cb5fa3`), conforme `app/api/v1/health/route.ts`; para garantir o SHA completo `1cb5fa3692588ccdd7d7831cf9b494eca0ba623f`, confrontar os rótulos OCI e digests efetivamente ativos via inspeção do Docker da Vigia. Não inventar versão completa derivada só da string curta.
+- **Sem novos efeitos:** nenhuma mudança adicional de produção, migração, deploy ou canário foi realizada durante esta verificação; a PR documental registra apenas a evidência e o relato.
+
+### Gates ainda abertos
+
+1. Revalidar a instância correta do Portainer Vigia e a definição efetiva da stack, sem ler/exportar segredos.
+2. **Parcialmente verificado em 21/10/2026:** o healthcheck público retornou `healthy`, Supabase/Redis/WAHA `ok`, e `version=1cb5fa3`, prefixo do SHA esperado; a rota do código publica `APP_VERSION` curta fora de tags. Ainda comprovar separadamente os contêineres `elus-app`, `elus-worker` e `elus-scheduler` saudáveis **depois** do redeploy, digests e OCI revisions completos esperados, além de observar logs sem segredos.
+3. Somente após gates de deploy, executar canário limitado e não remunerado de governança/catalogação, respeitando autorização, tenant e fail-closed; não alterar embeddings nem usar VendaERP para investigação.
+4. Antes de qualquer nova ação root no target `vigia-managed-admin`, criar um ticket próprio e obter aprovação explícita `APPROVE adm_...`. Nenhum novo deploy/rollback é autorizado por este registro.
+
+
+### Fechamento de gate técnico do deploy — 21/10/2026
+
+- **Aprovação administrativa exata:** o proprietário autorizou `APPROVE adm_98bcb1d58a5fe3aee3728430`. A única ação administrativa executada foi `docker inspect --type=container --format` no target `vigia-managed-admin`, para `elus-app`, `elus-worker` e `elus-scheduler`, sem qualquer escrita ou reinício. Resultado `executed=true`, `exit_code=0`, sem stderr.
+- **Verificação pós-deploy:** os três contêineres retornaram `health=healthy`, `status=running`, `restarts=0` e rótulo OCI de revisão **exatamente** `1cb5fa3692588ccdd7d7831cf9b494eca0ba623f`.
+- **Imagem real app:** `ghcr.io/oaranha/deskcommcrm@sha256:fc4f3ff6b60a7a8e1d481fa67706c0cced773721613cd92f81fd972d24494109`.
+- **Imagem real worker:** `ghcr.io/oaranha/deskcomm-worker@sha256:d9b10bd31dce23598ea11fcf0563fe1f3e3aee04cbad97ace1825386fa1e95a2`.
+- **Imagem real scheduler:** `ghcr.io/oaranha/deskcomm-scheduler@sha256:b2ff4e2532899dbbd56be3effe0d8fe38302d714fb94e603ded296644d2f6d86`.
+- **Health HTTP público verificado anteriormente:** resposta `/api/v1/health` `status=healthy`, `version=1cb5fa3`, `supabase/redis/waha=ok`. A versão HTTP curta foi conciliada com o rótulo OCI completo em Docker. As imagens correspondem às digests GHCR publicadas na main. **Gate técnico de versão/imagem/health concluído.**
+- **Limites:** não foram lidos logs operacionais recentes nesta verificação; tampouco houve canário funcional da governança de IA/Chutes, testes reais de tenant, entrega ERP/DANFE ou restauração do backup. A documentação não afirma que essas validações foram concluídas. PR documental permanece sujeita a CI e merge governados; nenhum workflow será consultado em polling.
+
+Esta seção **supersede somente** os itens anteriores que registravam verificação pós-deploy de contêineres/imagens como pendente. Não muda as demais restrições ou decisões.
