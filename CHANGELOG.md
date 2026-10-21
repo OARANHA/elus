@@ -8,6 +8,35 @@ Se você roda o DeskcommCRM numa VPS, **leia a seção da versão para a qual es
 
 ## [Não lançado]
 
+## [1.86.0] — 2026-10-19
+
+### ⚠️ Requer atenção
+
+- **Compose GitOps para instalação ELUS no Portainer Vigia** Esta alteração não executa deploy. Para instalar, preserve primeiro o GitConfig, as variáveis existentes e os digests atuais dos três serviços como rollback. No Portainer **Vigia**, atualize somente a stack existente `elus` (ID 5, endpoint 3), apontando a origem Git para `OARANHA/elus` e configurando `APP_IMAGE`, `WORKER_IMAGE` e `SCHEDULER_IMAGE` com os três digests imutáveis validados e da mesma revisão.
+
+  Antes da atualização, configure em canal protegido o conjunto completo das credenciais do projeto Supabase **novo**; não reutilize as do banco antigo nem coloque segredos no Git. Execute o procedimento com `prune:false`, preserve volumes e rede, e confirme saúde, versão e login. O passo a passo e o rollback estão em `docs/runbooks/elus-v185-portainer-vigia.md`.
+
+### Adicionado
+
+- **Embeddings Qwen3 gerenciados pela plataforma para novas bases** A instalacao pode oferecer o embedding Chutes Qwen3 de 1536 dimensões,
+  com chave guardada no servidor e ativação opcional apenas para bases novas.
+  Bases já preparadas continuam usando a mesma família e o mesmo modelo.
+  O atendimento conversacional do Chutes ainda será uma entrega separada.
+
+- **Compose GitOps para instalação ELUS no Portainer Vigia** A instalação ELUS mantém a mesma stack já existente no Portainer Vigia e passa a ter um `compose.portainer.yml` versionado neste repositório. Para promover as novas imagens da aplicação, worker e scheduler, o operador deve validar o banco Supabase da instalação e configurar as três referências por digest em conjunto. A promoção não altera automaticamente a stack de produção nem seus segredos; não é necessário criar outra stack ou compilar imagens na VPS.
+
+- **Módulo opcional VendaERP somente leitura e DANFE administrativa** A instalação pode ativar o módulo oficial `integracoes_erp`, configurar uma
+  conexão VendaERP por organização autorizada, consultar dados administrativos em
+  modo somente leitura e preservar o vínculo de identidade externa de clientes.
+  Na conversa administrativa da ISIS, DANFEs preparadas entram no sender canônico
+  do ELUS como documentos privados, sujeitos à validação de mídia, `before_send`
+  e auditoria. A validação real em conversa permanece pendente do proprietário.
+
+### Alterado
+
+- **Leitores de tela recebem os rótulos completos dos controles do cabeçalho** Os nomes acessíveis do seletor de idioma e do menu do usuário agora incluem o
+  texto visível nos respectivos botões. Não é necessária nenhuma ação do operador.
+
 ## [1.85.0] — 2026-10-17
 
 ### ⚠️ Requer atenção
@@ -12253,7 +12282,8 @@ Primeira versão marcada do DeskcommCRM. O projeto vinha sendo desenvolvido publ
 
 - **Node 22 é obrigatório para desenvolvimento.** A suíte de invariantes instancia o cliente do Supabase, que exige o `WebSocket` global — nativo apenas a partir do Node 22. Isso não afeta quem apenas hospeda: a VPS roda a imagem pronta.
 
-[Não lançado]: https://github.com/melgarafael/DeskcommCRM/compare/v1.85.0...HEAD
+[Não lançado]: https://github.com/melgarafael/DeskcommCRM/compare/v1.86.0...HEAD
+[1.86.0]: https://github.com/melgarafael/DeskcommCRM/compare/v1.85.0...v1.86.0
 [1.85.0]: https://github.com/melgarafael/DeskcommCRM/compare/v1.84.0...v1.85.0
 [1.84.0]: https://github.com/melgarafael/DeskcommCRM/compare/v1.83.0...v1.84.0
 [1.83.0]: https://github.com/melgarafael/DeskcommCRM/compare/v1.82.0...v1.83.0
