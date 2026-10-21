@@ -35,6 +35,7 @@ import {
   OPENAI_CODEX_ENDPOINT,
   OPENROUTER_ENDPOINT,
   REQUESTY_ENDPOINT,
+  CHUTES_CHAT_ENDPOINT,
 } from "@/lib/agent-engine/edge/llm/providers";
 import { CredentialUnavailableError, loadCredential } from "@/lib/ai/credentials";
 import { lerLoginCodexRenovandoSeProxima } from "@/lib/ai/credenciais/login-codex";
@@ -169,7 +170,7 @@ function buildSentinelRegex(keywords: string[]): RegExp | null {
  * lá não existe faria o ensaio passar e a mensagem real falhar.
  */
 export function chaveDePlataforma(provider: string): string | null {
-  const nome = { anthropic: "ANTHROPIC_API_KEY", openai: "OPENAI_API_KEY", openrouter: "OPENROUTER_API_KEY" }[
+  const nome = { anthropic: "ANTHROPIC_API_KEY", openai: "OPENAI_API_KEY", openrouter: "OPENROUTER_API_KEY", chutes: "CHUTES_API_KEY" }[
     provider
   ];
   if (!nome) return null;
@@ -213,6 +214,8 @@ export function buildModel(
     // o agente, clica em "Teste" para conferir antes de confiar, e recebe
     // `unsupported_provider` — enquanto a mensagem de verdade seria respondida
     // normalmente pelo worker. Erro no ensaio lê-se como produto quebrado.
+    case "chutes":
+      return createOpenAI({ apiKey, baseURL: CHUTES_CHAT_ENDPOINT }).chat(modelId);
     case "openrouter":
       return createOpenAI({
         apiKey,

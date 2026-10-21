@@ -15,7 +15,7 @@
  *    ninguém consegue escolher pela tela — trabalho feito e inalcançável, que é
  *    a forma como funcionalidade morre neste produto.
  */
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { createDefaultRegistry } from "@/lib/agent-engine/edge/llm/providers";
 import {
@@ -94,7 +94,11 @@ describe("o endpoint próprio chega até a fábrica", () => {
     // A assinatura precisa aceitar baseUrl, senão `ai_purpose_bindings.base_url`
     // seria uma coluna que a tela preenche e o runtime ignora — configuração
     // que não configura nada.
-    const modelo = registry["openrouter"]!("chave-de-teste", "meta-llama/llama-3.3-70b-instruct", "https://gateway.exemplo/v1");
+    const modelo = registry["openrouter"]!(
+      "chave-de-teste",
+      "meta-llama/llama-3.3-70b-instruct",
+      "https://gateway.exemplo/v1",
+    );
     expect(modelo).toBeDefined();
   });
 
@@ -140,15 +144,25 @@ describe("lista de provedores × os pontos de ESCRITA", () => {
     // existe um ramo por provedor, e não o `default` que devolve
     // `unknown_provider` — cadastrar a chave devolveria "provedor
     // desconhecido" com o provedor na lista da tela.
-    const semValidador: string[] = [];
-    for (const id of ids) {
-      const r = await validators.validateProviderKey(
-        id as Parameters<typeof validators.validateProviderKey>[0],
-        "",
-      );
-      if (!r.ok && r.error.startsWith("unknown_provider")) semValidador.push(id);
+    // Este teste mede dispatch, não conectividade com todos os fornecedores.
+    // Nenhuma chamada de validação deve sair para a rede durante o unitário.
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response(null, { status: 401 })),
+    );
+    try {
+      const semValidador: string[] = [];
+      for (const id of ids) {
+        const r = await validators.validateProviderKey(
+          id as Parameters<typeof validators.validateProviderKey>[0],
+          "",
+        );
+        if (!r.ok && r.error.startsWith("unknown_provider")) semValidador.push(id);
+      }
+      expect(semValidador).toEqual([]);
+    } finally {
+      vi.unstubAllGlobals();
     }
-    expect(semValidador).toEqual([]);
   });
 
   it("nenhuma cópia da lista de três sobrou no código de provedor", async () => {

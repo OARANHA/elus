@@ -55417,6 +55417,230 @@ begin
 end
 $$;
 
+-- Governança ELUS: a instalação fresca usa baseline.sql, não a cadeia de migrations.
+-- manifest: Cria organizations.ai_autonomy e protege concessões técnicas de IA contra escrita direta de tenants, permitindo somente serviço autorizado pelo Superadmin full/MFA.
+-- 0690 ELUS: autonomia tecnica de IA isolada das settings mutaveis do tenant.
+-- Nao armazenar grants em organizations.settings: rotas manager+ gravam snapshots
+-- inteiros dessa coluna e podem ressuscitar um grant que o Superadmin revogou.
+-- A coluna isolada permite atualizar settings sem tocar em autorizacoes.
+alter table public.organizations
+  add column if not exists ai_autonomy jsonb not null default '{}'::jsonb;
+
+comment on column public.organizations.ai_autonomy is
+  'ELUS: grants tecnicos de IA emitidos somente via Superadmin full/MFA. Objetos com flags provider, model, credentials e operator_model; ausencia = false. Isolado de settings para nao ressuscitar revogacoes por writes concorrentes.';
+
+-- O grant de tabela para authenticated eh ALL no baseline. RLS orgs_write_platform_admin
+-- nao distingue scope full de support_readonly, portanto proteger no banco tambem.
+-- Nenhuma operacao JWT authenticated, inclusive via SECURITY DEFINER, pode escrever
+-- a coluna. A API governada usa service_role, apos autenticar full/MFA e auditar.
+create or replace function public.fn_guard_organizations_ai_autonomy()
+returns trigger
+language plpgsql
+security invoker
+set search_path = pg_catalog, public, pg_temp
+as $$
+declare
+  v_changed boolean;
+  v_privileged boolean;
+begin
+  if tg_op = 'INSERT' then
+    v_changed := new.ai_autonomy is distinct from '{}'::jsonb;
+  else
+    v_changed := new.ai_autonomy is distinct from old.ai_autonomy;
+  end if;
+
+  if v_changed then
+    v_privileged :=
+      auth.role() = 'service_role'
+      or (current_user = 'postgres' and auth.uid() is null and auth.role() is null);
+    if not coalesce(v_privileged, false) then
+      raise exception 'elus_ai_autonomy_restricted'
+        using errcode = '42501';
+    end if;
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists trg_guard_organizations_ai_autonomy on public.organizations;
+create trigger trg_guard_organizations_ai_autonomy
+before insert or update on public.organizations
+for each row
+execute function public.fn_guard_organizations_ai_autonomy();
+
+revoke all on function public.fn_guard_organizations_ai_autonomy()
+  from public, anon, authenticated;
+
+notify pgrst, 'reload schema';
+
+-- Catálogo de conversação Chutes para instalações novas, pareado à migration 0691.
+-- manifest: Habilita catálogo precificado de modelos Chutes para conversação, isolado do embedding já operacional; sem alterar padrão de empresas nem publicar credenciais.
+-- Fonte: https://chutes.ai/pricing e https://chutes.ai/agents (20/10/2026).
+-- Valores em centavos de USD por MILHÃO de tokens; a tarifa do fornecedor
+-- poderá mudar, por isso reconciliar catálogo antes do canário/ativação.
+-- Chutes nativo só aceita modelos com preço comprovado na linha provider=chutes.
+-- Centavos fracionários comprovados pelo Chutes exigem a mesma precisão do
+-- ai_pricing (numeric(10,4)); integer arredondava 10.4/41.6 para 10/42.
+-- Ampliação de precisão sem arredondar tarifas e sem trocar unidade monetária.
+alter table public.ai_models
+  alter column input_price_per_million_cents type numeric(10,4),
+  alter column output_price_per_million_cents type numeric(10,4);
+
+insert into public.ai_models
+  (provider, model_id, display_name, description, context_window,
+   input_price_per_million_cents, output_price_per_million_cents, supports_tools)
+values
+  ('chutes', 'Qwen/Qwen3-32B-TEE', 'Qwen3 32B (Chutes TEE)',
+   'Conversação e chamadas de ferramentas via Chutes; texto.',
+   40960, 10.4, 41.6, true),
+  ('chutes', 'google/gemma-4-31B-turbo-TEE', 'Gemma 4 31B Turbo (Chutes TEE)',
+   'Conversação e chamadas de ferramentas via Chutes.',
+   131072, 12, 37, true)
+-- Forward-fix do baseline: em reexecução não sobrescrever curadoria nem
+-- preços já sincronizados. A migration histórica 0691 permanece intacta.
+on conflict (provider, model_id) do nothing;
+
+-- A tabela ai_pricing é compartilhada por id de modelo entre provedores.
+-- Estes ids são próprios do gateway Chutes; são preços distintos de fornecedores originais.
+insert into public.ai_pricing
+  (model, prompt_cents_per_million_tokens, completion_cents_per_million_tokens, notes)
+values
+  ('Qwen/Qwen3-32B-TEE', 10.4, 41.6, 'catálogo 0691 — Chutes 20/10/2026'),
+  ('google/gemma-4-31B-turbo-TEE', 12, 37, 'catálogo 0691 — Chutes 20/10/2026')
+-- ai_pricing é compartilhado por id: um seed não reescreve preço existente.
+on conflict (model) do nothing;
+
+notify pgrst, 'reload schema';
+
+-- manifest: Sincroniza atomicamente o catálogo público Chutes com ownership explícito dos dois seeds 0691, preservando curadoria manual e rejeitando lotes suspeitos; sem alterar tenants, embeddings ou histórico.
+-- Não executar em produção nesta tarefa. Catálogo global, não tenant-aware.
+
+-- ---- Chutes: ownership explícito e sincronização atômica (migration 0692) ----
+do $$
+declare
+  s record;
+  atual public.ai_models%rowtype;
+begin
+  lock table public.ai_models in share row exclusive mode;
+  for s in select * from (values
+    ('Qwen/Qwen3-32B-TEE', 'Qwen3 32B (Chutes TEE)',
+     'Conversação e chamadas de ferramentas via Chutes; texto.', 40960, 10.4::numeric, 41.6::numeric),
+    ('google/gemma-4-31B-turbo-TEE', 'Gemma 4 31B Turbo (Chutes TEE)',
+     'Conversação e chamadas de ferramentas via Chutes.', 131072, 12::numeric, 37::numeric)
+  ) as seeds(model_id, display_name, description, context_window, entrada, saida)
+  loop
+    select * into atual from public.ai_models where provider = 'chutes' and model_id = s.model_id;
+    if not found then raise exception 'chutes_seed_ausente: %', s.model_id; end if;
+    if atual.source = 'chutes' then continue; end if; -- reexecução idempotente.
+    if atual.source <> 'manual'
+       or atual.display_name is distinct from s.display_name
+       or atual.description is distinct from s.description
+       or atual.context_window is distinct from s.context_window
+       or atual.input_price_per_million_cents is distinct from s.entrada
+       or atual.output_price_per_million_cents is distinct from s.saida
+       or atual.supports_tools is distinct from true
+       or atual.supports_vision is distinct from false
+       or atual.supports_embedding is distinct from false
+       or atual.is_default_for_provider is distinct from false
+       or atual.deprecated_at is not null
+       or atual.synced_at is not null
+       or atual.metadata is distinct from '{}'::jsonb
+       or atual.released_at is not null
+       or atual.embedding_dims is not null then
+      raise exception 'chutes_seed_modificado: % — revisão manual necessária', s.model_id;
+    end if;
+    update public.ai_models set source = 'chutes' where provider = 'chutes' and model_id = s.model_id and source = 'manual';
+  end loop;
+end $$;
+
+create or replace function public.fn_sincronizar_catalogo_chutes(p_modelos jsonb)
+returns jsonb
+language plpgsql
+security invoker
+set search_path = pg_catalog, public
+as $$
+declare
+  recebidos integer;
+  conhecidos integer;
+  gravados integer;
+  depreciados integer;
+  ressuscitados integer;
+  agora timestamptz := now();
+begin
+  if jsonb_typeof(p_modelos) is distinct from 'array' then
+    raise exception 'chutes_catalogo_invalido';
+  end if;
+  recebidos := jsonb_array_length(p_modelos);
+  if recebidos < 1 or recebidos > 10000 then raise exception 'chutes_catalogo_tamanho_invalido'; end if;
+  if exists (
+    select 1 from jsonb_array_elements(p_modelos) m
+    where jsonb_typeof(m) is distinct from 'object'
+      or m->>'provider' is distinct from 'chutes' or m->>'source' is distinct from 'chutes'
+      or jsonb_typeof(m->'model_id') is distinct from 'string'
+      or length(btrim(m->>'model_id')) not between 1 and 512
+      or m->>'model_id' <> btrim(m->>'model_id')
+      or jsonb_typeof(m->'display_name') is distinct from 'string'
+      or length(btrim(m->>'display_name')) = 0
+      or jsonb_typeof(m->'supports_tools') is distinct from 'boolean'
+      or jsonb_typeof(m->'supports_vision') is distinct from 'boolean'
+      or jsonb_typeof(m->'input_price_per_million_cents') is distinct from 'number'
+      or jsonb_typeof(m->'output_price_per_million_cents') is distinct from 'number'
+      or jsonb_typeof(m->'context_window') not in ('number', 'null')
+      or not (m ? 'context_window')
+      or jsonb_typeof(m->'description') not in ('string', 'null')
+      or not (m ? 'description')
+  ) then raise exception 'chutes_catalogo_campos_invalidos'; end if;
+  if (select count(distinct m->>'model_id') from jsonb_array_elements(p_modelos) m) <> recebidos then
+    raise exception 'chutes_catalogo_id_duplicado';
+  end if;
+  if exists (
+    select 1 from jsonb_to_recordset(p_modelos) as m(input_price_per_million_cents numeric, output_price_per_million_cents numeric, context_window numeric)
+    where input_price_per_million_cents not between 0 and 999999.9999
+      or output_price_per_million_cents not between 0 and 999999.9999
+      or input_price_per_million_cents <> ceil(input_price_per_million_cents * 10000) / 10000
+      or output_price_per_million_cents <> ceil(output_price_per_million_cents * 10000) / 10000
+      or (context_window is not null and (context_window not between 1 and 2147483647 or context_window <> trunc(context_window)))
+  ) then raise exception 'chutes_catalogo_valores_invalidos'; end if;
+
+  -- Serializa as rodadas e também edições manuais: ON CONFLICT nunca transfere ownership.
+  lock table public.ai_models in share row exclusive mode;
+  select count(*) into conhecidos from public.ai_models
+    where provider = 'chutes' and source = 'chutes' and deprecated_at is null;
+  if recebidos * 2 < conhecidos then raise exception 'chutes_catalogo_abaixo_do_piso'; end if;
+  select count(*) into ressuscitados from public.ai_models a
+    where a.provider = 'chutes' and a.source = 'chutes' and a.deprecated_at is not null
+      and exists (select 1 from jsonb_array_elements(p_modelos) m where m->>'model_id' = a.model_id);
+
+  insert into public.ai_models
+    (provider, source, model_id, display_name, description, context_window,
+     input_price_per_million_cents, output_price_per_million_cents,
+     supports_tools, supports_vision, supports_embedding, synced_at, deprecated_at)
+  select 'chutes', 'chutes', m.model_id, m.display_name, m.description, m.context_window,
+    m.input_price_per_million_cents, m.output_price_per_million_cents,
+    m.supports_tools, m.supports_vision, false, agora, null
+  from jsonb_to_recordset(p_modelos) as m(model_id text, display_name text, description text,
+    context_window integer, input_price_per_million_cents numeric, output_price_per_million_cents numeric,
+    supports_tools boolean, supports_vision boolean)
+  on conflict (provider, model_id) do update set
+    display_name = excluded.display_name, description = excluded.description,
+    context_window = excluded.context_window,
+    input_price_per_million_cents = excluded.input_price_per_million_cents,
+    output_price_per_million_cents = excluded.output_price_per_million_cents,
+    supports_tools = excluded.supports_tools, supports_vision = excluded.supports_vision,
+    supports_embedding = false, synced_at = agora, deprecated_at = null
+  where public.ai_models.provider = 'chutes' and public.ai_models.source = 'chutes';
+  get diagnostics gravados = row_count;
+
+  update public.ai_models a set deprecated_at = agora
+    where a.provider = 'chutes' and a.source = 'chutes' and a.deprecated_at is null
+      and not exists (select 1 from jsonb_array_elements(p_modelos) m where m->>'model_id' = a.model_id);
+  get diagnostics depreciados = row_count;
+  return jsonb_build_object('fonte', 'chutes', 'recebidos', recebidos, 'gravados', gravados,
+    'depreciados', depreciados, 'ressuscitados', ressuscitados);
+end $$;
+revoke all on function public.fn_sincronizar_catalogo_chutes(jsonb) from public, anon, authenticated;
+grant execute on function public.fn_sincronizar_catalogo_chutes(jsonb) to service_role;
+
 -- ---- VARREDURA anon: função nova nasce exposta em quem ATUALIZA (migration 0116) ----
 --
 -- ⚠️ DE PROPÓSITO, NENHUMA FUNÇÃO É CRIADA DEPOIS DESTE BLOCO. Apêndice que cria

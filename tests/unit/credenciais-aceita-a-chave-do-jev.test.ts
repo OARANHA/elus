@@ -13,6 +13,8 @@ import { POST } from "@/app/api/v1/ai/credentials/route";
 import { guardarCredencial } from "@/lib/ai/credenciais/guardar";
 import { requireRole } from "@/lib/auth/require-role";
 
+// Estes cenários exercitam o provider com autonomia técnica previamente concedida.
+vi.mock("@/lib/ai/governanca-da-ia", () => ({ recusaConfiguracaoDeIa: vi.fn(async () => null) }));
 vi.mock("@/lib/auth/require-role", () => ({ requireRole: vi.fn() }));
 vi.mock("@/lib/impersonate/support", () => ({ requireSupportWrite: vi.fn(async () => null) }));
 vi.mock("@/lib/ai/credenciais/guardar", async (importOriginal) => ({

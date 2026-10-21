@@ -409,6 +409,8 @@ export function validateProviderKey(
       return validateDeepSeekKey(apiKey);
     case "requesty":
       return validateRequestyKey(apiKey);
+    case "chutes":
+      return validateCustomKey(apiKey, "https://llm.chutes.ai/v1");
     case "custom":
       return validateCustomKey(apiKey, baseUrl);
     case "typesafe":

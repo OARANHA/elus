@@ -57,6 +57,7 @@ import {
   type ChaveDeOrcamento,
 } from './orcamento';
 import { costCents } from './pricing';
+import { custoChutesCents, resolverTarifaChutes } from './preco-chutes';
 import { custoDoModeloForaDoMotor } from './pricing-do-catalogo';
 import { chaveDeOrcamentoDaInstalacao } from '../../../instalacao/comportamento';
 import { cobrancaLigadaComMemo } from '../../../instalacao/modulos';
@@ -788,6 +789,11 @@ export async function runModelCall(db: pg.Pool, cfg: LlmEdgeConfig, input: RunMo
   if (config.enabledModels.length > 0 && !config.enabledModels.includes(model)) {
     throw new LlmModelNotEnabledError(model);
   }
+  // A tarifa pertence ao PAR (Chutes, modelo), não ao id genérico:
+  // outros provedores podem oferecer o mesmo modelo por preço diferente.
+  // A leitura é fail-closed ANTES do egress e o snapshot precifica o uso deste turno.
+  const tarifaChutes =
+    config.provider === 'chutes' ? await resolverTarifaChutes(db, model) : null;
   const factory = registry[config.provider];
   if (factory === undefined) {
     throw new LlmProviderUnknownError(config.provider);
@@ -1165,8 +1171,12 @@ export async function runModelCall(db: pg.Pool, cfg: LlmEdgeConfig, input: RunMo
   // nunca calado, e nunca um 0 inventado. O caminho dos modelos que já têm linha
   // na tabela estática não muda uma vírgula: `costCents` segue sendo chamado
   // primeiro, e só o `null` dele chega aqui.
-  let cost = costCents(model, usage, cfg.cacheTtl ?? '1h');
-  let origemDoCusto: 'catalogo_da_instalacao' | undefined;
+  let cost =
+    tarifaChutes === null
+      ? costCents(model, usage, cfg.cacheTtl ?? '1h')
+      : custoChutesCents(tarifaChutes, usage);
+  let origemDoCusto: 'catalogo_da_instalacao' | undefined =
+    tarifaChutes === null ? undefined : 'catalogo_da_instalacao';
   if (cost === null) {
     cost = await custoDoModeloForaDoMotor(db, {
       model,
