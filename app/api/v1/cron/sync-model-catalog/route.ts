@@ -8,8 +8,8 @@
  * cosmético: é o número que faz o teto de orçamento da organização disparar na
  * hora certa, ou não disparar.
  *
- * Este cron busca o catálogo público (sem chave — o endpoint de modelos da
- * OpenRouter é aberto), traduz e concilia. A regra da conciliação vive em
+ * Este cron busca os catálogos públicos OpenRouter e Chutes, sem chave,
+ * traduz e concilia cada fonte independentemente. A regra da conciliação vive em
  * `lib/ai/catalogo/sincronizar.ts`; aqui é só borda e I/O.
  *
  * O que ele deliberadamente NÃO faz:
@@ -36,6 +36,7 @@
 import { randomUUID } from "node:crypto";
 import type { NextRequest } from "next/server";
 
+import { audit } from "@/lib/audit";
 import { autorizaCron } from "@/lib/auth/cron-auth";
 import { fail, ok } from "@/lib/api/wrappers";
 import {
@@ -48,6 +49,7 @@ import {
   planejarSincronizacao,
   type ModeloExistente,
 } from "@/lib/ai/catalogo/sincronizar";
+import { sincronizarCatalogoChutes } from "@/lib/ai/catalogo/sincronizar-chutes";
 import { logger } from "@/lib/logger";
 import { createAdminClient } from "@/lib/supabase/admin";
 
@@ -136,33 +138,97 @@ async function buscarDaOpenRouter(): Promise<ModeloDaOpenRouter[]> {
 // Bearer (ou `x-cron-secret`) contra os dois segredos e falha fechado sem nenhum.
 // A cerca contra o padrão voltar é `tests/unit/cron-aceita-os-dois-segredos.test.ts`.
 
+/** Somente códigos locais conhecidos: nunca inclui mensagem/payload remoto. */
+function motivoDaFalha(erro: unknown): string {
+  if (erro instanceof DOMException && (erro.name === "TimeoutError" || erro.name === "AbortError"))
+    return "catalogo_timeout";
+  if (!(erro instanceof Error)) return "catalogo_falha_nao_classificada";
+  if (erro.name === "TimeoutError" || erro.name === "AbortError") return "catalogo_timeout";
+  if (erro.name === "ZodError") return "catalogo_schema_invalido";
+  const codigo = erro.message.split(":")[0]!;
+  if (/^(chutes_catalogo_http_|catalogo_origem_status_)\d{3}$/.test(codigo)) return codigo;
+  const conhecidos = new Set([
+    "chutes_catalogo_leitura_falhou",
+    "chutes_catalogo_persistencia_falhou",
+    "chutes_catalogo_content_type_invalido",
+    "chutes_catalogo_tamanho_excedido",
+    "chutes_catalogo_sem_corpo",
+    "chutes_preco_invalido",
+    "chutes_preco_fora_da_faixa",
+    "chutes_preco_usd_divergente",
+    "chutes_id_duplicado",
+    "chutes_decimal_original_indisponivel",
+    "catalogo_leitura_falhou",
+    "catalogo_upsert_falhou",
+    "catalogo_depreciacao_falhou",
+  ]);
+  if (conhecidos.has(codigo)) return codigo;
+  if (erro instanceof SyntaxError) return "catalogo_json_invalido";
+  if (erro instanceof TypeError) return "catalogo_rede_falhou";
+  return "catalogo_falha_nao_classificada";
+}
+
 async function handler(req: NextRequest): Promise<Response> {
   const requestId = randomUUID();
   if (!autorizaCron(req)) {
     return fail("unauthorized", "cron secret ausente ou inválido", 401, { requestId });
   }
   try {
-    const resultado = await sincronizarCatalogo(createAdminClient(), buscarDaOpenRouter);
-    logger.info("[sync-model-catalog] concluído", { ...resultado, request_id: requestId });
-    return ok(resultado, { requestId });
-  } catch (err) {
-    if (err instanceof CatalogoSuspeitoError) {
-      // Não é erro do servidor: a origem respondeu, e nós recusamos. 200 com o
-      // motivo, para o agendador não tratar como incidente e ficar retentando
-      // contra uma origem que está tendo problema.
-      logger.warn("[sync-model-catalog] rodada recusada pelo piso de sanidade", {
-        recebidos: err.recebidos,
-        conhecidos: err.conhecidos,
+    const admin = createAdminClient();
+    const fontes = ["openrouter", "chutes"] as const;
+    const rodadas = await Promise.allSettled([
+      sincronizarCatalogo(admin, buscarDaOpenRouter),
+      sincronizarCatalogoChutes(admin),
+    ]);
+    const resultados = rodadas.map((rodada, indice) => {
+      const fonte = fontes[indice]!;
+      if (rodada.status === "fulfilled") {
+        logger.info("[sync-model-catalog] concluído", { ...rodada.value, request_id: requestId });
+        if (
+          rodada.value.gravados > 0 ||
+          rodada.value.depreciados > 0 ||
+          rodada.value.ressuscitados > 0
+        ) {
+          void audit({
+            action: "ai.catalog_sync",
+            organizationId: null,
+            bypassedRls: true,
+            metadata: { ...rodada.value },
+            requestId,
+          });
+        }
+        return rodada.value;
+      }
+      const erro: unknown = rodada.reason;
+      if (erro instanceof CatalogoSuspeitoError) {
+        logger.warn("[sync-model-catalog] rodada recusada pelo piso de sanidade", {
+          fonte,
+          recebidos: erro.recebidos,
+          conhecidos: erro.conhecidos,
+          request_id: requestId,
+        });
+        return { fonte, recusado: true, motivo: erro.message };
+      }
+      // Não devolver mensagens remotas nem detalhes de banco ao chamador.
+      logger.error("[sync-model-catalog] fonte falhou", {
+        fonte,
+        motivo: motivoDaFalha(erro),
         request_id: requestId,
       });
-      return ok(
-        { fonte: FONTE_OPENROUTER, recusado: true, motivo: err.message },
-        { requestId },
-      );
+      return { fonte, falhou: true };
+    });
+    if (resultados.some((r) => "falhou" in r)) {
+      return fail("cron_failed", "Falha ao sincronizar catálogo; consulte o log por fonte.", 500, {
+        requestId,
+      });
     }
-    const detalhe = err instanceof Error ? err.message : String(err);
-    logger.error("[sync-model-catalog] falhou", { error: detalhe, request_id: requestId });
-    return fail("cron_failed", detalhe, 500, { requestId });
+    return ok({ fontes: resultados }, { requestId });
+  } catch (erro) {
+    logger.error("[sync-model-catalog] falhou", {
+      motivo: motivoDaFalha(erro),
+      request_id: requestId,
+    });
+    return fail("cron_failed", "Falha ao iniciar sincronização do catálogo.", 500, { requestId });
   }
 }
 

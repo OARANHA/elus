@@ -1,0 +1,135 @@
+{
+  "schema_version": 1,
+  "titulo": "Catálogo Chutes — sincronização pública",
+  "descricao": "O mesmo cron diário atualiza o catálogo global. Recusa conserva dados anteriores; próxima rodada tenta novamente. Sem configuração de tenant ou embeddings.",
+  "lanes": [
+    {
+      "id": "origem",
+      "label": "Agendamento e origem"
+    },
+    {
+      "id": "dominio",
+      "label": "Validação e persistência"
+    },
+    {
+      "id": "consumo",
+      "label": "Consumo e retorno"
+    }
+  ],
+  "mainPath": ["cron", "parser", "rpc", "modelos", "seletor"],
+  "nodes": [
+    {
+      "id": "cron",
+      "lane": "origem",
+      "label": "scheduler → /api/v1/cron/sync-model-catalog"
+    },
+    {
+      "id": "publico",
+      "lane": "origem",
+      "label": "GET llm.chutes.ai/v1/models, sem autenticação"
+    },
+    {
+      "id": "parser",
+      "lane": "dominio",
+      "label": "chutes.ts: schema e preço decimal exato"
+    },
+    {
+      "id": "plano",
+      "lane": "dominio",
+      "label": "planejarSincronizacao: piso 50%"
+    },
+    {
+      "id": "rpc",
+      "lane": "dominio",
+      "label": "fn_sincronizar_catalogo_chutes: lock, ownership e transação"
+    },
+    {
+      "id": "modelos",
+      "lane": "consumo",
+      "label": "ai_models: provider/source chutes; synced_at"
+    },
+    {
+      "id": "seletor",
+      "lane": "consumo",
+      "label": "Catálogo existente de Provedores de IA e gates Chutes precificados"
+    },
+    {
+      "id": "recusa",
+      "lane": "consumo",
+      "label": "Log por fonte e resposta do cron; nenhuma escrita em lote recusado"
+    },
+    {
+      "id": "audit",
+      "lane": "consumo",
+      "label": "api_audit_log: ai.catalog_sync, somente rodada mutante"
+    }
+  ],
+  "edges": [
+    {
+      "id": "0",
+      "from": "cron",
+      "to": "publico",
+      "label": "buscar"
+    },
+    {
+      "id": "1",
+      "from": "publico",
+      "to": "parser",
+      "label": "JSON público"
+    },
+    {
+      "id": "2",
+      "from": "parser",
+      "to": "plano",
+      "label": "lote validado"
+    },
+    {
+      "id": "3",
+      "from": "plano",
+      "to": "rpc",
+      "label": "plano aceito"
+    },
+    {
+      "id": "4",
+      "from": "rpc",
+      "to": "modelos",
+      "label": "update/insert/depreciação atômicos"
+    },
+    {
+      "id": "5",
+      "from": "modelos",
+      "to": "seletor",
+      "label": "catálogo global precificado"
+    },
+    {
+      "id": "6",
+      "from": "parser",
+      "to": "recusa",
+      "label": "erro"
+    },
+    {
+      "id": "7",
+      "from": "plano",
+      "to": "recusa",
+      "label": "piso"
+    },
+    {
+      "id": "8",
+      "from": "rpc",
+      "to": "recusa",
+      "label": "erro/rollback"
+    },
+    {
+      "id": "9",
+      "from": "recusa",
+      "to": "cron",
+      "label": "próxima rodada preserva estado anterior"
+    },
+    {
+      "id": "audit",
+      "from": "cron",
+      "to": "audit",
+      "label": "efeitos e contagens, sem payload"
+    }
+  ]
+}

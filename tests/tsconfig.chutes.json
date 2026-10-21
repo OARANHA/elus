@@ -1,0 +1,15 @@
+{
+  "extends": "../tsconfig.typecheck.json",
+  "compilerOptions": {
+    "incremental": false
+  },
+  "include": [
+    "../lib/ai/catalogo/chutes.ts",
+    "../lib/ai/catalogo/chutes.test.ts",
+    "../lib/ai/catalogo/sincronizar-chutes.ts",
+    "../lib/ai/catalogo/sincronizar-chutes.test.ts",
+    "../app/api/v1/cron/sync-model-catalog/route.ts",
+    "../app/api/v1/cron/sync-model-catalog/route.test.ts"
+  ],
+  "exclude": ["../node_modules"]
+}
