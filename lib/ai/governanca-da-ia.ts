@@ -88,6 +88,9 @@ export type CamposTecnicosDaVersao = {
   model?: string | null;
   credential_id?: string | null;
   operator_model?: string | null;
+  /** Destino e ativação do binding pertencem ao grant de provider. */
+  base_url?: string | null;
+  is_enabled?: boolean | null;
 };
 
 /** Compara a escolha com a versão anterior. Reenvio idêntico não exige autonomia. */
@@ -101,10 +104,13 @@ export function mudancasTecnicas(
     ["model", "model"],
     ["credential_id", "credentials"],
     ["operator_model", "operator_model"],
+    ["base_url", "provider"],
+    ["is_enabled", "provider"],
   ];
   for (const [campo, poder] of pares) {
     if (depois[campo] === undefined) continue;
-    if ((antes[campo] ?? null) !== (depois[campo] ?? null)) resultado.push(poder);
+    if ((antes[campo] ?? null) !== (depois[campo] ?? null) && !resultado.includes(poder))
+      resultado.push(poder);
   }
   return resultado;
 }

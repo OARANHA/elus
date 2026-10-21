@@ -22,7 +22,10 @@ const banco = vi.hoisted(() => ({
 vi.mock("@/lib/auth/require-role", () => ({ requireRole: vi.fn() }));
 // Neste teste o tenant recebeu grant explícito para alterar provedores;
 // recusas da governança são cobertas por sua própria suíte.
-vi.mock("@/lib/ai/governanca-da-ia", () => ({ recusaConfiguracaoDeIa: vi.fn(async () => null) }));
+vi.mock("@/lib/ai/governanca-da-ia", () => ({
+  recusaConfiguracaoDeIa: vi.fn(async () => null),
+  validarMudancasTecnicas: vi.fn(async () => []),
+}));
 vi.mock("@/lib/impersonate/support", () => ({ requireSupportWrite: vi.fn(async () => null) }));
 vi.mock("@/lib/audit", () => ({ audit: vi.fn(async () => undefined) }));
 
@@ -31,6 +34,11 @@ function cadeia(tabela: string, dados: unknown, unico: unknown) {
     maybeSingle: async () => ({ data: unico, error: null }),
     upsert: (payload: unknown) => {
       banco.gravacoes.push({ tabela, payload });
+      if (tabela === "ai_purpose_bindings")
+        unico = {
+          id: "33333333-3333-4333-8333-333333333333",
+          ...(payload as Record<string, unknown>),
+        };
       return chain;
     },
     update: (payload: unknown) => {
@@ -40,6 +48,7 @@ function cadeia(tabela: string, dados: unknown, unico: unknown) {
     then: (ok: (v: unknown) => unknown, erro: (e: unknown) => unknown) =>
       Promise.resolve({ data: dados, error: null }).then(ok, erro),
   };
+  chain.insert = chain.upsert;
   for (const m of ["select", "eq", "in", "is", "not", "order", "limit"]) chain[m] = () => chain;
   return chain;
 }
@@ -63,15 +72,14 @@ vi.mock("@/lib/supabase/server", () => ({
     from: (tabela: string) => {
       if (tabela === "ai_provider_credentials") return cadeia(tabela, banco.credenciais, null);
       if (tabela === "ai_models") {
-        return cadeia(tabela, [], { model_id: "gpt-5.5", supports_tools: true, supports_vision: false });
+        return cadeia(tabela, [], {
+          model_id: "gpt-5.5",
+          supports_tools: true,
+          supports_vision: false,
+        });
       }
       if (tabela === "ai_purpose_bindings") {
-        return cadeia(tabela, [], {
-          id: "33333333-3333-4333-8333-333333333333",
-          purpose: "stage_classifier",
-          provider: "openai-assinatura",
-          model_id: "gpt-5.5",
-        });
+        return cadeia(tabela, [], null); // sem binding antes da primeira escrita
       }
       return cadeia(tabela, [], null);
     },
@@ -103,7 +111,9 @@ async function painel() {
 }
 
 const putDaAssinatura = () =>
-  PUT(requisicao("PUT", { purpose: "stage_classifier", provider: ASSINATURA, model_id: "gpt-5.5" }));
+  PUT(
+    requisicao("PUT", { purpose: "stage_classifier", provider: ASSINATURA, model_id: "gpt-5.5" }),
+  );
 const patchDaAssinatura = () =>
   PATCH(requisicao("PATCH", { provider: ASSINATURA, default_model: "gpt-5.5" }));
 
@@ -111,8 +121,22 @@ beforeEach(() => {
   vi.clearAllMocks();
   banco.gravacoes = [];
   banco.credenciais = [
-    { id: "c1", provider: "anthropic", label: "a", api_key_last4: "c0de", validated_at: "2026-10-01T00:00:00Z", is_active: true },
-    { id: "c2", provider: ASSINATURA, label: "login", api_key_last4: "c0de", validated_at: "2026-10-01T00:00:00Z", is_active: true },
+    {
+      id: "c1",
+      provider: "anthropic",
+      label: "a",
+      api_key_last4: "c0de",
+      validated_at: "2026-10-01T00:00:00Z",
+      is_active: true,
+    },
+    {
+      id: "c2",
+      provider: ASSINATURA,
+      label: "login",
+      api_key_last4: "c0de",
+      validated_at: "2026-10-01T00:00:00Z",
+      is_active: true,
+    },
   ];
   vi.mocked(requireRole).mockResolvedValue({
     ok: true,

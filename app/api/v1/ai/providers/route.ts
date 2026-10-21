@@ -24,8 +24,11 @@ import { z } from "zod";
 import { fail, ok } from "@/lib/api/wrappers";
 import { audit } from "@/lib/audit";
 import { requireRole } from "@/lib/auth/require-role";
-import { recusaConfiguracaoDeIa } from "@/lib/ai/governanca-da-ia";
-import { lerPadraoLlmDaOrganizacao, mesclarPadraoLlmDaOrganizacao } from "@/lib/ai/padrao-llm-da-organizacao";
+import { recusaConfiguracaoDeIa, validarMudancasTecnicas } from "@/lib/ai/governanca-da-ia";
+import {
+  lerPadraoLlmDaOrganizacao,
+  mesclarPadraoLlmDaOrganizacao,
+} from "@/lib/ai/padrao-llm-da-organizacao";
 import { roleAtLeast } from "@/lib/auth/types";
 import {
   decidirBinding,
@@ -36,7 +39,11 @@ import {
   type LinhaDeBinding,
 } from "@/lib/ai/pontos/resolver";
 import { PAPEIS, PONTOS_DE_IA, PONTO_POR_ID } from "@/lib/ai/pontos/registro";
-import { PROVEDORES, ehProvedorSuportado, PROVEDOR_POR_ASSINATURA } from "@/lib/ai/pontos/provedores";
+import {
+  PROVEDORES,
+  ehProvedorSuportado,
+  PROVEDOR_POR_ASSINATURA,
+} from "@/lib/ai/pontos/provedores";
 import { listarModelosDaAssinaturaOuVazio } from "@/lib/ai/catalogo/modelos-da-assinatura";
 import { validarBinding } from "@/lib/ai/pontos/validar-binding";
 import { lerAmbiente } from "@/lib/instalacao/ambiente";
@@ -115,15 +122,21 @@ export async function GET(): Promise<Response> {
     ((bindingsRes.data ?? []) as LinhaDeBinding[]).map((b) => [b.purpose, b]),
   );
 
-  const llm = ((orgRes.data?.settings as { llm?: Record<string, unknown> } | null)?.llm ??
-    {}) as { provider?: string; default_model?: string | null; enabled_models?: unknown };
+  const llm = ((orgRes.data?.settings as { llm?: Record<string, unknown> } | null)?.llm ?? {}) as {
+    provider?: string;
+    default_model?: string | null;
+    enabled_models?: unknown;
+  };
   const padraoDaOrganizacao = {
     provider: typeof llm.provider === "string" ? llm.provider : "anthropic",
     defaultModel: typeof llm.default_model === "string" ? llm.default_model : null,
   };
 
-  const versao = (agenteRes.data as { versao?: { provider: string; model: string; credential_id: string | null } } | null)
-    ?.versao;
+  const versao = (
+    agenteRes.data as {
+      versao?: { provider: string; model: string; credential_id: string | null };
+    } | null
+  )?.versao;
   const agentePublicado = versao
     ? { provider: versao.provider, credentialId: versao.credential_id, model: versao.model }
     : null;
@@ -285,7 +298,9 @@ export async function GET(): Promise<Response> {
         // catálogo; o resolvedor puro não consulta banco.
         ...(capacidade && ponto.exige.tools === true && !capacidade.supports_tools
           ? [
-              t(`O modelo em uso não sabe usar as ferramentas do CRM — o agente conversa, mas não registra nada no funil.`),
+              t(
+                `O modelo em uso não sabe usar as ferramentas do CRM — o agente conversa, mas não registra nada no funil.`,
+              ),
             ]
           : []),
       ],
@@ -350,17 +365,25 @@ const corpoDoPut = z.object({
   // API é pública) gravava `provider: "foobar"`, a rota respondia 200, e todo
   // uso daquele ponto morria em produção com provedor desconhecido. Metade da
   // defesa transferida e nunca instalada.
-  provider: z
-    .string()
-    .min(1)
-    .refine(ehProvedorSuportado, {
-      message:
-        "provedor não suportado por esta instalação — escolha um da lista em Agente de IA → Provedores",
-    }),
+  provider: z.string().min(1).refine(ehProvedorSuportado, {
+    message:
+      "provedor não suportado por esta instalação — escolha um da lista em Agente de IA → Provedores",
+  }),
   model_id: z.string().min(1),
   credential_id: z.string().uuid().nullable().optional(),
   base_url: z.string().url().nullable().optional(),
   is_enabled: z.boolean().optional(),
+});
+
+const bindingAnteriorDoPut = z.object({
+  id: z.string().uuid(),
+  organization_id: z.string().uuid(),
+  purpose: z.string().min(1),
+  provider: z.string().min(1),
+  model_id: z.string().min(1),
+  credential_id: z.string().uuid().nullable(),
+  base_url: z.string().url().nullable(),
+  is_enabled: z.boolean(),
 });
 
 export async function PUT(req: NextRequest): Promise<Response> {
@@ -371,9 +394,6 @@ export async function PUT(req: NextRequest): Promise<Response> {
   if (!authz.ok) return authz.response;
   const t = (texto: string) => traduzir(texto, authz.user.idioma);
   const { user, org } = authz;
-  const platformDenied = await recusaConfiguracaoDeIa(user, org.orgId, "provider");
-  if (platformDenied) return platformDenied;
-
   const parsed = corpoDoPut.safeParse(await req.json().catch(() => null));
   if (!parsed.success) {
     return fail("invalid_body", t("corpo inválido"), 422, { details: parsed.error.issues });
@@ -383,23 +403,85 @@ export async function PUT(req: NextRequest): Promise<Response> {
   if (desligado) return desligado;
 
   const ponto = PONTO_POR_ID.get(corpo.purpose);
-  if (!ponto) return fail("ponto_desconhecido", `"${corpo.purpose}" não é um ponto do sistema`, 404);
+  if (!ponto)
+    return fail("ponto_desconhecido", `"${corpo.purpose}" não é um ponto do sistema`, 404);
 
   const db = await createClient();
+
+  // Referência consultada pelo cliente da sessão e pelo tenant/purpose
+  // autenticados. Nunca usar um estado anterior ou tenant recebido no body.
+  let anterior: z.infer<typeof bindingAnteriorDoPut> | null = null;
+  try {
+    const { data, error } = await db
+      .from("ai_purpose_bindings")
+      .select(
+        "id, organization_id, purpose, provider, model_id, credential_id, base_url, is_enabled",
+      )
+      .eq("organization_id", org.orgId)
+      .eq("purpose", corpo.purpose)
+      .maybeSingle();
+    if (error || data === undefined) throw new Error("binding_indisponivel");
+    if (data !== null) {
+      anterior = bindingAnteriorDoPut.parse(data);
+      if (anterior.organization_id !== org.orgId || anterior.purpose !== corpo.purpose)
+        throw new Error("binding_fora_do_escopo");
+    }
+  } catch {
+    return fail(
+      "configuracao_ia_indisponivel",
+      t("Não foi possível ler a configuração anterior de IA."),
+      503,
+    );
+  }
+
+  // PUT substitui também os opcionais omitidos: comparar os MESMOS defaults
+  // que serão gravados impede limpar uma chave ou reativar o ponto sem grant.
+  const proposta = {
+    provider: corpo.provider,
+    model: corpo.model_id,
+    credential_id: corpo.credential_id ?? null,
+    base_url: corpo.base_url ?? null,
+    is_enabled: corpo.is_enabled ?? true,
+  };
+  const recusadas = await validarMudancasTecnicas(
+    user,
+    org.orgId,
+    {
+      provider: anterior?.provider ?? null,
+      model: anterior?.model_id ?? null,
+      credential_id: anterior?.credential_id ?? null,
+      base_url: anterior?.base_url ?? null,
+      is_enabled: anterior?.is_enabled ?? null,
+    },
+    proposta,
+  );
+  if (recusadas.length > 0)
+    return fail(
+      "forbidden_platform_ai",
+      t("Esta configuração técnica de IA é gerenciada pela plataforma ELUS."),
+      403,
+    );
 
   // A capacidade vem do catálogo (o que o FABRICANTE declara), nunca de
   // heurística sobre o nome do modelo.
   const { data: modelo, error: erroModelo } = await db
     .from("ai_models")
-    .select("model_id, supports_tools, supports_vision, input_price_per_million_cents, output_price_per_million_cents")
+    .select(
+      "model_id, supports_tools, supports_vision, input_price_per_million_cents, output_price_per_million_cents",
+    )
     .eq("provider", corpo.provider)
     .eq("model_id", corpo.model_id)
     .is("deprecated_at", null)
     .maybeSingle();
   if (corpo.provider === "chutes") {
-    if (erroModelo) return fail("catalogo_indisponivel", "Catálogo de preços Chutes indisponível.", 503);
+    if (erroModelo)
+      return fail("catalogo_indisponivel", "Catálogo de preços Chutes indisponível.", 503);
     if (!tarifaChutesConhecida(modelo))
-      return fail("chutes_model_without_verified_pricing", "Modelo Chutes sem preço comprovado.", 422);
+      return fail(
+        "chutes_model_without_verified_pricing",
+        "Modelo Chutes sem preço comprovado.",
+        422,
+      );
   }
 
   // Modelos da assinatura são por organização e não entram no catálogo global
@@ -409,7 +491,9 @@ export async function PUT(req: NextRequest): Promise<Response> {
   // caminho de antes —, em vez de a falha virar um 500 na gravação.
   const modeloDaAssinatura =
     corpo.provider === PROVEDOR_POR_ASSINATURA
-      ? (await listarModelosDaAssinaturaOuVazio(org.orgId)).find((m) => m.model_id === corpo.model_id) ?? null
+      ? ((await listarModelosDaAssinaturaOuVazio(org.orgId)).find(
+          (m) => m.model_id === corpo.model_id,
+        ) ?? null)
       : null;
   const modeloConhecido =
     corpo.provider === PROVEDOR_POR_ASSINATURA ? modeloDaAssinatura !== null : modelo !== null;
@@ -420,8 +504,8 @@ export async function PUT(req: NextRequest): Promise<Response> {
       model_id: corpo.model_id,
       supports_tools:
         corpo.provider === PROVEDOR_POR_ASSINATURA
-          ? modeloDaAssinatura?.supports_tools ?? false
-          : modelo?.supports_tools ?? false,
+          ? (modeloDaAssinatura?.supports_tools ?? false)
+          : (modelo?.supports_tools ?? false),
       // A capacidade vem do MOTOR, não da coluna: os dois discordavam e a tela
       // avisava "não enxerga imagens" sobre modelo que enxerga. Ver
       // `lib/ai/pontos/capacidade-em-vigor.ts`.
@@ -430,8 +514,8 @@ export async function PUT(req: NextRequest): Promise<Response> {
         modelId: corpo.model_id,
         doCatalogo:
           corpo.provider === PROVEDOR_POR_ASSINATURA
-            ? modeloDaAssinatura?.supports_vision ?? null
-            : modelo?.supports_vision ?? null,
+            ? (modeloDaAssinatura?.supports_vision ?? null)
+            : (modelo?.supports_vision ?? null),
       }),
       conhecido: modeloConhecido,
     },
@@ -461,23 +545,61 @@ export async function PUT(req: NextRequest): Promise<Response> {
     }
   }
 
-  const { data: gravado, error } = await db
-    .from("ai_purpose_bindings")
-    .upsert(
-      {
-        organization_id: org.orgId,
-        purpose: corpo.purpose,
-        provider: corpo.provider,
-        model_id: corpo.model_id,
-        credential_id: corpo.credential_id ?? null,
-        base_url: corpo.base_url ?? null,
-        is_enabled: corpo.is_enabled ?? true,
-      },
-      { onConflict: "organization_id,purpose" },
-    )
+  // Reenvio não escreve nem audita novamente, mas preserva TODAS as
+  // validações de catálogo/capacidade/credencial, inclusive preço Chutes.
+  if (
+    anterior &&
+    anterior.provider === proposta.provider &&
+    anterior.model_id === proposta.model &&
+    anterior.credential_id === proposta.credential_id &&
+    anterior.base_url === proposta.base_url &&
+    anterior.is_enabled === proposta.is_enabled
+  )
+    return ok({ binding: anterior, avisos: validacao.avisos });
+
+  const valores = {
+    organization_id: org.orgId,
+    purpose: corpo.purpose,
+    provider: proposta.provider,
+    model_id: proposta.model,
+    credential_id: proposta.credential_id,
+    base_url: proposta.base_url,
+    is_enabled: proposta.is_enabled,
+  };
+  // Compare-and-swap: uma concessão só de model não pode restaurar provider
+  // ou credencial que outra requisição alterou depois da leitura. Criação usa
+  // INSERT (nunca upsert) para também não tomar posse de um binding concorrente.
+  let escrita;
+  if (anterior) {
+    let atualizacao = db
+      .from("ai_purpose_bindings")
+      .update(valores)
+      .eq("id", anterior.id)
+      .eq("organization_id", org.orgId)
+      .eq("purpose", corpo.purpose)
+      .eq("provider", anterior.provider)
+      .eq("model_id", anterior.model_id)
+      .eq("is_enabled", anterior.is_enabled);
+    for (const campo of ["credential_id", "base_url"] as const) {
+      atualizacao =
+        anterior[campo] === null
+          ? atualizacao.is(campo, null)
+          : atualizacao.eq(campo, anterior[campo]);
+    }
+    escrita = atualizacao;
+  } else {
+    escrita = db.from("ai_purpose_bindings").insert(valores);
+  }
+  const { data: gravado, error } = await escrita
     .select("id, purpose, provider, model_id, credential_id, base_url, is_enabled")
     .maybeSingle();
 
+  if (error?.code === "23505" || (!error && !gravado && anterior))
+    return fail(
+      "configuracao_ia_alterada",
+      t("A configuração de IA mudou. Recarregue antes de salvar novamente."),
+      409,
+    );
   if (error) return fail("save_failed", error.message, 500);
   if (!gravado) {
     // Upsert que casa zero linhas devolve sucesso no PostgREST — a tela diria
@@ -512,15 +634,11 @@ export async function PUT(req: NextRequest): Promise<Response> {
   return ok({ binding: gravado, avisos: validacao.avisos });
 }
 
-
 const corpoDoPatch = z.object({
-  provider: z
-    .string()
-    .min(1)
-    .refine(ehProvedorSuportado, {
-      message:
-        "provedor não suportado por esta instalação — escolha um da lista em Agente de IA → Provedores",
-    }),
+  provider: z.string().min(1).refine(ehProvedorSuportado, {
+    message:
+      "provedor não suportado por esta instalação — escolha um da lista em Agente de IA → Provedores",
+  }),
   default_model: z.string().min(1),
 });
 
@@ -558,7 +676,11 @@ export async function PATCH(req: NextRequest): Promise<Response> {
     .eq("id", org.orgId)
     .maybeSingle();
   if (erroOrg || !orgAtual)
-    return fail("configuracao_ia_indisponivel", "Não foi possível ler o padrão da organização.", 503);
+    return fail(
+      "configuracao_ia_indisponivel",
+      "Não foi possível ler o padrão da organização.",
+      503,
+    );
   const anterior = lerPadraoLlmDaOrganizacao(orgAtual.settings);
   if (anterior.provider !== corpo.provider) {
     const negado = await recusaConfiguracaoDeIa(user, org.orgId, "provider");
@@ -573,7 +695,10 @@ export async function PATCH(req: NextRequest): Promise<Response> {
     anterior.provider === corpo.provider &&
     anterior.default_model === corpo.default_model
   ) {
-    return ok({ padrao: { provider: corpo.provider, defaultModel: corpo.default_model }, avisos: [] });
+    return ok({
+      padrao: { provider: corpo.provider, defaultModel: corpo.default_model },
+      avisos: [],
+    });
   }
 
   const desligado = await provedorDesligado(corpo.provider);
@@ -592,14 +717,21 @@ export async function PATCH(req: NextRequest): Promise<Response> {
     .is("deprecated_at", null)
     .maybeSingle();
   if (corpo.provider === "chutes") {
-    if (erroModelo) return fail("catalogo_indisponivel", "Catálogo de preços Chutes indisponível.", 503);
+    if (erroModelo)
+      return fail("catalogo_indisponivel", "Catálogo de preços Chutes indisponível.", 503);
     if (!tarifaChutesConhecida(modelo))
-      return fail("chutes_model_without_verified_pricing", "Modelo Chutes sem preço comprovado.", 422);
+      return fail(
+        "chutes_model_without_verified_pricing",
+        "Modelo Chutes sem preço comprovado.",
+        422,
+      );
   }
 
   const modeloDaAssinatura =
     corpo.provider === PROVEDOR_POR_ASSINATURA
-      ? (await listarModelosDaAssinaturaOuVazio(org.orgId)).find((m) => m.model_id === corpo.default_model) ?? null
+      ? ((await listarModelosDaAssinaturaOuVazio(org.orgId)).find(
+          (m) => m.model_id === corpo.default_model,
+        ) ?? null)
       : null;
 
   // MAS A CONFERÊNCIA SÓ VALE SE HOUVER CATÁLOGO PARA CONFERIR. `ai_models` é

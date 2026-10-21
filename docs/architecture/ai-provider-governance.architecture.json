@@ -1,0 +1,119 @@
+{
+  "schema_version": 1,
+  "titulo": "Governança do binding de IA por tenant",
+  "descricao": "Reutiliza os grants canônicos; leitura inconclusiva, grant ausente ou conflito não grava nem audita sucesso. A tela recebe 403, 503 ou 409 para corrigir/recarregar.",
+  "lanes": [
+    {
+      "id": "entrada",
+      "label": "Interface e identidade"
+    },
+    {
+      "id": "controle",
+      "label": "Referência e autorização"
+    },
+    {
+      "id": "efeito",
+      "label": "Persistência e retorno"
+    }
+  ],
+  "mainPath": ["tela", "put", "snapshot", "grants", "cas", "audit"],
+  "nodes": [
+    {
+      "id": "tela",
+      "lane": "entrada",
+      "label": "/app/ai/providers: escolha de cada purpose"
+    },
+    {
+      "id": "put",
+      "lane": "entrada",
+      "label": "PUT: requireSupportWrite e requireRole admin"
+    },
+    {
+      "id": "snapshot",
+      "lane": "controle",
+      "label": "ai_purpose_bindings: sessão, organization_id e purpose"
+    },
+    {
+      "id": "grants",
+      "lane": "controle",
+      "label": "validarMudancasTecnicas: provider/model/credentials; endpoint+enabled → provider"
+    },
+    {
+      "id": "validar",
+      "lane": "controle",
+      "label": "Catálogo, preço Chutes e credencial do tenant"
+    },
+    {
+      "id": "cas",
+      "lane": "efeito",
+      "label": "UPDATE condicional ao snapshot ou INSERT sem overwrite"
+    },
+    {
+      "id": "audit",
+      "lane": "efeito",
+      "label": "ai.purpose_binding_updated: somente mutação bem-sucedida"
+    },
+    {
+      "id": "recusa",
+      "lane": "efeito",
+      "label": "403/503/409: nenhuma mutação; tela corrige/recarrega"
+    }
+  ],
+  "edges": [
+    {
+      "id": "0",
+      "from": "tela",
+      "to": "put"
+    },
+    {
+      "id": "1",
+      "from": "put",
+      "to": "snapshot"
+    },
+    {
+      "id": "2",
+      "from": "snapshot",
+      "to": "grants"
+    },
+    {
+      "id": "3",
+      "from": "grants",
+      "to": "validar"
+    },
+    {
+      "id": "4",
+      "from": "validar",
+      "to": "cas"
+    },
+    {
+      "id": "5",
+      "from": "cas",
+      "to": "audit"
+    },
+    {
+      "id": "6",
+      "from": "snapshot",
+      "to": "recusa"
+    },
+    {
+      "id": "7",
+      "from": "grants",
+      "to": "recusa"
+    },
+    {
+      "id": "8",
+      "from": "validar",
+      "to": "recusa"
+    },
+    {
+      "id": "9",
+      "from": "cas",
+      "to": "recusa"
+    },
+    {
+      "id": "10",
+      "from": "recusa",
+      "to": "tela"
+    }
+  ]
+}
