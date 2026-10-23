@@ -16301,6 +16301,25 @@ export const DICIONARIO: Traducoes = {
   "Acesse sua operação para continuar seus atendimentos, vendas e automações.": { es: "Accede a tu operación para continuar con la atención al cliente, las ventas y las automatizaciones." },
   "Acesso restrito a usuários autorizados do Elus.": { es: "Acceso restringido a usuarios autorizados de Elus." },
   "Elus by Wandora": { es: "Elus by Wandora" },
+  // Entrada pública do ELUS.
+  "Privacidade": { es: "Privacidad" },
+  "Acessar minha conta": { es: "Acceder a mi cuenta" },
+  "Atendimento · Vendas · Inteligência artificial": { es: "Atención · Ventas · Inteligencia artificial" },
+  "O CRM que": { es: "El CRM que" },
+  "trabalha por você.": { es: "trabaja por ti." },
+  "Entrar na plataforma": { es: "Entrar a la plataforma" },
+  "Conhecer o Elus 360": { es: "Conocer Elus 360" },
+  "Atendimento centralizado": { es: "Atención centralizada" },
+  "Conversas e histórico em um só lugar.": { es: "Conversaciones e historial en un solo lugar." },
+  "Atendimento e qualificação com transferência para pessoas.": { es: "Atención y calificación con transferencia a personas." },
+  "Acompanhe oportunidades e clientes.": { es: "Haz seguimiento de oportunidades y clientes." },
+  "Agenda integrada": { es: "Agenda integrada" },
+  "Organize compromissos da operação.": { es: "Organiza las citas de la operación." },
+  "Acesso ao Elus": { es: "Acceso a Elus" },
+  "Acessar o Elus": { es: "Acceder a Elus" },
+  "Entre na sua conta para continuar.": { es: "Entra en tu cuenta para continuar." },
+  "Integrações com o Google": { es: "Integraciones con Google" },
+  "Informações legais": { es: "Información legal" },
 };
 
 /**
