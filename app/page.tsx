@@ -80,7 +80,7 @@ export default async function HomePage() {
           <div className="relative flex w-full max-w-[420px] justify-center">
             {/* Mascote oficial enviado pelo proprietário; arquivo disponível em /public/brand/elus/mascote-nexus.webp. */}
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/brand/elus/mascote-nexus.webp" alt="Mascote do elus360 apontando para você e apresentando um gráfico de crescimento" className="max-h-[30svh] w-auto max-w-full object-contain drop-shadow-[0_18px_32px_rgba(0,114,255,.24)] sm:max-h-[37svh] lg:max-h-[48svh]" />
+            <img src="/brand/elus/mascote-nexus.webp" alt="" className="max-h-[30svh] w-auto max-w-full object-contain drop-shadow-[0_18px_32px_rgba(0,114,255,.24)] sm:max-h-[37svh] lg:max-h-[48svh]" />
           </div>
           <div className="relative mt-2 w-full max-w-md rounded-2xl border border-blue-300/15 bg-[#0b1228]/90 px-4 py-3 sm:px-5">
             <h2 className="text-base font-bold tracking-tight text-white">{t("Integrações com o Google")}</h2>
