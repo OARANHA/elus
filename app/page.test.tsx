@@ -35,8 +35,9 @@ describe("/ — a página inicial pública", () => {
   it("sem sessão: mostra o nome da marca, o que o produto faz e os links legais", async () => {
     await montar();
 
-    expect(screen.getByRole("heading", { level: 1, name: "Marca da Revenda" })).toBeInTheDocument();
-    expect(screen.getByText(/Atendimento e vendas pelo WhatsApp/)).toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 1, name: /O CRM que trabalha por você/ })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Marca da Revenda" })).toHaveAttribute("href", "/");
+    expect(screen.getByText(/reúne em um só lugar as conversas com os clientes/)).toBeInTheDocument();
 
     const politica = screen
       .getAllByRole("link", { name: "Política de Privacidade" })
@@ -46,7 +47,7 @@ describe("/ — a página inicial pública", () => {
       "href",
       "/legal/terms",
     );
-    expect(screen.getByRole("link", { name: "Entrar" })).toHaveAttribute("href", "/login");
+    expect(screen.getAllByRole("link", { name: "Entrar na plataforma" })[0]).toHaveAttribute("href", "/login");
   });
 
   it("o nome vem da marca resolvida, não de texto fixo", async () => {
