@@ -59,7 +59,7 @@ export default async function HomePage() {
           </p>
           <div className="mt-9 flex flex-wrap gap-3">
             <Link href="/login" className="inline-flex min-h-12 items-center justify-center rounded-xl bg-blue-600 px-7 py-3 font-semibold text-white shadow-lg shadow-blue-900/30 transition-colors hover:bg-blue-500 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-400">{t("Entrar na plataforma")} <span aria-hidden="true" className="ml-2">→</span></Link>
-            <a href="https://elus360.com.br/" className="inline-flex min-h-12 items-center justify-center rounded-xl border border-white/25 px-7 py-3 font-semibold text-slate-100 transition-colors hover:bg-white/10 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-400">{t("Conhecer o Elus 360")} <span aria-hidden="true" className="ml-2">↗</span></a>
+            
           </div>
           <div className="mt-12 grid gap-4 sm:grid-cols-2">
             {[
@@ -90,7 +90,7 @@ export default async function HomePage() {
             <Link href="/login" className="mt-7 flex min-h-13 w-full items-center justify-center rounded-xl bg-blue-600 px-5 py-3 text-center font-semibold text-white transition-colors hover:bg-blue-500 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-400">
               {t("Entrar na plataforma")} <span aria-hidden="true" className="ml-2">→</span>
             </Link>
-            <a href="https://elus360.com.br/" className="mt-3 flex min-h-12 w-full items-center justify-center rounded-xl border border-white/20 px-5 py-3 text-center font-medium text-white transition-colors hover:bg-white/10 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-400">{t("Conhecer o Elus 360")} ↗</a>
+            
 
             <div className="mt-8 rounded-2xl border border-blue-400/20 bg-blue-400/[.06] p-5">
               <p className="text-sm font-semibold text-blue-100">{t("Integrações com o Google")}</p>
