@@ -43,7 +43,7 @@ describe("/ — a página inicial pública", () => {
       .getAllByRole("link", { name: "Política de Privacidade" })
       .map((a) => a.getAttribute("href"));
     expect(politica).toContain("/legal/privacy");
-    expect(screen.getByRole("link", { name: "Termos de Uso" })).toHaveAttribute(
+    expect(screen.getAllByRole("link", { name: "Termos de Uso" })[0]).toHaveAttribute(
       "href",
       "/legal/terms",
     );
