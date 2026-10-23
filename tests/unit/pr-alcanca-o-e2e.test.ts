@@ -22,7 +22,6 @@ describe("pr-alcanca-o-e2e", () => {
   });
 
   it.each([
-    "app/page.tsx",
     "lib/qualquer.ts",
     "Dockerfile",
     "Dockerfile.worker",
@@ -69,6 +68,17 @@ describe("pr-alcanca-o-e2e", () => {
     ["hostgator-setup-kit/install.sh"],
   ])("%s → roda", (caminho) => {
     expect(responde(["docs/leia.md", caminho])).toBe("sim");
+  });
+
+  it("homepage institucional e assets ELUS isolados pulam o E2E completo", () => {
+    expect(responde(["app/page.tsx"])).toBe("nao");
+    expect(responde(["public/brand/elus/mascote-nexus.webp"])).toBe("nao");
+    expect(responde(["app/page.tsx", "public/brand/elus/mascote-nexus.webp", "app/page.test.tsx"])).toBe("nao");
+  });
+
+  it("homepage misturada com mudança funcional mantém o E2E", () => {
+    expect(responde(["app/page.tsx", "app/(app)/leads/page.tsx"])).toBe("sim");
+    expect(responde(["public/brand/elus/mascote-nexus.webp", "tests/e2e/smoke.spec.ts"])).toBe("sim");
   });
 
   it("entrada vazia roda — não saber o que mudou nunca vira 'pula'", () => {

@@ -41,6 +41,9 @@ while IFS= read -r caminho || [ -n "$caminho" ]; do
       | .agents/* | .agent/* | .claude/* | .codex/* | .cursor/* | .opencode/* \
       | .specs/* | .lina/* | scratchpad/*) ;;
     tests/unit/* | tests/invariants/* | tests/cercas/* | tests/shell/*) ;;
+    # Página institucional pública: coberta pelo teste unitário app/page.test.tsx;
+    # não muda o fluxo autenticado exercitado pela suíte E2E completa.
+    app/page.tsx | public/brand/elus/*) ;;
     tests/e2e/* | tests/setup/* | tests/fixtures/*) echo sim; exit 0 ;;
     *.test.ts | *.test.tsx) ;;
     .github/workflows/*.yml | .github/workflows/*.yaml) ;;
