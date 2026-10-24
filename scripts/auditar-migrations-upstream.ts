@@ -26,7 +26,7 @@ export type Collision = {
 
 export function parseMigration(path: string): MigrationInfo | null {
   const match = RE_MIGRATION.exec(path);
-  if (!match) return null; // migração legada anterior à convenção
+  if (!match?.[1] || !match[2]) return null; // migração legada ou formato inválido
   return { path, timestamp: match[1], number: Number(match[2]) };
 }
 
@@ -104,7 +104,8 @@ function listMigrationsAt(ref: string): string[] {
 
 function main(): void {
   const refs = process.argv.slice(2);
-  if (refs.length !== 3) {
+  const [localRef, baseRef, targetRef] = refs;
+  if (!localRef || !baseRef || !targetRef || refs.length !== 3) {
     console.error(
       "Uso: pnpm exec tsx scripts/auditar-migrations-upstream.ts " +
       "<ref-local> <ref-base-upstream> <ref-alvo-upstream>",
@@ -114,11 +115,11 @@ function main(): void {
   }
   try {
     const result = auditUpstreamMigrations(
-      listMigrationsAt(refs[1]),
-      listMigrationsAt(refs[0]),
-      listMigrationsAt(refs[2]),
+      listMigrationsAt(baseRef),
+      listMigrationsAt(localRef),
+      listMigrationsAt(targetRef),
     );
-    console.log(JSON.stringify({ refs: { local: refs[0], base: refs[1], upstream: refs[2] }, ...result }, null, 2));
+    console.log(JSON.stringify({ refs: { local: localRef, base: baseRef, upstream: targetRef }, ...result }, null, 2));
     if (result.collisions.length > 0) process.exitCode = 1;
   } catch (error) {
     console.error("NÃO MEDIDO — refs indisponíveis ou leitura Git falhou:", String(error));
