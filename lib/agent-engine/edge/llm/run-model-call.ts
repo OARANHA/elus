@@ -56,7 +56,7 @@ import {
   SQL_ORCAMENTO,
   type ChaveDeOrcamento,
 } from './orcamento';
-import { costCents } from './pricing';
+import { costCents, gravacaoDeUmaHora } from './pricing';
 import { custoChutesCents, resolverTarifaChutes } from './preco-chutes';
 import { custoDoModeloForaDoMotor } from './pricing-do-catalogo';
 import { chaveDeOrcamentoDaInstalacao } from '../../../instalacao/comportamento';
@@ -76,6 +76,19 @@ export { tool } from 'ai';
 export type { ModelMessage, ToolSet } from 'ai';
 export type { LlmEdgeConfig } from './credentials';
 export { llmEdgeConfigFromEnv, LlmNotConfiguredError } from './credentials';
+
+/**
+ * Usage cru de cada passo do SDK (Anthropic expõe cache_creation por TTL).
+ * Se não houver passos, usa o usage do resultado; não inventa divisão.
+ * Portado de DeskcommCRM v1.89.0 sem substituir o seam Chutes do ELUS.
+ */
+export function usosCrusDosPassos(result: {
+  usage: { raw?: unknown };
+  steps?: ReadonlyArray<{ usage?: { raw?: unknown } }>;
+}): unknown[] {
+  const dosPassos = (result.steps ?? []).map((s) => s.usage?.raw).filter((r) => r !== undefined);
+  return dosPassos.length > 0 ? dosPassos : [result.usage.raw];
+}
 
 /** Teto mensal da org esgotado — runs recusados ANTES do provider (zero tokens). */
 export class LlmBudgetExceededError extends Error {
@@ -1152,15 +1165,17 @@ export async function runModelCall(db: pg.Pool, cfg: LlmEdgeConfig, input: RunMo
   }
   const latencyMs = Date.now() - startedAt;
 
+  const cacheWriteTokens = result.usage.inputTokenDetails.cacheWriteTokens ?? 0;
+  const cacheWrite1hTokens = gravacaoDeUmaHora(usosCrusDosPassos(result), cacheWriteTokens);
   const usage = {
     inputTokens: result.usage.inputTokens ?? 0,
     outputTokens: result.usage.outputTokens ?? 0,
     cacheReadTokens: result.usage.inputTokenDetails.cacheReadTokens ?? 0,
-    cacheWriteTokens: result.usage.inputTokenDetails.cacheWriteTokens ?? 0,
+    cacheWriteTokens,
+    ...(cacheWrite1hTokens !== undefined ? { cacheWrite1hTokens } : {}),
   };
-  // O TTL é o MESMO que gravou o prefixo estável acima: a gravação de cache custa
-  // 1.25× a entrada em 5m e 2× em 1h, e supor a doutrina superfaturaria 60% da
-  // parcela de cache write em quem usa o knob.
+  // Quando o provedor informa a divisão 5m/1h, cobra cada parcela pela tarifa
+  // correspondente; sem essa informação, mantém o cacheTtl do prefixo estável.
   //
   // A tabela estática do motor é a PRIMEIRA verdade. Quando ela não conhece o id
   // — o caso do provedor PERSONALIZADO, que serve qualquer modelo de qualquer

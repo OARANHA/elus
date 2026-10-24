@@ -161,6 +161,8 @@ export interface TokenUsage {
   outputTokens: number;
   cacheReadTokens: number;
   cacheWriteTokens: number;
+  /** Parcela de cacheWriteTokens gravada com TTL de 1h; ausente usa cacheTtl. */
+  cacheWrite1hTokens?: number;
 }
 
 /**
@@ -245,15 +247,54 @@ export function costCents(
   if (p === undefined) {
     return null;
   }
-  const cacheWrite = cacheTtl === '5m' ? p.cacheWrite5m : p.cacheWrite1h;
   const noCacheInput = Math.max(0, usage.inputTokens - usage.cacheReadTokens - usage.cacheWriteTokens);
   const usd =
     (noCacheInput * p.input +
       usage.cacheReadTokens * p.cacheRead +
-      usage.cacheWriteTokens * cacheWrite +
+      custoDaGravacao(p, usage, cacheTtl) +
       usage.outputTokens * p.output) /
     1_000_000;
   return usd * 100;
+}
+
+
+/** Divide a gravação por TTL real quando o provedor informa a parcela de 1h. */
+function custoDaGravacao(p: Preco, usage: TokenUsage, cacheTtl: CacheTtl): number {
+  if (usage.cacheWrite1hTokens === undefined) {
+    return usage.cacheWriteTokens * (cacheTtl === '5m' ? p.cacheWrite5m : p.cacheWrite1h);
+  }
+  const umaHora = Math.min(Math.max(0, usage.cacheWrite1hTokens), usage.cacheWriteTokens);
+  return umaHora * p.cacheWrite1h + (usage.cacheWriteTokens - umaHora) * p.cacheWrite5m;
+}
+
+/**
+ * Reconciliação DeskcommCRM v1.89.0: lê os tokens de gravação de cache por TTL
+ * informados pelo provedor em cada passo (Anthropic: cache_creation).
+ * A proporção é aplicada ao total agregado pelo SDK, sem excedê-lo.
+ * Se o provedor não fornece essa divisão, retorna undefined para manter
+ * a política anterior de cacheTtl.
+ */
+export function gravacaoDeUmaHora(
+  usosCrus: ReadonlyArray<unknown>,
+  totalGravado: number,
+): number | undefined {
+  let cincoMin = 0;
+  let umaHora = 0;
+  let viu = false;
+  for (const cru of usosCrus) {
+    const divisao = (cru as { cache_creation?: unknown } | null | undefined)?.cache_creation;
+    if (!divisao || typeof divisao !== 'object') continue;
+    const d = divisao as { ephemeral_5m_input_tokens?: unknown; ephemeral_1h_input_tokens?: unknown };
+    const c = Number(d.ephemeral_5m_input_tokens ?? 0);
+    const u = Number(d.ephemeral_1h_input_tokens ?? 0);
+    if (!Number.isFinite(c) || !Number.isFinite(u)) continue;
+    viu = true;
+    cincoMin += Math.max(0, c);
+    umaHora += Math.max(0, u);
+  }
+  if (!viu) return undefined;
+  if (cincoMin + umaHora === 0) return 0;
+  return Math.round((totalGravado * umaHora) / (cincoMin + umaHora));
 }
 
 /**
