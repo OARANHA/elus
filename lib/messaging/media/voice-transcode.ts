@@ -57,14 +57,19 @@ export const VOICE_MIME = "audio/ogg;codecs=opus";
 
 /** Teto de segurança: nota de voz é curta, e acima disto é outra coisa. */
 const MAX_BYTES = 16 * 1024 * 1024;
+/** Não permitir que ffmpeg prenda o processo por tempo indefinido. */
+const PRAZO_FFMPEG_MS = 30_000;
 
 /**
  * Precisa converter? Só `webm` com opus — o resto ou já serve, ou não é nosso
  * problema resolver aqui.
  */
-export function precisaTranscodificar(mime: string): boolean {
+export function precisaTranscodificar(mime: string, notaDeVoz = false): boolean {
   const base = mime.split(";")[0]?.trim().toLowerCase() ?? "";
-  return base === "audio/webm" || base === "video/webm";
+  if (base === "audio/webm" || base === "video/webm") return true;
+  // Só reencodar áudio AAC/MP4 quando o gravador o identificou como nota de voz.
+  // Arquivos de áudio enviados normalmente devem permanecer intactos.
+  return notaDeVoz && base.startsWith("audio/") && base !== "audio/ogg" && base !== "audio/opus";
 }
 
 export interface Transcodificacao {
@@ -78,6 +83,9 @@ export interface Transcodificacao {
 async function runFfmpeg(args: string[], cwd: string): Promise<void> {
   await new Promise<void>((resolve, reject) => {
     const proc = spawn("ffmpeg", ["-nostdin", "-y", ...args], { cwd });
+    const prazo = setTimeout(() => proc.kill("SIGKILL"), PRAZO_FFMPEG_MS);
+    proc.on("close", () => clearTimeout(prazo));
+    proc.on("error", () => clearTimeout(prazo));
     let erro = "";
     proc.stderr?.on("data", (d: Buffer) => {
       // Só o fim interessa: ffmpeg escreve muito e o erro vem por último.
@@ -98,10 +106,10 @@ async function runFfmpeg(args: string[], cwd: string): Promise<void> {
  * (porque converte sozinho) continua funcionando como sempre.
  */
 export async function transcodificarNotaDeVoz(
-  input: { buffer: Buffer; mime: string },
+  input: { buffer: Buffer; mime: string; notaDeVoz?: boolean },
   deps: { run?: typeof runFfmpeg } = {},
 ): Promise<Transcodificacao> {
-  if (!precisaTranscodificar(input.mime)) {
+  if (!precisaTranscodificar(input.mime, input.notaDeVoz)) {
     return { buffer: input.buffer, mime: input.mime, convertido: false };
   }
   if (input.buffer.length > MAX_BYTES) {
@@ -111,12 +119,22 @@ export async function transcodificarNotaDeVoz(
   const executar = deps.run ?? runFfmpeg;
   const dir = await mkdtemp(join(tmpdir(), "voz-"));
   try {
-    const entrada = join(dir, "in.webm");
+    const entrada = join(dir, "in.audio");
     const saida = join(dir, "out.ogg");
     await writeFile(entrada, input.buffer);
-    // `-c:a copy`: o codec já é opus dos dois lados. Reencodar custaria tempo e
-    // qualidade para chegar ao mesmo lugar.
-    await executar(["-i", entrada, "-vn", "-c:a", "copy", "-f", "ogg", saida], dir);
+    // WebM/Opus só troca o container. AAC do iPhone, explicitamente marcado
+    // como nota de voz, exige libopus; não converter m4a enviado como anexo.
+    const base = input.mime.split(";")[0]?.trim().toLowerCase() ?? "";
+    const webm = base === "audio/webm" || base === "video/webm";
+    const codec = webm
+      ? ["-c:a", "copy"]
+      : ["-c:a", "libopus", "-b:a", "24k", "-ac", "1", "-ar", "48000"];
+    // Somente protocolos e formatos locais permitidos ao ffmpeg.
+    await executar([
+      "-protocol_whitelist", "file",
+      "-format_whitelist", "ogg,matroska,webm,mov,mp4,m4a,3gp,3g2,mj2",
+      "-i", entrada, "-vn", ...codec, "-f", "ogg", saida,
+    ], dir);
     const buffer = await readFile(saida);
     if (buffer.length === 0) return { buffer: input.buffer, mime: input.mime, convertido: false };
     return { buffer, mime: VOICE_MIME, convertido: true };
