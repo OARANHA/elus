@@ -13,11 +13,12 @@ describe("auditoria de migrations ELUS x upstream (somente leitura)", () => {
     });
   });
 
-  it("detecta as três colisões reais e propõe números não ocupados sem renomear o ELUS", () => {
+  it("detecta três colisões de número e uma de timestamp sem renomear o ELUS", () => {
     const base = [migration("20261018000000", "0688", "base")];
     const local = [
       ...base,
       migration("20261019120000", "0689", "integracoes_erp_vendaerp"),
+      migration("20261020120000", "0690", "org_ai_autonomy_protected"),
       migration("20261020120001", "0691", "chutes_chat_catalog"),
       migration("20261020230000", "0692", "chutes_catalog_sync"),
     ];
@@ -29,10 +30,11 @@ describe("auditoria de migrations ELUS x upstream (somente leitura)", () => {
       migration("20261023230258", "0761", "importacoes_de_historico"),
     ];
     const result = auditUpstreamMigrations(base, local, upstream);
-    expect(result.localAdded).toBe(3);
+    expect(result.localAdded).toBe(4);
     expect(result.upstreamAdded).toBe(4);
     expect(result.collisions.map((c) => [c.reason, c.value])).toEqual([
       ["number", "0689"],
+      ["timestamp", "20261020120000"],
       ["number", "0691"],
       ["number", "0692"],
     ]);
@@ -40,7 +42,7 @@ describe("auditoria de migrations ELUS x upstream (somente leitura)", () => {
     expect(result.renameSuggestions[0].suggested).toBe(
       migration("20261020000006", "0762", "aviso_da_central_com_destinatario"),
     );
-    expect(result.requiresManualTimestampFix).toBe(false);
+    expect(result.requiresManualTimestampFix).toBe(true);
     expect(local).toContain(migration("20261019120000", "0689", "integracoes_erp_vendaerp"));
   });
 
