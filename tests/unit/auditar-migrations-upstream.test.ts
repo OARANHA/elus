@@ -39,7 +39,7 @@ describe("auditoria de migrations ELUS x upstream (somente leitura)", () => {
       ["number", "0692"],
     ]);
     expect(result.renameSuggestions.map((x) => x.replacementNumber)).toEqual(["0762", "0763", "0764"]);
-    expect(result.renameSuggestions[0].suggested).toBe(
+    expect(result.renameSuggestions[0]?.suggested).toBe(
       migration("20261020000006", "0762", "aviso_da_central_com_destinatario"),
     );
     expect(result.requiresManualTimestampFix).toBe(true);
