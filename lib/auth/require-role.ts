@@ -29,7 +29,7 @@ import type { NextResponse } from "next/server";
 import { fail, type ApiError } from "@/lib/api/wrappers";
 import { audit } from "@/lib/audit";
 import { CODIGO_ORG_DIVERGENTE, HEADER_ORG_DA_ABA } from "@/lib/auth/org-da-aba";
-import { loadAuthUser, mfaEmDivida, orgAtivaSemPortao } from "@/lib/auth/server";
+import { loadAuthUser, mfaEmDivida, mfaEmDividaEstrita, orgAtivaSemPortao } from "@/lib/auth/server";
 import { ROLE_RANK, type ActiveOrg, type AuthUser, type Role } from "@/lib/auth/types";
 import { traduzir } from "@/lib/i18n/dicionario";
 import { STATUS_OPERANTE, ehOperante } from "@/lib/organizacao/operante";
@@ -218,7 +218,17 @@ export async function requireRole(min: Role, opts: RequireRoleOpts = {}): Promis
   if (user.is_platform_admin && !user.support && allowPlatformAdmin !== false) {
     if (allowPlatformAdmin === "leitura") return { ok: true, user, org };
     if (user.platform_admin_scope === "full") {
-      if (await mfaEmDivida(user)) {
+      // O atalho de plataforma pode escrever numa organização da qual o ator
+      // não é admin. Nesse caso a prova estrita AAL2 é explícita: nunca
+      // delegar a decisão a um dispositivo confiável ou ao papel do tenant.
+      // O ELUS já exige AAL2 na régua comum; mantemos ambas as políticas
+      // separadas para incorporar o contrato do DeskcommCRM 1.89.0 sem
+      // enfraquecer o MFA próprio. Reutilizar o getUser() validado.
+      const peloPoderDePlataforma = ROLE_RANK[org.role] < ROLE_RANK.admin;
+      const mfaPendente = peloPoderDePlataforma
+        ? await mfaEmDividaEstrita(user)
+        : await mfaEmDivida(user);
+      if (mfaPendente) {
         void audit({
           action: "authz.denied",
           actorUserId: user.id,
