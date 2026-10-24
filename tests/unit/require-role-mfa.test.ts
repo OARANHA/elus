@@ -261,6 +261,68 @@ describe("requireRole — os caminhos que não passam pela leitura paralela", ()
   });
 });
 
+describe("requireRole — MFA estrita no atalho de plataforma para outra organização", () => {
+  function prepararPlataformaComAlvo(aal: "aal1" | "aal2") {
+    const cenario: Cenario = { role: "viewer", temFator: true, aal, isPlatformAdmin: true };
+    preparar(cenario);
+    const stub = montarStub(cenario);
+    vi.mocked(createClient).mockResolvedValue(
+      stub as unknown as Awaited<ReturnType<typeof createClient>>,
+    );
+    return { stub };
+  }
+
+  it("nega escrita em org onde platform admin é viewer quando a sessão está em aal1", async () => {
+    const { stub } = prepararPlataformaComAlvo("aal1");
+    const user = (await loadAuthUser())!;
+    vi.mocked(loadAuthUser).mockResolvedValue({
+      ...user,
+      mfa_enrolled: true,
+      organizations: [{
+        organization_id: ORG_ID,
+        organization_name: "Org alvo",
+        role: "viewer",
+        org_status: "active",
+      }],
+    } as AuthUser);
+
+    const r = await requireRole("admin", {
+      organizationId: ORG_ID,
+      allowPlatformAdmin: true,
+      requestId: "mfa-estrita-alvo-aal1",
+    });
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect((await r.response.json()).error.code).toBe("mfa_required");
+    expect(stub.rpc).not.toHaveBeenCalled();
+    // A prova dos fatores veio do getUser validado: sem segunda chamada ao GoTrue.
+    expect(stub.auth.mfa.listFactors).not.toHaveBeenCalled();
+  });
+
+  it("permite o mesmo atalho com TOTP verificado e sessão aal2", async () => {
+    const { stub } = prepararPlataformaComAlvo("aal2");
+    const user = (await loadAuthUser())!;
+    vi.mocked(loadAuthUser).mockResolvedValue({
+      ...user,
+      mfa_enrolled: true,
+      organizations: [{
+        organization_id: ORG_ID,
+        organization_name: "Org alvo",
+        role: "viewer",
+        org_status: "active",
+      }],
+    } as AuthUser);
+
+    const r = await requireRole("admin", {
+      organizationId: ORG_ID,
+      allowPlatformAdmin: true,
+      requestId: "mfa-estrita-alvo-aal2",
+    });
+    expect(r.ok).toBe(true);
+    expect(stub.rpc).not.toHaveBeenCalled();
+    expect(stub.auth.mfa.listFactors).not.toHaveBeenCalled();
+  });
+});
+
 describe("requireRole — a leitura paralela não vaza nem guarda nada", () => {
   it("MFA que rejeita DEPOIS do 403 de papel não vira unhandled rejection", async () => {
     // O .then de dois handlers é o que garante isto: quando o papel falha, a
