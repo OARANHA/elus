@@ -91,7 +91,7 @@ vi.mock("@/lib/supabase/server", () => ({
   }),
 }));
 
-const { loadAuthUser, resolveActiveOrg, totpVerificadoNoUsuario, mfaEmDivida } = await import("@/lib/auth/server");
+const { loadAuthUser, resolveActiveOrg, totpVerificadoNoUsuario, mfaEmDivida, mfaEmDividaEstrita } = await import("@/lib/auth/server");
 
 beforeEach(() => {
   consultas.platformAdmins = { data: null, error: null };
@@ -120,6 +120,30 @@ describe("getUser validado — fatores MFA sem outra ida ao GoTrue", () => {
     expect(user?.mfa_enrolled).toBe(true);
     expect(await mfaEmDivida(user!)).toBe(true);
     expect(mfa.consultasExtras).toBe(0);
+  });
+
+  it("régua estrita do upstream preserva AAL2 no ELUS sem consulta extra", async () => {
+    fatoresDoGoTrue.atual = [{ factor_type: "totp", status: "verified" }];
+    const user = await loadAuthUser();
+    expect(user?.mfa_enrolled).toBe(true);
+    expect(await mfaEmDividaEstrita(user!)).toBe(true);
+    expect(mfa.consultasExtras).toBe(0);
+
+    mfa.aal = "aal2";
+    expect(await mfaEmDividaEstrita(user!)).toBe(false);
+    expect(mfa.consultasExtras).toBe(0);
+  });
+
+  it("régua estrita não inventa dívida quando TOTP não está verificado", async () => {
+    fatoresDoGoTrue.atual = [{ factor_type: "totp", status: "unverified" }];
+    const user = await loadAuthUser();
+    expect(await mfaEmDividaEstrita(user!)).toBe(false);
+    expect(mfa.consultasExtras).toBe(0);
+  });
+
+  it("sem usuário validado, régua estrita falha fechada se a leitura dos fatores falhar", async () => {
+    await expect(mfaEmDividaEstrita()).rejects.toThrow(/listFactors nao deveria/);
+    expect(mfa.consultasExtras).toBe(1);
   });
 
   it("com TOTP verificado, sessao aal2 continua autorizada", async () => {
