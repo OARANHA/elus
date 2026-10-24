@@ -14,7 +14,7 @@ describe("ELUS: E2E somente sob pedido explícito", () => {
     const e2e = readFileSync(path.join(workflowsDir, "e2e.yml"), "utf8");
     const bloco = e2e.match(/^on:\s*\n([\s\S]*?)(?=^[^\s#]|\s*$)/m);
     expect(bloco, "bloco on: obrigatório no e2e.yml").not.toBeNull();
-    expect(bloco?.[1].trim()).toBe("workflow_dispatch: {}");
+    expect(bloco?.[1]?.trim()).toBe("workflow_dispatch: {}");
   });
 
   it("nenhum outro workflow inicia testes E2E/Playwright", () => {
