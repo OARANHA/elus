@@ -1,6 +1,6 @@
 # ELUS × DeskcommCRM v1.89.0 — MFA da plataforma
 
-**Base de trabalho:** PR #27 (`54187d7d861a1cadfe97c34deb62619ac88fdbfe`).  
+**Base de trabalho:** PR #27 (`54187d7d861a1cadfe97c34deb62619ac88fdbfe`).
 **Upstream analisado:** tag `v1.89.0` (`6540929d5ef7a951531dda550db0bf54affa516a`).
 
 ## Divergência preservada intencionalmente
