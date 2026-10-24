@@ -572,3 +572,20 @@ export async function mfaEmDivida(usuarioValidado?: AuthUser): Promise<boolean> 
   if (!(usuarioValidado?.mfa_enrolled ?? (await isMfaEnrolled()))) return false;
   return (await sessionAal()) !== "aal2";
 }
+
+/**
+ * Régua ESTRITA da plataforma, compatível com DeskcommCRM v1.89.0.
+ *
+ * No ELUS, a régua comum `mfaEmDivida` já exige AAL2 de quem tem TOTP
+ * verificado: não aceita dispositivo confiável como substituto do código.
+ * Esta função mantém a regra explícita e independente para os futuros
+ * call sites do upstream (admin, extensões e instalação). Não alterar a
+ * política existente nem repetir `listFactors()` se `loadAuthUser` já
+ * trouxe os fatores de um `getUser()` validado.
+ *
+ * Sem prova do fator ou sem AAL2, nega. Falha de leitura não vira permissão.
+ */
+export async function mfaEmDividaEstrita(usuarioValidado?: AuthUser): Promise<boolean> {
+  if (!(usuarioValidado?.mfa_enrolled ?? (await isMfaEnrolled()))) return false;
+  return (await sessionAal()) !== "aal2";
+}
