@@ -36,6 +36,7 @@ import type { Queryable } from '../../queue/queue';
 import { cancelJob, rescheduleJob, type JobRow } from '../../queue/queue';
 import { cancelPendingCronsForLead } from '../../cron/scheduler';
 import { CrmTransportError, type CrmEdgeConfig } from './mcp-client';
+import type { TipoDeMidiaComLegenda } from '@/lib/messaging/media/midia-com-legenda';
 
 /** Erro de negócio não classificado do handler (ex.: conversa inexistente) — ledger fica 'requested'. */
 export class SendToolError extends Error {
@@ -65,14 +66,14 @@ export interface SendMessageInput {
   /**
    * Presente = o envio sai como MÍDIA e o `body` é a LEGENDA.
    *
-   * Duas procedências, um caminho só (o handler de envio): `storagePath` é a imagem
+   * Duas procedências, um caminho só (o handler de envio): `storagePath` é a mídia
    * que já mora na pasta da conversa (`whatsapp-media/...`, foto de produto — assinada
    * curta por quem conhece o provider), e `url` é a mídia de um passo automático
    * (#2734), que o operador aponta direto e o handler confere antes de buscar.
    */
   media?:
     | { storagePath: string; mime: string; type?: 'image' | 'document' }
-    | { url: string; mime: string; type: 'image' | 'document' };
+    | { url: string; mime: string; type: TipoDeMidiaComLegenda };
 }
 
 /**
@@ -96,8 +97,8 @@ export function corpoDoEnvio(
       : input.media
         ? 'url' in input.media
           ? {
-              // #2734 — mídia por URL de um passo automático: o `type` vem decidido
-              // (imagem × PDF) e o handler é quem busca e confere o arquivo.
+              // #2734/#2972 — o tipo da mídia por URL vem do classificador central;
+              // o handler continua responsável por buscar e validar o arquivo.
               type: input.media.type,
               media_url: input.media.url,
               media_mime: input.media.mime,
