@@ -1,5 +1,6 @@
 import type { AgentOperationContext } from '@/lib/ai/agents/operation';
 import type { JobClaim } from './queue/claim';
+import type { TipoDeMidiaComLegenda } from '@/lib/messaging/media/midia-com-legenda';
 /**
  * Contrato agnóstico de canal (F2-25; blueprint risco nº 1 + veredito executivo).
  *
@@ -42,7 +43,7 @@ export interface ChannelSendInput {
   };  /**
    * Presente = este envio é uma MÍDIA e o `body` é a legenda (pode ser vazio).
    *
-   * Duas procedências, um caminho só: `storagePath` é a imagem que já mora no
+   * Duas procedências, um caminho só: `storagePath` é a mídia que já mora no
    * Storage da conversa (hoje só a foto do catálogo usa — `agent/fotos-do-produto.ts`);
    * `url` é a mídia de um passo automático (#2734), apontada direto pelo operador.
    * Caminho, nunca bytes: quem assina a URL curta para o canal é o handler de
@@ -50,7 +51,7 @@ export interface ChannelSendInput {
    */
   media?:
     | { storagePath: string; mime: string; type?: 'image' | 'document' }
-    | { url: string; mime: string; type: 'image' | 'document' };
+    | { url: string; mime: string; type: TipoDeMidiaComLegenda };
 }
 
 /**
