@@ -87,3 +87,64 @@ aplicação, idempotência, dependências SQL nem compatibilidade do
 e revisão do schema real são gates separados antes de portar/aplicar
 as migrations. Não executar SQL, E2E, merge, imagem ou deploy a partir
 deste teste isolado.
+
+
+## Gate remoto — histórico de aplicação real (25/10/2026, somente leitura)
+
+Uma consulta **SELECT** ao projeto Supabase ELUS (sem ler `statements`,
+credenciais, dados de clientes ou executar DDL/DML) encontrou **11 registros**
+em `supabase_migrations.schema_migrations`:
+
+- **1** preparação de extensões da base v1.85;
+- **6** partes de aplicação do baseline v1.85;
+- **4** registros das migrations próprias: VendaERP `0689`, autonomia `0690`,
+  catálogo Chutes `0691` e sincronização Chutes `0692`.
+
+O último `version` remoto observado foi **`20261021025613`**. Os quatro
+registros próprios têm **versões de aplicação diferentes dos timestamps dos
+arquivos SQL versionados**:
+
+| Migration ELUS | Timestamp do arquivo | Version registrada no banco |
+| --- | --- | --- |
+| `0689_integracoes_erp_vendaerp` | `20261019120000` | `20261019204449` |
+| `0690_org_ai_autonomy_protected` | `20261020120000` | `20261021025530` |
+| `0691_chutes_chat_catalog` | `20261020120001` | `20261021025551` |
+| `0692_chutes_catalog_sync` | `20261020230000` | `20261021025613` |
+
+**Consequência:** o histórico remoto NÃO é uma trilha um-para-um dos 516
+arquivos SQL existentes no upstream v1.85. O baseline foi aplicado em seis
+partes, com versões próprias do processo de implantação. Portanto, **não**
+inferir que uma migration específica já foi executada apenas porque o
+baseline aparece no histórico; nem assumir que `supabase db push` pode
+importar automaticamente as 38 migrations v1.89.
+
+Das 38 migrations candidatas da v1.89, **11** possuem timestamp de arquivo
+menor ou igual à última versão remota observada. Isso é um **alerta de
+ordenação**, não prova de que foram aplicadas nem de que sejam inválidas.
+Antes de qualquer execução, definir estratégia explícita para versões
+anteriores ao último registro e comparar o schema efetivo com o baseline.
+
+### Auditor offline reproduzível
+
+Exportar **somente** `version` e `name` de um ambiente autorizado, via consulta
+de leitura, sem incluir `statements`:
+
+`SELECT version, name FROM supabase_migrations.schema_migrations ORDER BY version;`
+
+Salvar o resultado como array JSON em arquivo local **não versionado**
+(`snapshot-sanitizado.json`) e executar, com as refs Git disponíveis:
+
+`pnpm exec tsx scripts/auditar-historico-remoto-migrations.ts snapshot-sanitizado.json upstream-base-v185 upstream-target-v189 docs/integracao/elus-upstream-v1.89.0-plano.json`
+
+O auditor identifica baseline em blocos, aliases de versões próprias,
+ausência de registros e candidatos com timestamp não posterior ao último
+registro remoto. Mesmo sem anomalias, devolve
+`automaticImportAllowed: false` e `requiresManualSchemaReview: true`.
+Ele **não** abre conexão de banco, não importa SQL e não executa E2E.
+
+**Gate ainda bloqueado:** reconciliar dependências SQL e ordem efetiva das 38
+migrations, comparar schema/baseline com os objetos realmente instalados,
+definir atualização idempotente para ambientes existentes e validar
+estaticamente o conjunto. Nenhuma migration foi aplicada. Não executar
+`db push`, `db reset`, Playwright/E2E, merge, publicação ou deploy com base
+neste relatório.
