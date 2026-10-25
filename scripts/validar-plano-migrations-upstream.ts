@@ -1,8 +1,9 @@
 /**
  * Pré-voo somente leitura para o lote de migrations DeskcommCRM -> ELUS.
  *
- * Confere se o plano de destinos elimina colisões de caminho, versão/timestamp
- * do Supabase e número lógico sem alterar nenhuma migration do ELUS.
+ * Confere colisões de caminho, versão/timestamp e número lógico; exige
+ * também que as migrations históricas da base tenham blob SHA idêntico
+ * nas árvores ELUS e upstream. Não altera nenhum arquivo nem banco.
  *
  * NÃO valida dependências SQL, schema real, migrations já aplicadas ou permissões
  * de execução. Resultado válido NÃO autoriza db push, reset, deploy ou merge.
@@ -120,12 +121,73 @@ export function validateMigrationImportPlan(
   };
 }
 
-function listMigrationsAt(ref: string): string[] {
+/** Blob SHA do Git identifica bytes exatos, sem executar nem interpretar SQL. */
+export interface MigrationBlob {
+  path: string;
+  sha: string;
+}
+
+export type MigrationHistoryIssueCode =
+  | "local_history_missing"
+  | "local_history_modified"
+  | "upstream_history_missing"
+  | "upstream_history_modified";
+
+export interface MigrationHistoryIssue {
+  code: MigrationHistoryIssueCode;
+  path: string;
+}
+
+/**
+ * Falha fechado se a cópia ELUS ou o alvo upstream apagou/alterou uma migration
+ * presente no baseline comum. Arquivo aplicado não pode ser reescrito
+ * silenciosamente; a existência do mesmo caminho não é prova de integridade.
+ *
+ * Isto NÃO verifica se o SQL já foi aplicado em qualquer banco real.
+ */
+export function validateMigrationHistory(
+  base: readonly MigrationBlob[],
+  local: readonly MigrationBlob[],
+  upstream: readonly MigrationBlob[],
+) {
+  const own = new Map(local.map((entry) => [entry.path, entry.sha]));
+  const target = new Map(upstream.map((entry) => [entry.path, entry.sha]));
+  const issues: MigrationHistoryIssue[] = [];
+
+  for (const migration of base) {
+    const localSha = own.get(migration.path);
+    if (localSha === undefined) {
+      issues.push({ code: "local_history_missing", path: migration.path });
+    } else if (localSha !== migration.sha) {
+      issues.push({ code: "local_history_modified", path: migration.path });
+    }
+    const upstreamSha = target.get(migration.path);
+    if (upstreamSha === undefined) {
+      issues.push({ code: "upstream_history_missing", path: migration.path });
+    } else if (upstreamSha !== migration.sha) {
+      issues.push({ code: "upstream_history_modified", path: migration.path });
+    }
+  }
+
+  return { checked: base.length, issues, valid: issues.length === 0 };
+}
+
+/**
+ * Lê somente os metadados de objetos da árvore Git (sem checkout, rede, SQL
+ * executável ou database). A saída padrão é "100644 blob SHA\\tpath".
+ */
+function listMigrationBlobsAt(ref: string): MigrationBlob[] {
   const stdout = execFileSync(
-    "git", ["ls-tree", "-r", "--name-only", ref, "--", "supabase/migrations"],
+    "git", ["ls-tree", "-r", ref, "--", "supabase/migrations"],
     { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] },
   );
-  return stdout.split("\n").filter((line) => line.endsWith(".sql"));
+  return stdout.split("\n").filter(Boolean).map((line) => {
+    const match = /^100644 blob ([0-9a-f]{40})\t(.+\.sql)$/.exec(line);
+    if (!match?.[1] || !match[2]) {
+      throw new Error("Objeto de migration Git inesperado: " + line.slice(0, 100));
+    }
+    return { sha: match[1], path: match[2] };
+  });
 }
 
 function main(): void {
@@ -145,17 +207,22 @@ function main(): void {
       !Object.values(plan.renames).every((value) => typeof value === "string")) {
       throw new Error("Plano inválido: renames deve ser um objeto de caminhos.");
     }
+    const base = listMigrationBlobsAt(baseRef);
+    const local = listMigrationBlobsAt(localRef);
+    const upstream = listMigrationBlobsAt(upstreamRef);
+    const history = validateMigrationHistory(base, local, upstream);
     const result = validateMigrationImportPlan(
-      listMigrationsAt(baseRef),
-      listMigrationsAt(localRef),
-      listMigrationsAt(upstreamRef),
+      base.map((entry) => entry.path),
+      local.map((entry) => entry.path),
+      upstream.map((entry) => entry.path),
       plan.renames as Record<string, string>,
     );
     console.log(JSON.stringify({
       refs: { local: localRef, base: baseRef, upstream: upstreamRef },
       ...result,
+      history,
     }, null, 2));
-    if (!result.valid) process.exitCode = 1;
+    if (!result.valid || !history.valid) process.exitCode = 1;
   } catch (error) {
     console.error("NÃO MEDIDO — plano ou refs indisponíveis:", String(error));
     process.exitCode = 2;
