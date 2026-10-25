@@ -2,6 +2,8 @@
 
 **Data da inspeção:** 25/10/2026. **Escopo:** revisão estática do lote importado na PR #43, não um procedimento de aplicação. **Estado:** BLOQUEADO para banco real, merge e deploy.
 
+**Atualização somente leitura em 25/10/2026:** o ledger real continua com 11 versões e a consulta ao catálogo PostgreSQL 17.11 confirmou ausência das 16 tabelas novas, divergência da assinatura RPC de aviso de caso e policy de escrita anterior. Evidências, limites e plano de gates em [reconciliação do ledger e catálogo](elus-v189-plano-upgrade-ledger-e-catalogo-20261025.md). Este pré-voo estático permanece histórico e não autoriza replay.
+
 ## Evidência e fronteira
 
 - Repositório: `OARANHA/elus`, PR [#43](https://github.com/OARANHA/elus/pull/43), HEAD inspecionado `4fd669d59bcc08b3ebf2ae723e1d8192303ac927`, base da PR #40 `610474d53af17ca44065f239e86643dd6784fc08`. PR aberta, Draft e sem merge na consulta desta data.
