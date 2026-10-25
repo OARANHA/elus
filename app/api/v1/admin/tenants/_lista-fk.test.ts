@@ -12,7 +12,7 @@ function clienteComResposta(data: unknown[], error: { message: string } | null =
   return { admin: { from } as never, from, select, query };
 }
 
-describe("listarTenants — relacionamento explícito do DeskcommCRM v1.89.0", () => {
+describe("listarTenants — relacionamento explícito com FK da versão de referência", () => {
   it("conta membros pela FK correta sem alterar a contagem de conversas", async () => {
     const db = clienteComResposta([]);
 
