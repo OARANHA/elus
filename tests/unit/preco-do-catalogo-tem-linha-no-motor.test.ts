@@ -95,13 +95,15 @@ describe("o catálogo e a tabela de preço do motor", () => {
       expect.soft(t, `${id} sem linha em ai_pricing`).toBeDefined();
       if (!t) continue;
       const vazio = { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 };
-      // 3.6/3.7/3.8 Flash: a tabela só cabe um preço (PK em `model`) e guarda a
-      // tarifa de 2027. O motor só a aplica a partir de 2027-01-01T00:00:00Z;
-      // comparar com `new Date()` ficaria vermelho até lá e verde depois, sem mudança.
+      // Argon (0703) e Flash (0649) guardam a tarifa posterior à promoção.
+      // Paridade com o catálogo é testada na data da tarifa Standard; os
+      // cortes promocionais são verificados separadamente nos testes de pricing.
       const em =
-        id === "gemini-3.6-flash" || id === "gemini-3.7-flash" || id === "gemini-3.8-flash"
-          ? new Date("2027-01-01T00:00:00.000Z")
-          : undefined;
+        id === "gemini-4-argon"
+          ? new Date("2026-12-01T00:00:00.000Z")
+          : id === "gemini-3.6-flash" || id === "gemini-3.7-flash" || id === "gemini-3.8-flash"
+            ? new Date("2027-01-01T00:00:00.000Z")
+            : undefined;
       expect.soft(costCents(id, { ...vazio, inputTokens: 1_000_000 }, "1h", em), `${id}: entrada`).toBeCloseTo(
         t.prompt,
         6,
