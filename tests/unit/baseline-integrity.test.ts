@@ -13,4 +13,9 @@ describe("integridade da baseline ELUS restaurada da PR #40", () => {
   it("preserva o blob integral e falha em truncagem ou edição acidental", () => {
     expect(gitBlobSha(baseline)).toBe("96147866db19c4e6a22a8bed5214c7ea85d0cb3d");
   });
+
+  it("não aceita a baseline truncada de 478 linhas", () => {
+    expect(baseline.length).toBeGreaterThan(3_000_000);
+    expect(baseline.toString("utf8").split("\n").length).toBeGreaterThan(58_000);
+  });
 });
