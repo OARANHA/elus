@@ -114,7 +114,7 @@ describe("ELUS v1.89 — integridade das migrations importadas (sem banco)", () 
       "supabase/migrations/20261020130000_0764_rodizio_na_acao_atribuir.sql",
     ]);
     for (const destino of Object.values(plano.renames)) {
-      expect(IMPORTADAS).toHaveProperty(destino.replace("supabase/migrations/", ""));
+      expect(Object.keys(IMPORTADAS)).toContain(destino.replace("supabase/migrations/", ""));
     }
   });
 
