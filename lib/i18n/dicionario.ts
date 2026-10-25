@@ -1329,6 +1329,10 @@ export const DICIONARIO: Traducoes = {
   "Não foi possível carregar os tipos de compromisso.": {es:"No se pudieron cargar los tipos de cita."},
   // Agenda: presença confirmada pela equipe e recuperação.
   "Abrir compromisso": { es: "Abrir cita" },
+  // Avisos de prazo das tarefas (migration 0655): ação e orientações também em espanhol.
+  "Abrir tarefa": { es: "Abrir tarea" },
+  "Abra a tarefa e conclua antes do prazo — ou reagende agora, se já dá para ver que não vai caber.": { es: "Abre la tarea y termínala antes del plazo, o reprograma la fecha ahora si ya sabes que no llegarás a tiempo." },
+  "A tarefa venceu sem conclusão. Abra e conclua, ou reagende o prazo se ele não for mais possível.": { es: "La tarea venció sin completarse. Ábrela y termínala, o reprograma el plazo si ya no es posible cumplirlo." },
   "Abra o compromisso e confirme a presença.": { es: "Abre la cita y confirma la asistencia." },
   "Confira o motivo e escolha o próximo passo no compromisso.": { es: "Revisa el motivo y elige el siguiente paso en la cita." },
   "Compromisso": { es: "Cita" },
