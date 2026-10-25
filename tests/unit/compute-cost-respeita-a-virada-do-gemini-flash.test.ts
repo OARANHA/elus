@@ -26,6 +26,12 @@ const AI_PRICING = [
     embedding_cents_per_million_tokens: null,
   })),
   {
+    model: "gemini-4-argon",
+    prompt_cents_per_million_tokens: 400,
+    completion_cents_per_million_tokens: 2000,
+    embedding_cents_per_million_tokens: null,
+  },
+  {
     model: "gemini-3.5-flash",
     prompt_cents_per_million_tokens: 150,
     completion_cents_per_million_tokens: 111,
@@ -33,11 +39,14 @@ const AI_PRICING = [
   },
 ];
 
-const AI_MODELS = FLASH.map((model_id) => ({
-  model_id,
-  input_price_per_million_cents: 150,
-  output_price_per_million_cents: 750,
-}));
+const AI_MODELS = [
+  ...FLASH.map((model_id) => ({
+    model_id,
+    input_price_per_million_cents: 150,
+    output_price_per_million_cents: 750,
+  })),
+  { model_id: "gemini-4-argon", input_price_per_million_cents: 400, output_price_per_million_cents: 2000 },
+];
 
 vi.mock("@/lib/supabase/admin", () => ({
   createAdminClient: () => ({
@@ -128,5 +137,24 @@ describe("computeCost — Gemini 3.6/3.7/3.8 Flash respeita a virada do costCent
   it("um modelo sem essa virada continua na linha de ai_pricing", async () => {
     expect(await centavos("gemini-3.5-flash", { promptTokens: 1_000_000 }, ANTES_DA_VIRADA)).toBeCloseTo(150, 6);
     expect(await centavos("gemini-3.5-flash", { completionTokens: 1_000_000 }, VIRADA_2027)).toBeCloseTo(111, 6);
+  });
+});
+
+
+describe("computeCost — Gemini 4 Argon respeita a virada 0703", () => {
+  const antes = new Date("2026-11-30T23:59:59.999Z");
+  const virada = new Date("2026-12-01T00:00:00.000Z");
+
+  it("não antecipa 400/2000 da tabela durante a promoção", async () => {
+    expect(await centavos("gemini-4-argon", { promptTokens: 1_000_000 }, antes)).toBeCloseTo(200, 6);
+    expect(await centavos("gemini-4-argon", { completionTokens: 1_000_000 }, antes)).toBeCloseTo(1000, 6);
+    expect(await centavos("google/gemini-4-argon", { promptTokens: 1_000_000 }, antes)).toBeCloseTo(200, 6);
+  });
+
+  it("usa 400/2000 na virada, inclusive com prefixo e data", async () => {
+    expect(await centavos("gemini-4-argon", { promptTokens: 1_000_000 }, virada)).toBeCloseTo(400, 6);
+    expect(
+      await centavos("google/gemini-4-argon-20261013", { completionTokens: 1_000_000 }, virada),
+    ).toBeCloseTo(2000, 6);
   });
 });
