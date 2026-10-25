@@ -86,3 +86,18 @@ A comparação Git `PR #40 (610474d53) ... PR #43 (d85ce1ef)` distingue **38 mig
 **Risco de replay detectado sem consultar ou alterar o banco:** comparando os timestamps das 38 migrations importadas com o **último registro do snapshot de 11 versões** (`20261021025613`, observado em 25/10/2026), **11 arquivos têm timestamp anterior ou igual** e **27 são posteriores**. Portanto, **não se pode presumir** que um `supabase db push` comum aplicaria o lote inteiro na instalação existente. A classificação depende de um snapshot datado; ela **não substitui** nova leitura somente de histórico, análise da semântica do Supabase CLI, dependências SQL, ordem de aplicação e teste de upgrade em ambiente autorizado. Nenhuma versão do ledger foi alterada.
 
 **Estado do gate:** o teste estático foi publicado após o HEAD GREEN acima, mas seu próprio CI ainda não foi consultado nesta execução. Nenhum SQL, migration, E2E/Playwright, merge, publicação de imagem ou deploy foi executado. A PR continua Draft até validação independente do plano de upgrade e dos demais critérios de aceite.
+
+
+## Triagem adicional de replay e risco de DML (25/10/2026)
+
+A revisão estática do lote de 38 migrations importadas, com inventário das **11 anteriores ou iguais** e das **27 posteriores** ao corte do ledger observado, foi publicada em [`elus-v189-ledger-replay-risk-review-20261025.md`](elus-v189-ledger-replay-risk-review-20261025.md). A inspeção identificou explicitamente a migration `0759`, que contém `DELETE` de códigos de recuperação em formato legado; isso exige avaliação de impacto, recuperação e autorização próprias antes de qualquer aplicação no ELUS. O documento registra também dependências de ordem e as três renomeações de colisão, sem afirmar prova de replay.
+
+No HEAD `4fd669d59bcc08b3ebf2ae723e1d8192303ac927`, a execução [40216526578](https://github.com/OARANHA/elus/actions/runs/40216526578) concluiu `ci` com sucesso (`verify` e invariantes PostgreSQL 15/17 GREEN). **Esse GREEN antecede esta documentação**, não valida a instalação existente e não autoriza SQL, merge, imagens ou deploy. Nenhum teste adicional ou consulta ao banco foi executado nesta triagem.
+
+## CI da PR #43 — correção pontual de TypeScript (25/10/2026)
+
+No HEAD `a5caafc25541506f4016ab8cd7dd4d3808c7b177`, a consulta única à execução [40230662550](https://github.com/OARANHA/elus/actions/runs/40230662550) confirmou **RED** no job `verify-parte (1)` (ID `121281475720`), passo `Typecheck`: `TS18048` em `tests/unit/elus-v189-replay-contracts.test.ts:102` (`projecaoFinal` possivelmente `undefined`). As outras três partições `verify-parte` e as matrizes de invariantes PostgreSQL 15/17 concluíram com sucesso. O agregador `verify` falhou como consequência.
+
+A correção focal, commit [23ebc493](https://github.com/OARANHA/elus/commit/23ebc4930601ee17cf5d978356e3e39f79e15427), substituiu o acesso não protegido ao grupo de captura da expressão regular por `?.[1] ?? ""`. A asserção `toMatch` continua exigindo a projeção esperada: ausência do grupo permanece falha de teste, mas sem erro de tipagem. O blob alterado foi relido e confirmado.
+
+**Validação do novo HEAD ainda pendente:** não houve segunda consulta ao CI, execução local de TypeScript, lint ou unitários nesta rodada. A correção não altera SQL, migrations, runtime, E2E ou deploy. Permanecem os gates independentes de replay sobre o histórico Supabase de 11 versões, segurança das migrations e aceite funcional.
