@@ -94,7 +94,7 @@ describe("ELUS v1.89 — pré-voo estático de replay (sem banco)", () => {
     }
     const projecaoFinal = sql("receitas").match(
       /create\s+view\s+public\.external_db_connections_safe\s+with\s*\(\s*security_invoker\s*=\s*true\s*\)\s+as\s+select\s+([\s\S]*?)\s+from\s+public\.external_db_connections\s*;/i,
-    )![1];
+    )?.[1] ?? "";
     expect(projecaoFinal).toMatch(
       /jsonb_array_length\s*\(\s*receitas\s*\)\s+as\s+receitas_count/i,
     );
