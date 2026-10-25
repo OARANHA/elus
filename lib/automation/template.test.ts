@@ -23,6 +23,25 @@ describe("renderTemplate", () => {
     expect(
       renderTemplate("Oi {{nome}}", { contact: { name: null, display_name: "59782320914646@lid" } }),
     ).toBe("Oi "));
+  it("nome privado do contato na agenda nunca é exposto ao destinatário", () => {
+    const comNomeInterno = {
+      contact: { name: "Ana", address_book_name: "apelido interno reservado" },
+    };
+    expect(renderTemplate("Olá {{nome}} | {{contact.address_book_name}}", comNomeInterno))
+      .toBe("Olá Ana | ");
+    expect(renderTemplate("{{ contact.address_book_name }}", comNomeInterno)).toBe("");
+    expect(renderTemplate("{{contact.name}}", comNomeInterno)).toBe("Ana");
+  });
+  it("não envia o campo privado nem ao formatador externo", () => {
+    const vistos: string[] = [];
+    const texto = renderTemplate(
+      "{{contact.address_book_name}}/{{contact.name}}",
+      { contact: { name: "Ana", address_book_name: "não compartilhar" } },
+      (valor) => { vistos.push(valor); return valor; },
+    );
+    expect(texto).toBe("/Ana");
+    expect(vistos).toEqual(["Ana"]);
+  });
   it("variável ausente vira vazio, não '{{...}}' cru", () =>
     expect(renderTemplate("X{{lead.ghost}}Y", ctx)).toBe("XY"));
   it("espaços dentro das chaves tolerados", () =>
