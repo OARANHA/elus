@@ -9,11 +9,11 @@
 
 O upstream acrescentou **38 migrations** desde v1.85.0. O ELUS tem migrations próprias que devem permanecer com seus nomes/timestamps originais, pois podem ter sido aplicadas em bancos reais. Há **três colisões do número lógico `NNNN` e uma quarta colisão de timestamp**:
 
-| ELUS — preservar | Upstream — renomear no sync | Número reservado proposto |
-| --- | --- | --- |
-| `20261019120000_0689_integracoes_erp_vendaerp.sql` | `20261020000006_0689_aviso_da_central_com_destinatario.sql` | `0762` |
-| `20261020120001_0691_chutes_chat_catalog.sql` | `20261020120000_0691_banco_externo_db_type_e_aviso.sql` | `0763` |
-| `20261020230000_0692_chutes_catalog_sync.sql` | `20261020130000_0692_rodizio_na_acao_atribuir.sql` | `0764` |
+| ELUS — preservar                                   | Upstream — renomear no sync                                 | Número reservado proposto |
+| -------------------------------------------------- | ----------------------------------------------------------- | ------------------------- |
+| `20261019120000_0689_integracoes_erp_vendaerp.sql` | `20261020000006_0689_aviso_da_central_com_destinatario.sql` | `0762`                    |
+| `20261020120001_0691_chutes_chat_catalog.sql`      | `20261020120000_0691_banco_externo_db_type_e_aviso.sql`     | `0763`                    |
+| `20261020230000_0692_chutes_catalog_sync.sql`      | `20261020130000_0692_rodizio_na_acao_atribuir.sql`          | `0764`                    |
 
 **Colisão adicional de timestamp:** o arquivo próprio `20261020120000_0690_org_ai_autonomy_protected.sql` e o upstream `20261020120000_0691_banco_externo_db_type_e_aviso.sql` têm exatamente o mesmo timestamp `20261020120000`. Portanto, renomear somente `0691` para `0763` **não basta**. O timestamp alternativo `20261020120002` é apenas candidato, sujeito à verificação de dependências e da ordem efetiva de aplicação no banco.
 
@@ -40,7 +40,6 @@ O script só lê árvores Git e imprime JSON. Exit 0 = sem colisão, 1 = colisã
 5. Não mesclar nem publicar imagem/deploy até os gates exigidos.
 
 **Escopo deste documento:** reconciliação e preparação verificáveis; não declara que v1.89.0 já foi integrada.
-
 
 ## Pré-voo do plano candidato (etapa seguinte, sem importar SQL)
 
@@ -88,12 +87,11 @@ e revisão do schema real são gates separados antes de portar/aplicar
 as migrations. Não executar SQL, E2E, merge, imagem ou deploy a partir
 deste teste isolado.
 
-
 ## Integração preparada na branch `feat/elus-v189-migrations-20261025` (25/10/2026)
 
 **Estado: 38 migrations incorporadas ao branch; baseline v1.89.0 pendente de reconstrução e validação. Nada foi aplicado ao Supabase.**
 
-- Origem conferida: DeskcommCRM `v1.85.0` em `83aeac8f78aa076f3adfaf3e773c8616229e5cd9` e `v1.89.0` em `6540929d5ef7a951531dda550db0bf54affa516a`. A comparação dessas árvores dá 38 migrations adicionadas e nenhuma removida ou modificada. As 38 SQLs foram transferidas da origem fixada; em `0717`, foi removido somente um espaço final em uma linha. O SQL executável permanece o mesmo; só os três destinos do plano abaixo mudam de nome.
+- Origem conferida: DeskcommCRM `v1.85.0` em `83aeac8f78aa076f3adfaf3e773c8616229e5cd9` e `v1.89.0` em `6540929d5ef7a951531dda550db0bf54affa516a`. A comparação dessas árvores dá 38 migrations adicionadas e nenhuma removida ou modificada. As 38 conferem com a origem fixada após normalizar apenas as anotações documentais `upstream:` e um espaço final inerte em `0717`; referências de aplicação/testes fora deste escopo estão marcadas `upstream:` nos cabeçalhos de manifesto. Os três destinos previstos no plano mudam de nome para resolver colisões. O baseline permanece no blob anterior da PR #40 até reconstrução separada.
 - As quatro migrations exclusivas ELUS foram comparadas com o pai da branch e permanecem byte a byte inalteradas. O manifesto preserva os números ELUS `0689`, `0690`, `0691`, `0692`; as colisões são resolvidas somente nos nomes das migrations upstream.
 - `supabase/baseline.sql` foi restaurado integralmente do blob original da branch da PR #40 (`96147866db19c4e6a22a8bed5214c7ea85d0cb3d`). Ele corresponde ao baseline ELUS anterior à integração. O baseline v1.89.0 ainda precisa ser reconstruído e validado separadamente; não afirmar que a baseline dessa release foi integrada.
 
@@ -109,7 +107,6 @@ As 11 migrations do Supabase não equivalem a versões dos arquivos SQL: são pr
 - Não há canário, `db push`, `db reset`, E2E/Playwright, merge, publicação de imagens ou deploy. O `.github/workflows/e2e.yml` permanece manual (`workflow_dispatch`).
 - A incorporação de SQL não equivale ao port integral das mudanças de aplicação da v1.89.0. A revisão de conflitos de runtime/código e compatibilidade funcional segue como gate separado antes de declarar ELUS v1.89.0.
 
-
 ## Correção de baseline após CI (25/10/2026)
 
-O CI da PR #43 detectou que o baseline publicado estava truncado em 478 linhas e falhava ao ser interpretado como SQL. O arquivo foi restaurado byte a byte a partir do blob original da branch da PR #40. As 38 migrations upstream e as quatro migrations exclusivas ELUS permanecem preservadas. O baseline v1.89.0 deve ser reconstruído e validado em mudança própria; até lá, não usar o baseline restaurado como se representasse a release v1.89.0.
+O CI da PR #43 detectou que o baseline publicado estava truncado em 478 linhas e falhava ao ser interpretado como SQL. O arquivo foi restaurado byte a byte a partir do blob original da branch da PR #40 (`96147866db19c4e6a22a8bed5214c7ea85d0cb3d`). O teste `tests/unit/baseline-integrity.test.ts` fixa esse blob e falha em qualquer truncagem ou edição. As 38 migrations upstream e as quatro migrations exclusivas ELUS permanecem preservadas. O baseline v1.89.0 ainda precisa ser reconstruído e validado separadamente; não usar o baseline restaurado como se representasse a release v1.89.0.

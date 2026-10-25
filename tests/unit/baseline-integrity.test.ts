@@ -9,8 +9,8 @@ function gitBlobSha(content: Buffer): string {
   return createHash("sha1").update(header).update(content).digest("hex");
 }
 
-describe("integridade da baseline ELUS anterior à importação v1.89.0", () => {
-  it("preserva o blob completo da PR #40 e falha em truncagem ou edição acidental", () => {
+describe("integridade da baseline ELUS restaurada da PR #40", () => {
+  it("preserva o blob integral e falha em truncagem ou edição acidental", () => {
     expect(gitBlobSha(baseline)).toBe("96147866db19c4e6a22a8bed5214c7ea85d0cb3d");
   });
 });

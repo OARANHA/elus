@@ -307,4 +307,115 @@ begin
   --     `conversation_notes.media_storage_path` como a referência que segura o
   --     caminho. Um dia de carência cobre o upload que sobe ANTES de a nota ser
   --     gravada (é a ordem do composer), como o passo 2 cobre o envio.
-  --     Uma linha `pending`/`failed` em curso segura o ca
+  --     Uma linha `pending`/`failed` em curso segura o caminho; `deleted`/
+  --     `skipped` não, pelo mesmo motivo escrito no passo 2 (caminho reuso).
+  --     Anexo de negócio (#3229) mora no MESMO bucket, sob `{org}/leads/...`,
+  --     e quem segura o caminho é `crm_lead_attachments.storage_path`: sem o
+  --     `not exists` dele o anexo vivo viraria órfão; sem o `'leads'` o arquivo
+  --     do negócio apagado (a linha cai em cascata) ficaria para sempre.
+  with orfaos_da_nota as (
+    select o.name as caminho, split_part(o.name, '/', 1)::uuid as org
+      from storage.objects o
+     where o.bucket_id = 'internal-media'
+       and o.created_at < now() - interval '1 day'
+       and split_part(o.name, '/', 1) ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+       and exists (select 1 from public.organizations g where g.id::text = split_part(o.name, '/', 1))
+       and (
+         split_part(o.name, '/', 2) ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+         or split_part(o.name, '/', 2) = 'leads'
+       )
+       and not exists (
+         select 1 from public.conversation_notes n where n.media_storage_path = o.name
+       )
+       and not exists (
+         select 1 from public.crm_lead_attachments a where a.storage_path = o.name
+       )
+       and not exists (
+         select 1 from public.storage_redaction_queue q
+          where q.bucket = 'internal-media' and q.object_path = o.name
+            and q.status not in ('deleted', 'skipped')
+       )
+     limit v_lim
+  ), fila_da_nota as (
+    insert into public.storage_redaction_queue (organization_id, bucket, object_path)
+    select org, 'internal-media', caminho from orfaos_da_nota
+    on conflict (bucket, object_path) do update
+      set status = 'pending',
+          attempts = 0,
+          enqueued_at = now(),
+          processed_at = null,
+          error_message = null
+      where storage_redaction_queue.status in ('deleted', 'skipped')
+    returning 1
+  )
+  select count(*) into v_orfas_nota from fila_da_nota;
+  v_orfas := v_orfas + v_orfas_nota;
+
+  -- 2c. RETENÇÃO POR IDADE DO ANEXO DA NOTA VIVA (#1887). Até aqui o bucket
+  --     `internal-media` só era alcançado quando a nota SUMIA (passo 2b) ou
+  --     sob pedido LGPD (passo 6d da 0483): uma nota que CONTINUA EXISTINDO
+  --     segurava o anexo para sempre, e numa cota de 1 GB dividida com
+  --     `whatsapp-media` o bucket crescia sem teto — anexos de até 50 MB
+  --     (issue #1887; opção A, decisão do mantenedor no PR #2309).
+  --     O anexo interno passa a seguir a MESMA regra da mídia de conversa:
+  --     mesmo knob (`organizations.media_retention_days`, piso de 30 dias),
+  --     MESMO interruptor (`media_retention_enforced`, 0557) e MESMA pausa
+  --     enquanto a organização tem pedido LGPD em andamento — sem os dois, o
+  --     anexo de nota seria a ÚNICA coisa apagada numa organização que
+  --     desligou a limpeza, ou no meio de um atendimento LGPD. Mesmo desenho
+  --     do passo 1 — a idade é a da NOTA, a mesma
+  --     medida que a da mensagem, e o arquivo só sai DEPOIS do knob. Nota
+  --     viva dentro da retenção não é tocada; é esta linha que o teste de
+  --     #1887 cobra (e que reprova se a condição de idade sumir).
+  --     Os três ponteiros são zerados como no passo 6d da 0483: a nota fica
+  --     com o texto e sem card apontando para arquivo que já saiu do bucket.
+  --     Arquivo já removido à mão não quebra a rodada: a linha entra como
+  --     `pending` e o worker a fecha como `skipped`, como no passo 1.
+  --     Aqui não existe o "nenhuma OUTRA mensagem usa" do passo 1: o caminho
+  --     de anexo é único por upload (`note-<uuid>.<ext>`). A rota de nota só
+  --     confere que o caminho é da mesma conversa, então duas notas PODEM
+  --     apontar para o mesmo arquivo por chamada direta à API (pela tela não
+  --     acontece); nesse caso a mais nova perde o anexo quando a mais velha
+  --     vence — caso raro, aceito na decisão.
+  with vencidas_da_nota as (
+    select n.id, n.organization_id, n.media_storage_path as caminho
+      from public.conversation_notes n
+      join public.organizations o on o.id = n.organization_id
+     where n.media_storage_path is not null
+       and o.media_retention_enforced
+       and n.created_at < now() - make_interval(days => greatest(coalesce(o.media_retention_days, 365), 30))
+       and not exists (
+         select 1 from public.lgpd_requests r
+          where r.organization_id = n.organization_id
+            and r.status in ('received', 'processing')
+       )
+     order by n.created_at
+     limit v_lim
+     for update of n skip locked
+  ), fila_da_retencao as (
+    insert into public.storage_redaction_queue (organization_id, bucket, object_path)
+    select distinct v.organization_id, 'internal-media', v.caminho
+      from vencidas_da_nota v
+    on conflict (bucket, object_path) do update
+      set status = 'pending',
+          attempts = 0,
+          enqueued_at = now(),
+          processed_at = null,
+          error_message = null
+      where storage_redaction_queue.status in ('deleted', 'skipped')
+    returning 1
+  ), limpas_da_nota as (
+    update public.conversation_notes n
+       set media_storage_path = null, media_mime = null, media_size_bytes = null
+      from vencidas_da_nota v
+     where n.id = v.id
+    returning 1
+  )
+  select count(*) into v_vencidas_nota from limpas_da_nota;
+  v_vencidas := v_vencidas + v_vencidas_nota;
+  return jsonb_build_object('vencidas', v_vencidas, 'orfas', v_orfas, 'expurgadas', v_expurgadas);
+end;
+$$;
+
+revoke execute on function public.fn_enfileirar_midia_vencida(integer) from public, anon, authenticated;
+grant execute on function public.fn_enfileirar_midia_vencida(integer) to service_role;

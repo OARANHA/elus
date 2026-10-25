@@ -320,4 +320,321 @@ begin
   v_counts := v_counts || jsonb_build_object('campaign_recipients', v_count);
 
   -- LISTA DE EXCLUSÃO: solta o vínculo e apaga a cauda do telefone.
-  update campaign_
+  update campaign_suppressions set
+    address_tail = null,
+    reason = null,
+    contact_id = null
+  where organization_id = p_organization_id
+    and contact_id = p_contact_id;
+  get diagnostics v_count = row_count;
+  v_counts := v_counts || jsonb_build_object('campaign_suppressions', v_count);
+
+  -- 6c. sales — a comanda SAIU desta cascata (PR #1907, item 1).
+  -- Este passo alterava a comanda pelo NOME, e as cinco tabelas da comanda
+  -- saíram do baseline para nascerem só na instalação do módulo (ADR-0002
+  -- D2/D3): sem o módulo a tabela não existe e a alteração abortava a
+  -- ANONIMIZAÇÃO INTEIRA com `relation "sales" does not exist` — 68
+  -- ocorrências no CI do #1907 — além de violar a D8 (migration 0485), que
+  -- proíbe o núcleo nomear tabela de módulo. A redação da comanda acontece
+  -- agora pela SEÇÃO declarada `financeiro/sales` em `modulo_secoes_lgpd`,
+  -- que `trg_lgpd_secoes_de_modulo` aplica nos DOIS caminhos de anonimização
+  -- (a cascata e a virada `is_anonymized` de `fn_lgpd_anonymize_contact`) —
+  -- e pula, sem erro, onde o módulo não está instalado (`to_regclass`), que é
+  -- exatamente o contrato.
+  -- 6d. conversation_notes (migration 0483, F3 da #1863) — a nota interna é
+  -- texto escrito SOBRE a pessoa durante o atendimento, e o anexo dela é mídia
+  -- ancorada na conversa: os dois entram no alcance do titular. A 0477 já
+  -- mostrou o desenho (arquivo vai para a fila ANTES de a coluna ser zerada).
+  -- O bucket é `internal-media`, e não o do passo 7: a nota nunca sobe no
+  -- `whatsapp-media` (é o bucket do canal do CLIENTE), e enfileirar o caminho
+  -- num bucket onde ele não está deixaria a remoção apontando para o nada —
+  -- a mesma falha de não ter anonimizado, um endereço mais para a direita.
+  -- Por isso os caminhos de nota também NÃO entram em `v_media_paths`: essa
+  -- lista só existe para o passo 7, que enfileira `whatsapp-media`.
+  insert into storage_redaction_queue (organization_id, request_id, bucket, object_path)
+  select p_organization_id, p_request_id, 'internal-media', n.media_storage_path
+    from conversation_notes n
+   where n.organization_id = p_organization_id
+     and n.conversation_id in (
+       select id from conversations
+        where contact_id = p_contact_id and organization_id = p_organization_id
+     )
+     and n.media_storage_path is not null and length(n.media_storage_path) > 0
+     and n.media_storage_path like p_organization_id::text || '/%'
+  on conflict (bucket, object_path) do nothing;
+  update conversation_notes set
+    body = '[nota interna anonimizada]',
+    media_storage_path = null,
+    media_mime = null,
+    media_size_bytes = null
+  where organization_id = p_organization_id
+    and conversation_id in (
+      select id from conversations
+       where contact_id = p_contact_id and organization_id = p_organization_id
+    );
+  get diagnostics v_count = row_count;
+  v_counts := v_counts || jsonb_build_object('conversation_notes', v_count);
+
+  -- 7. enqueue media for async deletion (idempotent via unique (bucket, object_path))
+  if array_length(v_media_paths, 1) > 0 then
+    insert into storage_redaction_queue (organization_id, request_id, bucket, object_path)
+    select p_organization_id, p_request_id, 'whatsapp-media', path
+      from unnest(v_media_paths) as path
+      where path is not null and length(path) > 0
+    on conflict (bucket, object_path) do nothing;
+  end if;
+
+  -- 7b. voice_calls — o TELEFONE de quem falou ao telefone (migration 0235).
+  update voice_calls set
+    peer_phone = v_anon_label,
+    owner_user_id = null,
+    created_by = null,
+    updated_at = now()
+  where organization_id = p_organization_id
+    and contact_id = p_contact_id;
+  get diagnostics v_count = row_count;
+  v_counts := v_counts || jsonb_build_object('voice_calls', v_count);
+
+  update prospecting_candidates set suppression_salt = gen_random_bytes(32)
+  where organization_id = p_organization_id
+    and (contact_id = p_contact_id
+         or (phone is not null
+             and regexp_replace(phone, '\D', '', 'g') = any (v_variantes)))
+    and suppression_salt is null;
+  update prospecting_candidates set
+    suppression_place = hmac(convert_to(place_id, 'UTF8'), suppression_salt, 'sha256'),
+    suppression_phone = case when phone is null then null
+      else hmac(convert_to(phone, 'UTF8'), suppression_salt, 'sha256') end,
+    place_id = 'redacted:' || id::text,
+    phone = null,
+    data = jsonb_build_object('key', 'redacted:' || id::text,
+      'name', v_anon_label, 'phone', null, 'website', null,
+      'category', null, 'address', null, 'maps_url', null,
+      'rating', null, 'reviews', null, 'emails', '[]'::jsonb, 'socials', '[]'::jsonb),
+    status = 'skipped', service_boundary = null, error = null, updated_at = now()
+  where organization_id = p_organization_id
+    and (contact_id = p_contact_id
+         or (phone is not null
+             and regexp_replace(phone, '\D', '', 'g') = any (v_variantes)));
+  get diagnostics v_count = row_count;
+  v_counts := v_counts || jsonb_build_object('prospecting_candidates', v_count);
+
+  -- agent_cases — o que a IA escreveu SOBRE a pessoa quando travou (migration 0280).
+  update agent_cases set
+    title = v_anon_label,
+    summary = '[resumo anonimizado]',
+    blocker = '[bloqueio anonimizado]',
+    context_snapshot = '{}'::jsonb
+  where organization_id = p_organization_id
+    and conversation_id in (
+      select id from conversations
+        where contact_id = p_contact_id and organization_id = p_organization_id
+    );
+  get diagnostics v_count = row_count;
+  v_counts := v_counts || jsonb_build_object('agent_cases', v_count);
+
+  -- agent_case_events — a linha do tempo do caso (migration 0280).
+  update agent_case_events set
+    body = null,
+    metadata = '{}'::jsonb
+  where organization_id = p_organization_id
+    and case_id in (
+      select id from agent_cases
+        where organization_id = p_organization_id
+          and conversation_id in (
+            select id from conversations
+              where contact_id = p_contact_id and organization_id = p_organization_id
+          )
+    );
+  get diagnostics v_count = row_count;
+  v_counts := v_counts || jsonb_build_object('agent_case_events', v_count);
+
+  -- demandas — o assunto do pedido (migration 0280).
+  update demandas set
+    assunto = null
+  where organization_id = p_organization_id
+    and contact_id = p_contact_id;
+  get diagnostics v_count = row_count;
+  v_counts := v_counts || jsonb_build_object('demandas', v_count);
+
+  -- agent_inbox_items — o aviso que leva o texto do caso para a Central (migration 0280/0292).
+  update agent_inbox_items set
+    status = 'resolved',
+    resolved_at = now(),
+    body = 'Contato anonimizado.',
+    ref_id = null
+  where organization_id = p_organization_id
+    and kind in ('handoff', 'case_stale', 'aviso_de_caso_nao_entregue')
+    and (
+      (ref_kind = 'contact' and ref_id = p_contact_id)
+      or (ref_kind = 'conversation' and ref_id in (
+            select id from conversations
+              where contact_id = p_contact_id and organization_id = p_organization_id
+          ))
+      or (ref_kind = 'agent_case' and ref_id in (
+            select id from agent_cases
+              where organization_id = p_organization_id
+                and conversation_id in (
+                  select id from conversations
+                    where contact_id = p_contact_id and organization_id = p_organization_id
+                )
+          ))
+    );
+  get diagnostics v_count = row_count;
+  v_counts := v_counts || jsonb_build_object('agent_inbox_items', v_count);
+
+  -- agent_case_chat_messages — a consulta interna da equipe à IA SOBRE o caso (migration 0281).
+  update agent_case_chat_messages set
+    body = null,
+    redacted_at = now()
+  where organization_id = p_organization_id
+    and contact_id = p_contact_id
+    and redacted_at is null;
+  get diagnostics v_count = row_count;
+  v_counts := v_counts || jsonb_build_object('agent_case_chat_messages', v_count);
+
+  -- passagens_de_atendimento — o BRIEFING é sobre a pessoa (migration 0291).
+  update passagens_de_atendimento set
+    body       = v_anon_label,
+    title      = null,
+    notes      = null,
+    content    = null,
+    tentativas = '[]'::jsonb
+  where organization_id = p_organization_id and contact_id = p_contact_id;
+  get diagnostics v_count = row_count;
+  v_counts := v_counts || jsonb_build_object('passagens_de_atendimento', v_count);
+
+  -- entregas_de_aviso_de_caso — o registro do aviso ao suporte (migration 0292).
+  update entregas_de_aviso_de_caso set
+    erro_detalhe = null
+  where organization_id = p_organization_id
+    and case_id in (
+      select id from agent_cases
+        where organization_id = p_organization_id
+          and conversation_id in (
+            select id from conversations
+              where contact_id = p_contact_id and organization_id = p_organization_id
+          )
+    );
+  get diagnostics v_count = row_count;
+  v_counts := v_counts || jsonb_build_object('entregas_de_aviso_de_caso', v_count);
+
+  -- channel_session_groups.subject — o NOME do grupo, e a FK contact_id aponta
+  -- para o placeholder do grupo (contacts.kind = 'whatsapp_group'), nunca para
+  -- o titular real sendo anonimizado neste caminho — mas a FK para contacts e o
+  -- nome da coluna casam o padrão automático do escopo (migration 0482), e
+  -- nulificar não perde nada operacional: número, conversa e liga/desliga ficam.
+  update public.channel_session_groups set
+    subject = null
+  where organization_id = p_organization_id
+    and contact_id = p_contact_id;
+  get diagnostics v_count = row_count;
+  v_counts := v_counts || jsonb_build_object('channel_session_groups', v_count);
+
+  -- 7z. as contagens das seções de módulo (calculadas antes do passo 1); o
+  --     núcleo vence numa colisão de nome.
+  v_counts := v_secoes || v_counts;
+
+  -- 8. dense audit row
+  insert into api_audit_log (organization_id, action, actor_user_id, resource_type, resource_id, metadata, bypassed_rls)
+  values (
+    p_organization_id,
+    'lgpd.redact_executed',
+    null,
+    'contact',
+    p_contact_id,
+    jsonb_build_object(
+      'cascaded_to', v_counts,
+      'media_queued', coalesce(array_length(v_media_paths, 1), 0),
+      'request_id', p_request_id
+    ),
+    true
+  );
+
+  return jsonb_build_object(
+    'already_anonymized', false,
+    'counts', v_counts,
+    'media_paths', v_media_paths
+  );
+end;
+$$;
+
+create or replace function public.fn_lgpd_redigir_secoes_de_modulo()
+returns trigger
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $f$
+declare
+  s record;
+  v_rel oid;
+  v_sets text;
+  v_nulos text;
+  v_rotulos text;
+  v_redigidas text;
+  v_agora text;
+  -- O rótulo opaco (issue #2342) vem do PRÓPRIO contato quando o gatilho é
+  -- disparado pela cascata: nesse ponto `new.name` já é o rótulo que o passo 1
+  -- gravou, e reusar o MESMO valor mantém a seção de módulo casando com o
+  -- contato. Sem o reaproveitamento cada escritor geraria um token diferente.
+  v_rotulo text := case
+                     when new.name ~ '^Cliente Anonimizado #[0-9a-f]{8}$' then new.name
+                     else public.fn_lgpd_rotulo_anonimizado(new.id)
+                   end;
+begin
+  if not (new.is_anonymized and not old.is_anonymized) then
+    return null;
+  end if;
+
+  for s in
+    select modulo, tabela, ligacao, colunas, colunas_rotulo, colunas_redigidas, colunas_agora
+      from public.modulo_secoes_lgpd
+     order by modulo, tabela
+  loop
+    v_rel := to_regclass(format('public.%I', s.tabela));
+
+    if v_rel is null then
+      continue;
+    end if;
+
+    if btrim(s.ligacao) = ''
+       or (cardinality(s.colunas) = 0 and cardinality(s.colunas_rotulo) = 0
+           and cardinality(s.colunas_redigidas) = 0) then
+      raise exception 'modulo_secao_invalida: %/% declara ligação vazia ou sem coluna', s.modulo, s.tabela;
+    end if;
+
+    if exists (
+      select 1
+        from unnest(s.colunas || s.colunas_rotulo || s.colunas_redigidas || s.colunas_agora) as c(coluna)
+       where not exists (
+         select 1
+           from pg_attribute a
+          where a.attrelid = v_rel
+            and a.attname = c.coluna
+            and a.attnum > 0
+            and not a.attisdropped
+       )
+    ) then
+      raise exception 'modulo_secao_invalida: %/% tem coluna declarada que não existe', s.modulo, s.tabela;
+    end if;
+
+    select string_agg(format('%I = null', c), ', ' order by c) into v_nulos
+      from unnest(s.colunas) as c;
+    -- O conserto da #2656: o rótulo só entra onde JÁ havia valor. Um `null`
+    -- declarado continua nulo — a anonimização não dá conteúdo ao que era vazio.
+    select string_agg(format('%1$I = case when %1$I is null then null else %2$L end', c, v_rotulo), ', ' order by c)
+      into v_rotulos
+      from unnest(s.colunas_rotulo) as c;
+    select string_agg(format('%1$I = case when %1$I is null then null else %2$L end', c, '[redigido]'), ', ' order by c)
+      into v_redigidas
+      from unnest(s.colunas_redigidas) as c;
+    select string_agg(format('%I = now()', c), ', ' order by c) into v_agora
+      from unnest(s.colunas_agora) as c;
+    v_sets := concat_ws(', ', v_nulos, v_rotulos, v_redigidas, v_agora);
+
+    execute format('update public.%I set %s where (%s)', s.tabela, v_sets, s.ligacao)
+      using new.organization_id, new.id;
+  end loop;
+
+  return null;
+end $f$;

@@ -299,4 +299,79 @@ begin
           where s.organization_id = p_org
             and s.archived_at is null
             and s.phone_number is not null
-        
+            and regexp_replace(s.phone_number, '\D', '', 'g') = any (v_variantes)) then
+      raise exception 'aviso_de_agendamento_numero_da_propria_org' using errcode = '22023';
+    end if;
+
+    -- O número de aviso vira INTERNO (o que chega dele não vira atendimento).
+    -- Se ele já é um cliente, isso não pode acontecer por engano.
+    if not coalesce(p_confirma_contato, false) and exists (
+         select 1 from public.contacts c
+          where c.organization_id = p_org
+            and c.phone_number is not null
+            and regexp_replace(c.phone_number, '\D', '', 'g') = any (v_variantes)) then
+      raise exception 'aviso_de_agendamento_numero_de_cliente' using errcode = '22023';
+    end if;
+  end if;
+
+  select * into v_antes from public.config_aviso_de_agendamento where organization_id = p_org;
+
+  insert into public.config_aviso_de_agendamento
+    (organization_id, usa_numero_do_aviso_de_caso, channel_session_id, telefone_destino, ligado, criado_por, atualizado_por)
+  values
+    (p_org, v_usa, v_channel, v_telefone, coalesce(p_ligado, false), auth.uid(), auth.uid())
+  on conflict (organization_id) do update
+    set usa_numero_do_aviso_de_caso = excluded.usa_numero_do_aviso_de_caso,
+        channel_session_id          = excluded.channel_session_id,
+        telefone_destino            = excluded.telefone_destino,
+        ligado                      = excluded.ligado,
+        atualizado_por              = auth.uid(),
+        updated_at                  = now();
+
+  return jsonb_build_object(
+    'trocou_numero', (v_antes.telefone_destino is distinct from v_telefone
+                      or v_antes.usa_numero_do_aviso_de_caso is distinct from v_usa),
+    'antes_ligado',  coalesce(v_antes.ligado, false)
+  );
+end;
+$$;
+-- AS DUAS ORIGENS DE EXECUTE (item 9 da doutrina de migrations).
+revoke all     on function public.fn_definir_aviso_de_agendamento(uuid,boolean,uuid,text,boolean,boolean) from public, anon;
+grant  execute on function public.fn_definir_aviso_de_agendamento(uuid,boolean,uuid,text,boolean,boolean) to authenticated;
+
+-- ── Retenção: a tabela nasce com dono de piso ─────────────────────────────
+create or replace function public.fn_expurgar_avisos_de_agendamento_vencidos(
+  p_retencao_dias int default null,
+  p_limite int default null
+) returns int
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  -- Mesmo horizonte do aviso de caso (180 dias, piso de 30 no CORPO): a
+  -- pergunta útil — "o aviso daquele horário saiu?" — é de semanas.
+  v_dias int := greatest(coalesce(p_retencao_dias, 180), 30);
+  v_limite int := least(greatest(coalesce(p_limite, 1000), 1), 10000);
+  v_apagadas int;
+begin
+  with vencidas as (
+    select e.id from public.entregas_de_aviso_de_agendamento e
+     where e.created_at < now() - make_interval(days => v_dias)
+     order by e.created_at
+     limit v_limite
+  )
+  delete from public.entregas_de_aviso_de_agendamento e using vencidas v where e.id = v.id;
+  get diagnostics v_apagadas = row_count;
+  return v_apagadas;
+end;
+$$;
+revoke all     on function public.fn_expurgar_avisos_de_agendamento_vencidos(int,int) from public, anon, authenticated;
+grant  execute on function public.fn_expurgar_avisos_de_agendamento_vencidos(int,int) to service_role;
+
+comment on table public.config_aviso_de_agendamento is
+  'Aviso de agendamento no WhatsApp do dono (0753). Uma linha por organização. Escrita só por fn_definir_aviso_de_agendamento.';
+comment on table public.entregas_de_aviso_de_agendamento is
+  'Uma linha por evento de agenda avisado (unique organization_id+event_id) e uma por resumo diário (unique organization_id+dia). O texto nunca é guardado, só corpo_hash.';
+
+notify pgrst, 'reload schema';
