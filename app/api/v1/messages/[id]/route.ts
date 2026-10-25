@@ -133,7 +133,15 @@ async function alterar(req: NextRequest, ctx: Ctx, acao: "edit" | "revoke"): Pro
     action: acao === "edit" ? "message.edited" : "message.revoked",
     actorUserId: authz.user.id, organizationId: authz.org.orgId,
     resourceType: "message", resourceId: id, requestId,
-    metadata: { conversation_id: message.conversation_id },
+    metadata: {
+      conversation_id: message.conversation_id,
+      direction: message.direction,
+      external_id: message.external_id,
+      // O corpo da mensagem NÃO entra em api_audit_log: o log é append-only
+      // e sobrevive à anonimização. Registrar o evento e a preservação
+      // do conteúdo, sem duplicar texto pessoal em retenção prolongada.
+      conteudo_preservado: true,
+    },
   });
   return ok(updated, { requestId });
 }
