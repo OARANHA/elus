@@ -60,3 +60,26 @@ Nenhum `INSERT`, `UPDATE`, `DELETE`, DDL, `db push`, `db reset`, `psql` de aplic
 ## Estado e próximo bloqueio
 
 **Concluído nesta inspeção:** revalidação do ledger de 11 versões, PostgreSQL 17.11, inventário de existência das 16 tabelas, quatro funções relevantes, policy antiga de `channel_sessions`, grants da RPC de caso e contagem agregada para o `DELETE` de `0759`. **Não concluído:** prova de replay/upgrade, catálogo semântico completo, rollback restaurável, testes em clone, aceite funcional e autorização para alterar banco. PR #43 permanece Draft.
+
+## Revalidação do ledger e ACL de eventos — 25/10/2026 (somente leitura)
+
+**Evidência nova e delimitada:** PR #43 em `5d9107145f42c2e1e15bbe0d1106af2c0ffd506d`, aberta, Draft, mergeável e não mesclada. O CI desse SHA, [run 40235568919](https://github.com/OARANHA/elus/actions/runs/40235568919), terminou `success` nos jobs `verify`, `verify-parte`, `invariants`, `invariants-alcance` e matrizes PostgreSQL 15/17. O [workflow de imagens 40235568893](https://github.com/OARANHA/elus/actions/runs/40235568893) terminou `success`, porém `build-and-push`, `juntar-manifestos` e `promover-stable` ficaram `skipped`. Esses resultados não são aceite funcional nem evidência de aplicação ao banco real.
+
+O conector Supabase `list_migrations` foi consultado novamente: **11 registros**, idênticos à tabela deste documento; último `20261021025613`. As quatro versões próprias ELUS continuam registradas como `20261019204449`, `20261021025530`, `20261021025551`, `20261021025613`. A classificação estática de **11 imports antes/iguais ao corte e 27 depois** permanece, sem prova de que `db push` faria o replay correto.
+
+### Funções privilegiadas — evidência de catálogo e limite de segurança
+
+Foram realizadas exclusivamente consultas `SELECT` sobre `pg_catalog.pg_proc`, `pg_catalog.pg_trigger` e `pg_get_functiondef`, sem invocar funções de negócio nem ler linhas de clientes:
+
+| Função existente no banco | `SECURITY DEFINER` | `EXECUTE` efetivo `authenticated` | `EXECUTE` efetivo `anon` |
+| --- | --- | --- | --- |
+| `fn_log_event(uuid,text,jsonb)` | Sim | Sim | Não |
+| `emit_event(text,text,uuid,jsonb,jsonb,uuid)` | Sim | Sim | Não |
+| `fn_lgpd_cascade_redact_contact(uuid,uuid,uuid)` | Sim | Não | Não |
+| `fn_definir_aviso_de_caso(uuid,uuid,text,text,boolean,boolean)` | Sim | Sim | Não |
+
+O corpo **atual do banco** de `fn_log_event` recebe `organization_id`, tipo e payload e encaminha a `emit_event`; **não faz sua própria checagem de pertencimento**. O corpo de `emit_event`, entretanto, contém barreiras explícitas: quando `auth.uid()` não é nulo, recusa eventos reservados e campos de origem privilegiada; exige `fn_role_at_least(v_org_id, 'viewer')` para a organização indicada; e aplica `fn_support_write_allowed`. Assim, o grant direto a `authenticated` **não comprova, isoladamente, bypass entre tenants**. A consulta a `pg_trigger` não encontrou triggers cujo `tgfoid` aponte diretamente para `fn_log_event`; isso **não exclui** chamadas a ela feitas por outras funções ou pelo aplicativo.
+
+**Gate de segurança ainda aberto:** comparar o corpo das funções com as migrations upstream fixadas e seus call sites, determinar se `EXECUTE` direto para `authenticated` é contratualmente necessário e provar em ambiente isolado, com testes negativos, isolamento entre organizações, eventos reservados, sessão ausente e papel insuficiente. Não revogar nem conceder privilégios no banco ativo com base apenas nesta inspeção. A assinatura de **sete** argumentos esperada para `fn_definir_aviso_de_caso` continua não comprovada no banco ativo.
+
+**Limites desta execução:** nenhuma migration/DDL/DML aplicada, nenhum E2E/Playwright, merge, publicação de imagem ou deploy. Não houve execução local de lint, TypeScript ou unitários; o CI verde citado pertence estritamente ao SHA indicado. O plano de upgrade das 11 versões e a validação em banco descartável seguem bloqueios separados antes de qualquer ação no banco real.
