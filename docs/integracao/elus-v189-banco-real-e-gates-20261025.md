@@ -33,3 +33,9 @@ O manifesto `elus-upstream-v1.89.0-plano.json` e seu pré-voo só resolvem **col
 5. **Antes de qualquer merge/deploy:** CI, revisão adversarial e plano de rollback. Deploy somente após publicação de imagens, digests preservados e gates de produção.
 
 **Esta observação não comprova versão executando em produção, não aplica migrations e não autoriza deploy.** Se o histórico mudar, repetir a inspeção estruturada antes de decidir.
+
+## Atualização somente leitura — preparo da importação (25/10/2026)
+
+As 38 migrations foram incorporadas à branch derivada da PR #40, com três renomes de colisão previstos no plano. O baseline upstream v1.89 foi composto com as quatro migrations ELUS intactas. A leitura de catálogo confirmou que os objetos ausentes são introduzidos pelo lote; 40 colunas de destino ainda não existem no banco. **Nenhuma migration foi aplicada.**
+
+A documentação de reconciliação detalhada e o mapa de importação estão em [`elus-upstream-v1.89.0-migrations.md`](elus-upstream-v1.89.0-migrations.md) e [`elus-upstream-v1.89.0-plano.json`](elus-upstream-v1.89.0-plano.json). O replay exige plano separado para o ledger real; `db push` continua proibido nesta etapa.

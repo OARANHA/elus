@@ -10,7 +10,7 @@
  *
  * Uso:
  * pnpm exec tsx scripts/validar-plano-migrations-upstream.ts \
- *   HEAD upstream-base-v185 upstream-target-v189 \
+ *   <ref-elus-antes-da-importacao> upstream-base-v185 upstream-target-v189 \
  *   docs/integracao/elus-upstream-v1.89.0-plano.json
  */
 import { execFileSync } from "node:child_process";
@@ -127,6 +127,17 @@ export interface MigrationBlob {
   sha: string;
 }
 
+/** Ignora artefatos não SQL presentes no diretório, como o MANIFEST histórico. */
+export function parseMigrationBlobsFromTree(stdout: string): MigrationBlob[] {
+  return stdout.split("\n").filter((line) => line.endsWith(".sql")).map((line) => {
+    const match = /^100644 blob ([0-9a-f]{40})\t(.+\.sql)$/.exec(line);
+    if (!match?.[1] || !match[2]) {
+      throw new Error("Objeto de migration Git inesperado: " + line.slice(0, 100));
+    }
+    return { sha: match[1], path: match[2] };
+  });
+}
+
 export type MigrationHistoryIssueCode =
   | "empty_baseline"
   | "local_history_missing"
@@ -184,13 +195,7 @@ function listMigrationBlobsAt(ref: string): MigrationBlob[] {
     "git", ["ls-tree", "-r", ref, "--", "supabase/migrations"],
     { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] },
   );
-  return stdout.split("\n").filter(Boolean).map((line) => {
-    const match = /^100644 blob ([0-9a-f]{40})\t(.+\.sql)$/.exec(line);
-    if (!match?.[1] || !match[2]) {
-      throw new Error("Objeto de migration Git inesperado: " + line.slice(0, 100));
-    }
-    return { sha: match[1], path: match[2] };
-  });
+  return parseMigrationBlobsFromTree(stdout);
 }
 
 function main(): void {

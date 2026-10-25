@@ -1,7 +1,11 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
-import { validateMigrationHistory, validateMigrationImportPlan } from "../../scripts/validar-plano-migrations-upstream";
+import {
+  parseMigrationBlobsFromTree,
+  validateMigrationHistory,
+  validateMigrationImportPlan,
+} from "../../scripts/validar-plano-migrations-upstream";
 
 const migration = (timestamp: string, number: string, slug: string) =>
   `supabase/migrations/${timestamp}_${number}_${slug}.sql`;
@@ -140,6 +144,21 @@ describe("integridade de migrations históricas (SHA de blob Git)", () => {
     expect(result.issues).toEqual([
       { code: "upstream_history_missing", path: base[0]!.path },
       { code: "local_history_missing", path: base[1]!.path },
+    ]);
+  });
+});
+
+describe("leitura da árvore Git de migrations", () => {
+  it("ignora o MANIFEST não SQL e mantém apenas os blobs .sql", () => {
+    const tree = [
+      `100644 blob ${"a".repeat(40)}\tsupabase/migrations/20261018000000_0688_base.sql`,
+      `100644 blob ${"b".repeat(40)}\tsupabase/migrations/MANIFEST.md`,
+      `100644 blob ${"c".repeat(40)}\tsupabase/migrations/20261018000001_0689_base.sql`,
+    ].join("\n");
+
+    expect(parseMigrationBlobsFromTree(tree)).toEqual([
+      { sha: "a".repeat(40), path: "supabase/migrations/20261018000000_0688_base.sql" },
+      { sha: "c".repeat(40), path: "supabase/migrations/20261018000001_0689_base.sql" },
     ]);
   });
 });

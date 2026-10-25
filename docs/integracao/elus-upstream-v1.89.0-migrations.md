@@ -50,7 +50,7 @@ O validador `scripts/validar-plano-migrations-upstream.ts` confere o plano contr
 
 ```bash
 pnpm exec tsx scripts/validar-plano-migrations-upstream.ts \
-  HEAD upstream-base-v185 upstream-target-v189 \
+  sync/elus-deskcomm-v189-consolidation-20261025 upstream-base-v185 upstream-target-v189 \
   docs/integracao/elus-upstream-v1.89.0-plano.json
 ```
 
@@ -87,3 +87,24 @@ aplicação, idempotência, dependências SQL nem compatibilidade do
 e revisão do schema real são gates separados antes de portar/aplicar
 as migrations. Não executar SQL, E2E, merge, imagem ou deploy a partir
 deste teste isolado.
+
+
+## Integração preparada na branch `feat/elus-v189-migrations-20261025` (25/10/2026)
+
+**Estado: SQL incorporado ao branch; NÃO aplicado ao Supabase.**
+
+- Origem conferida: DeskcommCRM `v1.85.0` em `83aeac8f78aa076f3adfaf3e773c8616229e5cd9` e `v1.89.0` em `6540929d5ef7a951531dda550db0bf54affa516a`. A comparação dessas árvores dá 38 migrations adicionadas e nenhuma removida ou modificada. As 38 SQLs foram transferidas da origem fixada; em `0717`, foi removido somente um espaço final em uma linha. O SQL executável permanece o mesmo; só os três destinos do plano abaixo mudam de nome.
+- As quatro migrations exclusivas ELUS foram comparadas com o pai da branch e permanecem byte a byte inalteradas. O manifesto preserva os números ELUS `0689`, `0690`, `0691`, `0692`; as colisões são resolvidas somente nos nomes das migrations upstream.
+- `supabase/baseline.sql` agora parte do baseline oficial v1.89.0, que contém o snapshot e os apêndices upstream dessa release; ao fim foram reaplicados, em ordem, os quatro SQLs ELUS sem modificação. Isso é uma composição estática: não executamos `install`, `update` nem SQL contra Postgres.
+
+### Dependências e estado do schema observado
+
+A leitura somente de catálogo do projeto Supabase `elus` encontrou 191 tabelas em `public`, e a leitura de `schema_migrations` encontrou os 11 registros descritos acima. As tabelas-base referenciadas pelo lote existem. O que falta no catálogo corresponde a objetos introduzidos pelo lote: 17 tabelas novas, a view `calendar_service_google_candidates`, funções criadas nas respectivas migrations e 40 colunas adicionadas em tabelas existentes. As colunas ausentes foram localizadas nas migrations `0593`, `0687`, upstream `0689`, upstream `0691`, upstream `0716`, `0705`, `0706`, `0710`, `0722`, `0729` e `0738`; portanto sua ausência é evidência de que o lote não foi aplicado, não uma dependência externa presumida.
+
+As 11 migrations do Supabase não equivalem a versões dos arquivos SQL: são preparação + seis lotes do baseline v1.85 e quatro versões ELUS. As 38 versões upstream não constam do ledger. Um fluxo de aplicação futuro precisa resolver explicitamente o replay dos arquivos com timestamps anteriores ao último registro do banco e não pode usar `db push` como teste exploratório. Este PR não autoriza nem executa esse replay.
+
+### Limites desta etapa
+
+- Não há validação de execução das migrations nem de instalação/atualização do baseline em Postgres; esse teste de banco está fora do escopo permitido nesta etapa.
+- Não há canário, `db push`, `db reset`, E2E/Playwright, merge, publicação de imagens ou deploy. O `.github/workflows/e2e.yml` permanece manual (`workflow_dispatch`).
+- A incorporação de SQL não equivale ao port integral das mudanças de aplicação da v1.89.0. A revisão de conflitos de runtime/código e compatibilidade funcional segue como gate separado antes de declarar ELUS v1.89.0.
