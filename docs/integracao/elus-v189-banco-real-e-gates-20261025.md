@@ -51,3 +51,19 @@ A execução `ci` [40186184111](https://github.com/OARANHA/elus/actions/runs/401
 **Correção pontual de preço do Gemini 4 Argon (migration 0703):** o catálogo declara 400/2000 centavos por milhão para a tarifa Standard a partir de 01/12/2026 UTC, mas o motor não tinha entrada para o id. O contrato SQL também declara a promoção anterior (200/1000) e cache de leitura 10/20 centavos por milhão. A branch agora contém a tabela e a virada temporal em `pricing.ts`, a aplicação do mesmo corte em `computeCost` e testes unitários de fronteira, cache e paridade. **Código publicado na PR; resultado de CI do novo HEAD ainda não observado.** Não extrapolar para GREEN.
 
 **Permanecem bloqueantes:** invariantes de RLS em novas tabelas, grants SECURITY DEFINER, política de platform admin, função `fn_definir_aviso_de_caso` ausente, divergências de vocabulário banco/TypeScript, LGPD (rótulo opaco), métricas e reserva de tipos de eventos. Não reduzir a cobertura ou declarar exceções para forçar aprovação. O candidato de baseline ainda não foi validado como plano de upgrade do ledger real de 11 versões. Não aplicar SQL, não executar E2E, não fazer merge ou deploy.
+
+
+## CI do candidato após correção 0743 — reconciliação incremental (25/10/2026)
+
+O HEAD `8c99246e00bec4400d4904e24934bef5b8a77a1a` da PR #43 foi verificado **uma única vez** na execução [40197863859](https://github.com/OARANHA/elus/actions/runs/40197863859). `verify` e as quatro partições `verify-parte` passaram, mas `invariants-majors` falhou em PostgreSQL 15 e 17: **17 testes em 11 arquivos** por versão. Os problemas não autorizam aplicação no Supabase real.
+
+A comparação das migrations fixadas com o código local revelou três descompassos de contrato diretamente comprovados:
+- A migration upstream `0655` acrescentou `task_due` e `task_overdue` ao CHECK de `agent_inbox_items.kind`; o tipo `InboxKind` local não os declarava. O tipo foi sincronizado com a definição upstream.
+- A migration `0693` acrescentou `verificacao_manual` ao CHECK de `passagens_de_atendimento.motivo_codigo`; `MOTIVOS_DA_PASSAGEM` e `FRASE_DO_MOTIVO` foram sincronizados com a definição upstream.
+- A migration `0754` acrescentou `median_first_response_seconds` à resposta da RPC de atendentes. O teste de paridade da migration `0596` comparava o objeto completo com a versão anterior, portanto rejeitava esse campo novo. A régua agora exige igualdade exata dos campos legados e presença/tipo válido da mediana, sem relaxar a paridade antiga.
+
+**Status destas três correções: IMPLEMENTADO na branch, NÃO TESTADO em CI no novo HEAD.** Nenhuma consulta adicional de Actions foi realizada nesta rodada.
+
+Outros bloqueios observados nos logs do mesmo CI: rótulos opacos LGPD divergindo de expectativas antigas, `fn_definir_aviso_de_caso` ausente, policy `channel_sessions_tenant_write` substituída na migration `0752`, falta de provas comportamentais RLS para tabelas novas, exceções/grants SECURITY DEFINER e expectativas de platform-admin. Cada caso requer confronto com contrato upstream e teste funcional; não adicionar exceções ou reescrever expectativas apenas para tornar o CI verde.
+
+**Sem E2E/Playwright, sem SQL/migrations no Supabase real, sem merge, sem deploy.** O plano de upgrade do ledger de 11 registros permanece gate obrigatório e separado.
