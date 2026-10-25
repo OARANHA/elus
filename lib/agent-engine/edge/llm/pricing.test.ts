@@ -153,6 +153,31 @@ describe("Gemini 3.6/3.7/3.8 Flash — a promo acaba em 2027-01-01T00:00:00Z", (
   });
 });
 
+describe("Gemini 4 Argon — promoção até 2026-12-01T00:00:00Z (0703)", () => {
+  const antes = new Date("2026-11-30T23:59:59.999Z");
+  const virada = new Date("2026-12-01T00:00:00.000Z");
+
+  it("cobra 200/1000 e cache de leitura 10 até o último milissegundo", () => {
+    expect(entrada("gemini-4-argon", antes)).toBeCloseTo(200, 6);
+    expect(saida("gemini-4-argon", antes)).toBeCloseTo(1000, 6);
+    expect(leituraDeCache("gemini-4-argon", antes)).toBeCloseTo(10, 6);
+    expect(gravacaoDeCache("gemini-4-argon", "5m", antes)).toBeCloseTo(200, 6);
+  });
+
+  it("cobra 400/2000 e cache de leitura 20 no instante da virada", () => {
+    expect(entrada("gemini-4-argon", virada)).toBeCloseTo(400, 6);
+    expect(saida("gemini-4-argon", virada)).toBeCloseTo(2000, 6);
+    expect(leituraDeCache("gemini-4-argon", virada)).toBeCloseTo(20, 6);
+    expect(gravacaoDeCache("gemini-4-argon", "1h", virada)).toBeCloseTo(400, 6);
+  });
+
+  it("prefixo de provedor e sufixo de data mantêm o corte", () => {
+    expect(entrada("google/gemini-4-argon", antes)).toBeCloseTo(200, 6);
+    expect(saida("google/gemini-4-argon-20261013", virada)).toBeCloseTo(2000, 6);
+    expect(leituraDeCache("google/gemini-4-argon", antes)).toBeCloseTo(10, 6);
+  });
+});
+
 describe("costCents — o TTL do cache é o que o knob LLM_CACHE_TTL diz", () => {
   it("gravação em 5m custa 1,25× a entrada, não 2×", () => {
     // O defeito: a tabela só tinha a tarifa de 1h e o cálculo a aplicava sempre.
