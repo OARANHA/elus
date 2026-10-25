@@ -43,3 +43,11 @@ A documentação de reconciliação detalhada e o mapa de importação estão em
 ## Candidato estático da baseline (25/10/2026)
 
 Após o segundo CI RED da PR #43, `supabase/baseline.sql` passou a ser um candidato v1.89.0 composto do baseline upstream fixado e das quatro migrations ELUS. A paridade entre a cadeia e o apêndice foi verificada apenas por testes estáticos. O candidato não foi aplicado ou validado em Postgres, e o plano de replay das migrations anteriores ao último registro do ledger continua pendente.
+
+## CI RED do candidato v1.89.0 — reconciliação parcial (25/10/2026)
+
+A execução `ci` [40186184111](https://github.com/OARANHA/elus/actions/runs/40186184111), no HEAD `6259b3d40b1ec5885adc88e9745305343667ee51`, reprovou **2 testes unitários** de preço do catálogo e **18 invariantes em cada matriz PostgreSQL 15/17**. Os logs foram inspecionados uma única vez nesta rodada, sem polling.
+
+**Correção pontual de preço do Gemini 4 Argon (migration 0703):** o catálogo declara 400/2000 centavos por milhão para a tarifa Standard a partir de 01/12/2026 UTC, mas o motor não tinha entrada para o id. O contrato SQL também declara a promoção anterior (200/1000) e cache de leitura 10/20 centavos por milhão. A branch agora contém a tabela e a virada temporal em `pricing.ts`, a aplicação do mesmo corte em `computeCost` e testes unitários de fronteira, cache e paridade. **Código publicado na PR; resultado de CI do novo HEAD ainda não observado.** Não extrapolar para GREEN.
+
+**Permanecem bloqueantes:** invariantes de RLS em novas tabelas, grants SECURITY DEFINER, política de platform admin, função `fn_definir_aviso_de_caso` ausente, divergências de vocabulário banco/TypeScript, LGPD (rótulo opaco), métricas e reserva de tipos de eventos. Não reduzir a cobertura ou declarar exceções para forçar aprovação. O candidato de baseline ainda não foi validado como plano de upgrade do ledger real de 11 versões. Não aplicar SQL, não executar E2E, não fazer merge ou deploy.
