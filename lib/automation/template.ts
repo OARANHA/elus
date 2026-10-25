@@ -47,6 +47,14 @@ function campoPersonalizadoDoLead(context: Record<string, unknown>, nome: string
 }
 
 /**
+ * Campos só para uso INTERNO da equipe. O contexto de automações pode trazer
+ * o contato completo, mas nenhum texto enviado ao cliente deve revelar estes
+ * rótulos — nem quando o caminho da variável é escrito explicitamente.
+ * Regra trazida da base upstream v1.89.0; sem dependência de schema.
+ */
+const SO_DA_EQUIPE = new Set(["contact.address_book_name"]);
+
+/**
  * `formatarValor` recebe cada VALOR já resolvido, nunca o template: quem
  * renderiza para HTML escapa o que veio do contato/negócio e mantém a marcação
  * que o operador escreveu.
@@ -57,6 +65,7 @@ export function renderTemplate(
   formatarValor: (valor: string) => string = (valor) => valor,
 ): string {
   return template.replace(/\{\{\s*([\w.]+)\s*\}\}/g, (_m, path: string) => {
+    if (SO_DA_EQUIPE.has(path)) return "";
     // `{{nome}}` fala com a pessoa: segue a régua única de nome de gente
     // (cadastrado, depois o perfil do WhatsApp). Contato que chega pelo
     // WhatsApp tem `name` nulo — só `contact.name` saía "Olá , ...".
