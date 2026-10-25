@@ -128,6 +128,7 @@ export interface MigrationBlob {
 }
 
 export type MigrationHistoryIssueCode =
+  | "empty_baseline"
   | "local_history_missing"
   | "local_history_modified"
   | "upstream_history_missing"
@@ -153,6 +154,8 @@ export function validateMigrationHistory(
   const own = new Map(local.map((entry) => [entry.path, entry.sha]));
   const target = new Map(upstream.map((entry) => [entry.path, entry.sha]));
   const issues: MigrationHistoryIssue[] = [];
+  // Uma ref errada ou vazia não pode virar GREEN só por iteração vazia.
+  if (base.length === 0) issues.push({ code: "empty_baseline", path: "supabase/migrations" });
 
   for (const migration of base) {
     const localSha = own.get(migration.path);
