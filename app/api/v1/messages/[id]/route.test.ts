@@ -85,6 +85,39 @@ describe("alterar mensagem enviada", () => {
     expect(state.audit).toHaveBeenCalledWith(expect.objectContaining({ action: "message.edited", resourceId: id }));
   });
 
+  it("audita a revogação sem copiar o corpo da mensagem", async () => {
+    const res = await DELETE(new NextRequest(url, { method: "DELETE" }), ctx);
+    expect(res.status).toBe(200);
+    expect(state.audit).toHaveBeenCalledWith(expect.objectContaining({
+      action: "message.revoked",
+      resourceId: id,
+      organizationId: "org-1",
+      metadata: {
+        conversation_id: "conversa-1",
+        direction: "outbound",
+        external_id: "ABC",
+        conteudo_preservado: true,
+      },
+    }));
+    // A trilha de auditoria registra o evento, mas nunca o texto
+    // pessoal: não criar uma segunda cópia fora do ciclo de anonimização.
+    expect(JSON.stringify(state.audit.mock.calls)).not.toContain("antes");
+  });
+
+  it("audita a edição sem copiar o texto novo ou antigo", async () => {
+    const res = await PATCH(new NextRequest(url, {
+      method: "PATCH", body: JSON.stringify({ text: "depois" }),
+    }), ctx);
+    expect(res.status).toBe(200);
+    expect(state.audit).toHaveBeenCalledWith(expect.objectContaining({
+      action: "message.edited",
+      metadata: expect.objectContaining({ conteudo_preservado: true }),
+    }));
+    const chamadasAudit = JSON.stringify(state.audit.mock.calls);
+    expect(chamadasAudit).not.toContain("antes");
+    expect(chamadasAudit).not.toContain("depois");
+  });
+
   it("não marca como apagada quando o canal recusa", async () => {
     state.remove.mockRejectedValueOnce(new Error("recusado_403"));
     const res = await DELETE(new NextRequest(url, { method: "DELETE" }), ctx);
