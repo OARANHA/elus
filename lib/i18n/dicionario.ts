@@ -16326,6 +16326,21 @@ export const DICIONARIO: Traducoes = {
   "Entre na sua conta para continuar.": { es: "Entra en tu cuenta para continuar." },
   "Integrações com o Google": { es: "Integraciones con Google" },
   "Informações legais": { es: "Información legal" },
+  // ELUS v1.89.0 — textos do aviso de agendamento (PR #44); mesmo idioma da organização.
+  "Cliente": { es: "Cliente" },
+  "Quando": { es: "Cuándo" },
+  "Profissional": { es: "Profesional" },
+  "Origem": { es: "Origen" },
+  "agenda de hoje": { es: "agenda de hoy" },
+  "Nenhum agendamento para hoje.": { es: "No hay citas para hoy." },
+  "Durante a noite (22h às 7h):": { es: "Durante la noche (22 h a 7 h):" },
+  "teste do aviso de agendamento": { es: "prueba del aviso de cita" },
+  "Se esta mensagem chegou, os avisos de agendamento estão configurados e funcionando.": { es: "Si recibiste este mensaje, los avisos de citas están configurados y funcionando." },
+  "Quando um horário for marcado, remarcado ou cancelado, chega aqui o primeiro nome do cliente, o serviço, o dia e a hora, quem atende e de onde veio. Às 7h chega o resumo do dia.": { es: "Cuando se programe, reprograme o cancele una cita, recibirás aquí el nombre del cliente, el servicio, el día y la hora, quién atiende y de dónde vino. A las 7 h llegará el resumen del día." },
+  "novo agendamento": { es: "nueva cita" },
+  "agendamento remarcado": { es: "cita reprogramada" },
+  "agendamento cancelado": { es: "cita cancelada" },
+
 };
 
 /**
