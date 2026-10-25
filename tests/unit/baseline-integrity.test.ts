@@ -9,9 +9,9 @@ function gitBlobSha(content: Buffer): string {
   return createHash("sha1").update(header).update(content).digest("hex");
 }
 
-describe("integridade da baseline ELUS restaurada da PR #40", () => {
-  it("preserva o blob integral e falha em truncagem ou edição acidental", () => {
-    expect(gitBlobSha(baseline)).toBe("96147866db19c4e6a22a8bed5214c7ea85d0cb3d");
+describe("integridade da baseline ELUS v1.89.0 candidata", () => {
+  it("preserva o blob reconstruído e falha em truncagem ou edição acidental", () => {
+    expect(gitBlobSha(baseline)).toBe("f9c5de4cdab40c1f73ee4e63f53886c93671e5c2");
   });
 
   it("não aceita a baseline truncada de 478 linhas", () => {

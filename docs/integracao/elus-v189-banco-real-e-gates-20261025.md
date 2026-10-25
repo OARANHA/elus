@@ -6,19 +6,19 @@
 
 O banco ativo reporta **11 registros de migrations**, e NÃO um registro por cada um dos **516 arquivos SQL** do upstream 1.85.0. O histórico real representa um baseline consolidado em lotes mais as 4 migrations exclusivas ELUS:
 
-| Versão gravada no Supabase | Nome |
-| --- | --- |
-| `20261018200431` | `elus_v185_preparar_extensoes_92d37f6` |
-| `20261018204508` | `elus_v185_baseline_92d37f6_p01_of_06` |
-| `20261018204837` | `elus_v185_baseline_92d37f6_p02_of_06` |
-| `20261018204851` | `elus_v185_baseline_92d37f6_p03_of_06` |
-| `20261018204924` | `elus_v185_baseline_92d37f6_p04_of_06` |
-| `20261018204939` | `elus_v185_baseline_92d37f6_p05_of_06` |
-| `20261018204955` | `elus_v185_baseline_92d37f6_p06_of_06` |
-| `20261019204449` | `integracoes_erp_vendaerp_0689` |
-| `20261021025530` | `elus_0690_org_ai_autonomy_protected` |
-| `20261021025551` | `elus_0691_chutes_chat_catalog` |
-| `20261021025613` | `elus_0692_chutes_catalog_sync` |
+| Versão gravada no Supabase | Nome                                   |
+| -------------------------- | -------------------------------------- |
+| `20261018200431`           | `elus_v185_preparar_extensoes_92d37f6` |
+| `20261018204508`           | `elus_v185_baseline_92d37f6_p01_of_06` |
+| `20261018204837`           | `elus_v185_baseline_92d37f6_p02_of_06` |
+| `20261018204851`           | `elus_v185_baseline_92d37f6_p03_of_06` |
+| `20261018204924`           | `elus_v185_baseline_92d37f6_p04_of_06` |
+| `20261018204939`           | `elus_v185_baseline_92d37f6_p05_of_06` |
+| `20261018204955`           | `elus_v185_baseline_92d37f6_p06_of_06` |
+| `20261019204449`           | `integracoes_erp_vendaerp_0689`        |
+| `20261021025530`           | `elus_0690_org_ai_autonomy_protected`  |
+| `20261021025551`           | `elus_0691_chutes_chat_catalog`        |
+| `20261021025613`           | `elus_0692_chutes_catalog_sync`        |
 
 **Consequência:** comparar apenas timestamps dos nomes de arquivos no repositório não prova compatibilidade com o histórico real. As quatro migrations ELUS já constam na lista do banco com **versões de aplicação distintas dos timestamps escritos no nome dos arquivos SQL**. As 516 migrations históricas estão representadas pelo baseline em lotes, e não por 516 lançamentos individuais no histórico.
 
@@ -39,3 +39,7 @@ O manifesto `elus-upstream-v1.89.0-plano.json` e seu pré-voo só resolvem **col
 As 38 migrations foram incorporadas à branch derivada da PR #40, com três renomes de colisão previstos no plano. A baseline v1.89.0 **ainda precisa ser reconstruída e validada separadamente**. A baseline presente foi restaurada integralmente da PR #40 após o CI detectar a versão truncada. A leitura de catálogo confirmou que os objetos ausentes são introduzidos pelo lote; 40 colunas de destino ainda não existem no banco. **Nenhuma migration foi aplicada.**
 
 A documentação de reconciliação detalhada e o mapa de importação estão em [`elus-upstream-v1.89.0-migrations.md`](elus-upstream-v1.89.0-migrations.md) e [`elus-upstream-v1.89.0-plano.json`](elus-upstream-v1.89.0-plano.json). O replay exige plano separado para o ledger real; `db push` continua proibido nesta etapa.
+
+## Candidato estático da baseline (25/10/2026)
+
+Após o segundo CI RED da PR #43, `supabase/baseline.sql` passou a ser um candidato v1.89.0 composto do baseline upstream fixado e das quatro migrations ELUS. A paridade entre a cadeia e o apêndice foi verificada apenas por testes estáticos. O candidato não foi aplicado ou validado em Postgres, e o plano de replay das migrations anteriores ao último registro do ledger continua pendente.

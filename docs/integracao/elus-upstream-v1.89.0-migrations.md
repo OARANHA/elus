@@ -89,11 +89,11 @@ deste teste isolado.
 
 ## Integração preparada na branch `feat/elus-v189-migrations-20261025` (25/10/2026)
 
-**Estado: 38 migrations incorporadas ao branch; baseline v1.89.0 pendente de reconstrução e validação. Nada foi aplicado ao Supabase.**
+**Estado: 38 migrations incorporadas; baseline v1.89.0 reconstruída como candidata e verificada estaticamente. Nenhum SQL foi aplicado ao Supabase.**
 
 - Origem conferida: DeskcommCRM `v1.85.0` em `83aeac8f78aa076f3adfaf3e773c8616229e5cd9` e `v1.89.0` em `6540929d5ef7a951531dda550db0bf54affa516a`. A comparação dessas árvores dá 38 migrations adicionadas e nenhuma removida ou modificada. As 38 conferem com a origem fixada após normalizar apenas as anotações documentais `upstream:` e um espaço final inerte em `0717`; referências de aplicação/testes fora deste escopo estão marcadas `upstream:` nos cabeçalhos de manifesto. Os três destinos previstos no plano mudam de nome para resolver colisões. O baseline permanece no blob anterior da PR #40 até reconstrução separada.
 - As quatro migrations exclusivas ELUS foram comparadas com o pai da branch e permanecem byte a byte inalteradas. O manifesto preserva os números ELUS `0689`, `0690`, `0691`, `0692`; as colisões são resolvidas somente nos nomes das migrations upstream.
-- `supabase/baseline.sql` foi restaurado integralmente do blob original da branch da PR #40 (`96147866db19c4e6a22a8bed5214c7ea85d0cb3d`). Ele corresponde ao baseline ELUS anterior à integração. O baseline v1.89.0 ainda precisa ser reconstruído e validado separadamente; não afirmar que a baseline dessa release foi integrada.
+- `supabase/baseline.sql` agora combina o snapshot upstream v1.89.0 com as quatro migrations próprias ELUS, nesta ordem: `0689`, `0690`, `0691`, `0692`. O blob candidato é `f9c5de4cdab40c1f73ee4e63f53886c93671e5c2`. As verificações estáticas de paridade passaram; execução em Postgres e compatibilidade de upgrade no banco real continuam pendentes.
 
 ### Dependências e estado do schema observado
 
@@ -110,3 +110,7 @@ As 11 migrations do Supabase não equivalem a versões dos arquivos SQL: são pr
 ## Correção de baseline após CI (25/10/2026)
 
 O CI da PR #43 detectou que o baseline publicado estava truncado em 478 linhas e falhava ao ser interpretado como SQL. O arquivo foi restaurado byte a byte a partir do blob original da branch da PR #40 (`96147866db19c4e6a22a8bed5214c7ea85d0cb3d`). O teste `tests/unit/baseline-integrity.test.ts` fixa esse blob e falha em qualquer truncagem ou edição. As 38 migrations upstream e as quatro migrations exclusivas ELUS permanecem preservadas. O baseline v1.89.0 ainda precisa ser reconstruído e validado separadamente; não usar o baseline restaurado como se representasse a release v1.89.0.
+
+## Candidato v1.89.0 após o segundo CI RED (25/10/2026)
+
+O CI do HEAD `95080f59d27d43667951a4dce7cb363e1c1afa23` reprovou cinco testes estáticos em quatro arquivos porque a baseline da PR #40 não continha as funções e constraints das migrations novas. A baseline candidata foi construída do snapshot upstream fixado em `6540929d5ef7a951531dda550db0bf54affa516a`, seguido pelas quatro migrations ELUS inalteradas. O teste de integridade fixa o novo blob e impede truncagem. A guarda de rótulo LGPD foi atualizada para a definição posterior da migration `0657`, preservando a regra de não preencher colunas nulas. Isto não demonstra aplicação, idempotência ou upgrade no banco real; nenhum SQL foi executado nesta etapa.

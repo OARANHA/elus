@@ -1,7 +1,7 @@
 {
   "source": "DeskcommCRM v1.89.0 (6540929d5ef7a951531dda550db0bf54affa516a)",
   "base": "DeskcommCRM v1.85.0 (83aeac8f78aa076f3adfaf3e773c8616229e5cd9)",
-  "status": "MIGRATIONS_IMPORTED_BASELINE_V189_PENDING_NOT_APPLIED",
+  "status": "MIGRATIONS_IMPORTED_BASELINE_V189_STATIC_CANDIDATE_NOT_APPLIED",
   "renames": {
     "supabase/migrations/20261020000006_0689_aviso_da_central_com_destinatario.sql": "supabase/migrations/20261020000006_0762_aviso_da_central_com_destinatario.sql",
     "supabase/migrations/20261020120000_0691_banco_externo_db_type_e_aviso.sql": "supabase/migrations/20261020120002_0763_banco_externo_db_type_e_aviso.sql",
