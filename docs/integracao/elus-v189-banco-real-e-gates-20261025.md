@@ -67,3 +67,11 @@ A comparação das migrations fixadas com o código local revelou três descompa
 Outros bloqueios observados nos logs do mesmo CI: rótulos opacos LGPD divergindo de expectativas antigas, `fn_definir_aviso_de_caso` ausente, policy `channel_sessions_tenant_write` substituída na migration `0752`, falta de provas comportamentais RLS para tabelas novas, exceções/grants SECURITY DEFINER e expectativas de platform-admin. Cada caso requer confronto com contrato upstream e teste funcional; não adicionar exceções ou reescrever expectativas apenas para tornar o CI verde.
 
 **Sem E2E/Playwright, sem SQL/migrations no Supabase real, sem merge, sem deploy.** O plano de upgrade do ledger de 11 registros permanece gate obrigatório e separado.
+
+## CI do HEAD daab70be — falha de tradução e execução ainda incompleta (25/10/2026)
+
+A consulta única ao CI do HEAD `daab70be9025b8d0672461874214ddc2ae7b9c80` identificou a execução [40205976348](https://github.com/OARANHA/elus/actions/runs/40205976348) ainda em andamento, mas já com falha confirmada no job `verify-parte (3)`: `lib/ai/inbox-destino.test.ts` exigiu a tradução espanhola de **"Abrir tarefa"** (1 falha, 7.766 testes aprovados nesta partição). No instante da leitura, os jobs de invariantes PostgreSQL 15/17 ainda estavam em execução; não inferir seu resultado.
+
+A revisão estática de `lib/ai/inbox-destino.ts` contra `lib/i18n/dicionario.ts` encontrou três chaves de aviso de tarefas introduzidas pela migration 0655 sem espanhol: o rótulo "Abrir tarefa" e as orientações de `task_due` e `task_overdue`. As três traduções foram adicionadas exclusivamente ao dicionário, sem mudar autorização, URL, SQL ou comportamento do resolvedor. Commit `e523faf9d9855bcff66c359c9cd4abeba618c499`; leitura posterior do blob confirmou que todas as chaves literais de `rotulo`/`orientacao` e os rótulos dinâmicos do resolvedor possuem entrada no dicionário. **Validação estática apenas; o novo HEAD ainda não foi validado pelo CI nesta execução.**
+
+Continuam pendentes a conclusão dos invariantes PostgreSQL, a revisão de segurança e o plano separado de upgrade das 11 versões reais do ledger Supabase. Nenhuma migration aplicada, nenhum E2E/Playwright, merge ou deploy executado.
