@@ -107,6 +107,15 @@ describe("integridade de migrations históricas (SHA de blob Git)", () => {
     { path: migration("20261018000001", "0689", "base_dois"), sha: "b".repeat(40) },
   ];
 
+  it("não declara sucesso quando a ref do baseline não contém migrations", () => {
+    const result = validateMigrationHistory([], [], []);
+    expect(result).toEqual({
+      checked: 0,
+      issues: [{ code: "empty_baseline", path: "supabase/migrations" }],
+      valid: false,
+    });
+  });
+
   it("aceita apenas históricos idênticos em ambas as árvores", () => {
     const local = [...base, { path: migration("20261019120000", "0690", "elus"), sha: "c".repeat(40) }];
     const upstream = [...base, { path: migration("20261020000000", "0690", "upstream"), sha: "d".repeat(40) }];
