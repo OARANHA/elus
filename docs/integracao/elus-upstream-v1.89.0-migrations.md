@@ -40,3 +40,20 @@ O script só lê árvores Git e imprime JSON. Exit 0 = sem colisão, 1 = colisã
 5. Não mesclar nem publicar imagem/deploy até os gates exigidos.
 
 **Escopo deste documento:** reconciliação e preparação verificáveis; não declara que v1.89.0 já foi integrada.
+
+
+## Pré-voo do plano candidato (etapa seguinte, sem importar SQL)
+
+O arquivo `docs/integracao/elus-upstream-v1.89.0-plano.json` registra **apenas candidatos** para os destinos dos três arquivos upstream que colidem com migrations ELUS. Para o upstream `0691`, combina o número `0763` com o timestamp candidato `20261020120002`; os outros dois preservam seus timestamps e usam `0762`/`0764`. **Nenhum SQL foi copiado, alterado ou aplicado por esta etapa.**
+
+O validador `scripts/validar-plano-migrations-upstream.ts` confere o plano contra três árvores Git, sem rede e sem escrita:
+
+```bash
+pnpm exec tsx scripts/validar-plano-migrations-upstream.ts \
+  HEAD upstream-base-v185 upstream-target-v189 \
+  docs/integracao/elus-upstream-v1.89.0-plano.json
+```
+
+Ele exige que cada origem pertença ao lote novo do upstream, que o slug da migration não seja alterado, que não haja colisões de **caminho, timestamp/version do Supabase ou número lógico** com o histórico local ou entre os arquivos importados, e que a ordem cronológica das migrations novas seja preservada. Retorna `valid: true` apenas para esses critérios **estáticos**; `requiresDatabaseHistoryReview: true` permanece sempre verdadeiro. Exit 0 = plano nominalmente válido, 1 = conflito detectado, 2 = não medido.
+
+O plano **não** valida a execução das 38 migrations, dependências SQL, idempotência, integridade do `baseline.sql`, conteúdo de objetos já provisionados, nem o histórico `supabase_migrations.schema_migrations` dos ambientes reais. Antes de importar ou executar SQL, confirmar o histórico real **somente leitura**, revisar as dependências de cada migration e os conflitos de código, inclusive VendaERP, Chutes e governança. Não executar `db push`, `db reset`, E2E/Playwright, merge, imagem ou deploy neste gate. Testes unitários: `tests/unit/validar-plano-migrations-upstream.test.ts`.
