@@ -16327,10 +16327,7 @@ export const DICIONARIO: Traducoes = {
   "Integrações com o Google": { es: "Integraciones con Google" },
   "Informações legais": { es: "Información legal" },
   // ELUS v1.89.0 — textos do aviso de agendamento (PR #44); mesmo idioma da organização.
-  "Cliente": { es: "Cliente" },
-  "Quando": { es: "Cuándo" },
   "Profissional": { es: "Profesional" },
-  "Origem": { es: "Origen" },
   "agenda de hoje": { es: "agenda de hoy" },
   "Nenhum agendamento para hoje.": { es: "No hay citas para hoy." },
   "Durante a noite (22h às 7h):": { es: "Durante la noche (22 h a 7 h):" },
