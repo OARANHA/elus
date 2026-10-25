@@ -90,6 +90,9 @@ export const MOTIVOS_DA_PASSAGEM = [
   "legal_mention",
   "refund_mention",
   "caso_escalado",
+  // (migration 0693) Fluxo determinístico concluiu a coleta e entregou para
+  // verificação humana. Distinto de requested_human: o cliente não pediu agente.
+  "verificacao_manual",
 ] as const;
 export type MotivoDaPassagem = (typeof MOTIVOS_DA_PASSAGEM)[number];
 
@@ -134,6 +137,7 @@ export const FRASE_DO_MOTIVO = {
   legal_mention: "A conversa tocou em assunto jurídico",
   refund_mention: "A conversa tocou em reembolso",
   caso_escalado: "Uma pessoa da equipe escalou um atendimento",
+  verificacao_manual: "Um fluxo automático coletou dados e passou a conversa para verificação humana",
 } satisfies Record<MotivoDaPassagem, string>;
 
 /**
