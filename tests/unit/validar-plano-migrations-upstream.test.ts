@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
-import { validateMigrationImportPlan } from "../../scripts/validar-plano-migrations-upstream";
+import { validateMigrationHistory, validateMigrationImportPlan } from "../../scripts/validar-plano-migrations-upstream";
 
 const migration = (timestamp: string, number: string, slug: string) =>
   `supabase/migrations/${timestamp}_${number}_${slug}.sql`;
@@ -98,5 +98,39 @@ describe("pré-voo de migrations upstream v1.89.0 (somente leitura)", () => {
       [source]: "supabase/migrations/sem-versao.sql",
     });
     expect(result.issues.map((issue) => issue.code)).toContain("invalid_destination");
+  });
+});
+
+describe("integridade de migrations históricas (SHA de blob Git)", () => {
+  const base = [
+    { path: migration("20261018000000", "0688", "base"), sha: "a".repeat(40) },
+    { path: migration("20261018000001", "0689", "base_dois"), sha: "b".repeat(40) },
+  ];
+
+  it("aceita apenas históricos idênticos em ambas as árvores", () => {
+    const local = [...base, { path: migration("20261019120000", "0690", "elus"), sha: "c".repeat(40) }];
+    const upstream = [...base, { path: migration("20261020000000", "0690", "upstream"), sha: "d".repeat(40) }];
+    const result = validateMigrationHistory(base, local, upstream);
+    expect(result).toEqual({ checked: 2, issues: [], valid: true });
+  });
+
+  it("recusa SQL histórico reescrito em ELUS ou upstream, mesmo com nome intacto", () => {
+    const local = [{ ...base[0]!, sha: "f".repeat(40) }, base[1]!];
+    const upstream = [base[0]!, { ...base[1]!, sha: "e".repeat(40) }];
+    const result = validateMigrationHistory(base, local, upstream);
+    expect(result.valid).toBe(false);
+    expect(result.issues).toEqual([
+      { code: "local_history_modified", path: base[0]!.path },
+      { code: "upstream_history_modified", path: base[1]!.path },
+    ]);
+  });
+
+  it("recusa a ausência de migration do baseline nas duas árvores", () => {
+    const result = validateMigrationHistory(base, [base[0]!], [base[1]!]);
+    expect(result.valid).toBe(false);
+    expect(result.issues).toEqual([
+      { code: "upstream_history_missing", path: base[0]!.path },
+      { code: "local_history_missing", path: base[1]!.path },
+    ]);
   });
 });
