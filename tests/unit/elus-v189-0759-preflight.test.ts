@@ -7,11 +7,15 @@ import {
 
 const agregado = () => ({ total: "9", legados: "2", atuais: "6", nulos: "1" });
 
-function bancoFake(options: { tipo?: string; falharNoAgregado?: boolean } = {}) {
+function bancoFake(
+  options: { tipo?: string; falharNoAgregado?: boolean } = {},
+) {
   const comandos: string[] = [];
   return {
     comandos,
-    async query(sql: string): Promise<{ rows: Array<Record<string, unknown>> }> {
+    async query(
+      sql: string,
+    ): Promise<{ rows: Array<Record<string, unknown>> }> {
       comandos.push(sql);
       if (sql.startsWith("SELECT format_type")) {
         return { rows: [{ tipo: options.tipo ?? "bytea" }] };
@@ -36,7 +40,14 @@ describe("ELUS v1.89 — pré-voo READ ONLY da migration 0759", () => {
       exige_revisao_e_autorizacao: true,
       autoriza_execucao: false,
     });
-    expect(avaliarContagens0759({ total: "0", legados: "0", atuais: "0", nulos: "0" }).autoriza_execucao).toBe(false);
+    expect(
+      avaliarContagens0759({
+        total: "0",
+        legados: "0",
+        atuais: "0",
+        nulos: "0",
+      }).autoriza_execucao,
+    ).toBe(false);
   });
 
   it("recusa contagens divergentes, valores negativos e entradas não decimais", () => {
@@ -58,13 +69,19 @@ describe("ELUS v1.89 — pré-voo READ ONLY da migration 0759", () => {
     expect(db.comandos[0]).toContain("READ ONLY");
     expect(db.comandos.at(-1)).toBe("ROLLBACK");
     expect(db.comandos.filter((q) => q.startsWith("SELECT"))).toHaveLength(2);
-    expect(db.comandos.every((q) => /^(BEGIN|SET LOCAL|SELECT|ROLLBACK)\b/i.test(q))).toBe(true);
-    expect(db.comandos.join("\n")).not.toMatch(/\b(?:INSERT|UPDATE|DELETE|TRUNCATE|ALTER|CREATE|DROP)\s+(?:FROM|INTO|TABLE|FUNCTION)?\s*public\./i);
+    expect(
+      db.comandos.every((q) => /^(BEGIN|SET LOCAL|SELECT|ROLLBACK)\b/i.test(q)),
+    ).toBe(true);
+    expect(db.comandos.join("\n")).not.toMatch(
+      /\b(?:INSERT|UPDATE|DELETE|TRUNCATE|ALTER|CREATE|DROP)\s+(?:FROM|INTO|TABLE|FUNCTION)?\s*public\./i,
+    );
   });
 
   it("falha fechado para coluna inesperada e reverte mesmo com erro de leitura", async () => {
     const tipo = bancoFake({ tipo: "text" });
-    await expect(consultarImpacto0759(tipo)).rejects.toThrow("Tipo de code_hash divergente");
+    await expect(consultarImpacto0759(tipo)).rejects.toThrow(
+      "Tipo de code_hash divergente",
+    );
     expect(tipo.comandos.at(-1)).toBe("ROLLBACK");
     const falha = bancoFake({ falharNoAgregado: true });
     await expect(consultarImpacto0759(falha)).rejects.toThrow();
@@ -72,9 +89,14 @@ describe("ELUS v1.89 — pré-voo READ ONLY da migration 0759", () => {
   });
 
   it("não altera a migration upstream nem contém gatilhos E2E", () => {
-    const source = readFileSync(new URL("../../scripts/elus-v189-0759-preflight.mjs", import.meta.url), "utf8");
+    const source = readFileSync(
+      new URL("../../scripts/elus-v189-0759-preflight.mjs", import.meta.url),
+      "utf8",
+    );
     expect(source).not.toMatch(/\b(?:db push|db reset|playwright|test:e2e)\b/i);
     expect(source).toMatch(/console\.error\("PRECHECK_BLOQUEADO:/);
-    expect(source).not.toMatch(/console\.(?:log|error)\([^\n]*(?:PGPASSWORD|e\.message|code_hash\s*\))/);
+    expect(source).not.toMatch(
+      /console\.(?:log|error)\([^\n]*(?:PGPASSWORD|e\.message|code_hash\s*\))/,
+    );
   });
 });
