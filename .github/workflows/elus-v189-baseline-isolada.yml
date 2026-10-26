@@ -1,6 +1,6 @@
 name: ELUS v1.89 - ensaio isolado de baseline
 
-# Execução manual, sem Supabase de produção, secrets ou E2E.
+# Ensaio em PR de schema ou disparo manual; sem Supabase de produção, segredos ou E2E.
 # ATENÇÃO: comprova instalação/idempotência da baseline candidata,
 # NÃO comprova upgrade real do ledger v1.85 (sete SQLs privados ausentes).
 on:
@@ -29,17 +29,28 @@ jobs:
     env:
       TEST_DB_IMAGE: pgvector/pgvector:pg${{ matrix.pg }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "22"
-          cache: pnpm
-      - name: Instalar dependências fixadas
-        run: pnpm install --frozen-lockfile
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/preparar-node
+        timeout-minutes: 5
+      # O fork ELUS ainda não publicou as tags upstream. Buscar só as tags
+      # oficiais no checkout efêmero e conferir seus commits, sem push.
+      - name: Pinagem das releases oficiais do teste de isolamento
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --depth=1 --no-tags https://github.com/melgarafael/DeskcommCRM.git \
+            '+refs/tags/v1.89.0:refs/tags/v1.89.0' \
+            '+refs/tags/v1.63.0:refs/tags/v1.63.0'
+          test "$(git rev-parse 'refs/tags/v1.89.0^{commit}')" = '6540929d5ef7a951531dda550db0bf54affa516a'
+          test "$(git rev-parse 'refs/tags/v1.63.0^{commit}')" = '0fd9bda24fac7430dbb240e87c35cc9fd7ce7633'
       - name: Verificar contratos estáticos da exportação
         run: pnpm exec vitest run tests/unit/elus-v185-exportacao-privada.test.ts
       - name: Instalação e atualização idempotente em PostgreSQL efêmero
+        env:
+          # A release publicada pertence ao upstream, não ao fork ELUS.
+          # Não consultar a API anônima no runner (rate limit) nem aceitar
+          # um tag móvel: os SHAs foram verificados no passo anterior.
+          CONFERENCIA_KIT_RELEASE: v1.89.0
         run: pnpm test:db
       - name: Resultado e limite da prova
         if: success()

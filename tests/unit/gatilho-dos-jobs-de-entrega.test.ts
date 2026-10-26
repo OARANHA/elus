@@ -204,6 +204,13 @@ const GATILHO_ESPERADO: Record<string, { condicao: string | null; efeito: string
       "três dias atrás mergeado com número duplicado, e a descoberta vira o `db push` de um " +
       "self-hoster.",
   },
+  "elus-v189-baseline-isolada.yml::baseline-efemera": {
+    condicao: null,
+    efeito:
+      "Este ensaio instala e reaplica a baseline candidata em PostgreSQL 15 e 17, " +
+      "com o teste de isolamento do kit. Desligá-lo por if deixa uma mudança de schema " +
+      "sem a prova de idempotência e sem detectar a ausência de regras RLS.",
+  },
   "ci.yml::invariants-alcance": {
     condicao: null,
     efeito:
