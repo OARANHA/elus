@@ -53,6 +53,7 @@ describe("ELUS v1.85 — exportação privada dos lotes", () => {
         {
           cwd: checkout,
           env: {
+            NODE_ENV: "test",
             PATH: process.env.PATH ?? "",
             PGHOST: "192.0.2.1",
             PGUSER: "invalido",
