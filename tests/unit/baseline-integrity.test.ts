@@ -11,11 +11,21 @@ function gitBlobSha(content: Buffer): string {
 
 describe("integridade da baseline ELUS v1.89.0 candidata", () => {
   it("preserva o blob reconstruído e falha em truncagem ou edição acidental", () => {
-    expect(gitBlobSha(baseline)).toBe("f9c5de4cdab40c1f73ee4e63f53886c93671e5c2");
+    expect(gitBlobSha(baseline)).toBe("a4626352b86fdf3e5faed3b1960975c941c0a8e9");
   });
 
   it("não aceita a baseline truncada de 478 linhas", () => {
     expect(baseline.length).toBeGreaterThan(3_000_000);
     expect(baseline.toString("utf8").split("\n").length).toBeGreaterThan(58_000);
+  });
+
+  it("espelha integralmente a migration ELUS 0765 no fim do baseline self-host", () => {
+    const migration = readFileSync(
+      new URL("../../supabase/migrations/20261026010000_0765_elus_rotacao_atomica_codigos_recuperacao.sql", import.meta.url),
+      "utf8",
+    );
+    const texto = baseline.toString("utf8");
+    expect(texto.endsWith(migration)).toBe(true);
+    expect(texto.match(/CREATE OR REPLACE FUNCTION public\\.fn_elus_rotacionar_codigos_recuperacao\\(/g)).toHaveLength(1);
   });
 });

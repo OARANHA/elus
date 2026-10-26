@@ -126,3 +126,11 @@ O corpo **atual do banco** de `fn_log_event` recebe `organization_id`, tipo e pa
 - **Impedimentos:** nenhuma evidência de replay seguro das 38 migrations sobre o ledger em lotes, nem de rollback testado, nem de concorrência real da `0765`; a `0759` contém DELETE deliberado e requer aceite independente. Não promover a PR de Draft nem executar SQL mutante, E2E/Playwright, merge, imagem ou deploy.
 
 Este registro é documental e não altera SQL, testes ou runtime. O CI acima vale **somente para o HEAD anterior a este commit**; o novo HEAD precisa de seu próprio gate.
+
+## 26/10/2026 — candidato de baseline espelha ELUS 0765 (sem SQL executado)
+
+- O candidato anterior, blob `f9c5de4cdab40c1f73ee4e63f53886c93671e5c2`, **não continha** `fn_elus_rotacionar_codigos_recuperacao`; a leitura integral do blob confirmou a ausência. Os instaladores `hostgator-setup-kit/install.sh` e `update.sh` aplicam/reaplicam `supabase/baseline.sql`, não garantem execução automática do arquivo isolado `0765`. Isso impedia comprovar a RPC num self-host novo.
+- **Correção somente no candidato versionado:** o SQL **inalterado** da migration adicional `20261026010000_0765_elus_rotacao_atomica_codigos_recuperacao.sql` foi acrescentado **ao final** da baseline, sem reescrever o prefixo anterior de 3.333.044 caracteres e sem tocar nas 38 migrations upstream ou nas quatro ELUS históricas. Novo blob Git: `a4626352b86fdf3e5faed3b1960975c941c0a8e9`.
+- `tests/unit/baseline-integrity.test.ts` agora fixa o novo blob e exige cópia integral da `0765` no final da baseline, com uma única declaração da RPC. A migration continua protegida também por testes de contrato e invariantes independentes.
+- **Limite:** esta mudança corrige a **composição estática do candidato self-host**, não prova instalação limpa, upgrade, rollback, grants efetivos ou concorrência em banco real. O CI GREEN `40273417474` pertence ao HEAD anterior `0921cd21df9c4b6047992bf9d8893a087a095da6`, não a esta alteração. O novo HEAD exige validação própria; não houve execução local de lint, TypeScript ou Vitest.
+- Permanecem bloqueados replay das 38 migrations sobre o ledger de 11 versões, SQL em produção, E2E/Playwright, merge, imagem e deploy. O ensaio controlado PostgreSQL 15/17 e autorização específica continuam obrigatórios.
