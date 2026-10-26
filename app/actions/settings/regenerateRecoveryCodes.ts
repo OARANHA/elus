@@ -7,6 +7,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { audit, isServiceRoleConfigured } from "@/lib/audit";
 import { generateRecoveryCodes, hashRecoveryCode } from "@/lib/auth/recovery-codes";
+import { sessionAal } from "@/lib/auth/server";
 
 export type RegenerateRecoveryCodesResult =
   | { ok: true; recovery_codes: string[] }
@@ -32,6 +33,13 @@ export async function regenerateRecoveryCodes(): Promise<RegenerateRecoveryCodes
   const { data: factors } = await supabase.auth.mfa.listFactors();
   const hasFactor = factors?.totp?.some((f) => f.status === "verified");
   if (!hasFactor) return { ok: false, error: "mfa_not_enrolled" };
+
+  // Regenerar códigos permite remover o único caminho de recuperação.
+  // Tal como desativar MFA, exige TOTP comprovado NESTA sessão (aal2).
+  // Falha de leitura/nível desconhecido recusa, nunca degrada para aal1.
+  if ((await sessionAal()) !== "aal2") {
+    return { ok: false, error: "mfa_session_verification_required" };
+  }
 
   // A migration 0755 revoga todos os privilégios do cliente autenticado.
   // Não apagar códigos existentes se o serviço necessário não estiver pronto.
