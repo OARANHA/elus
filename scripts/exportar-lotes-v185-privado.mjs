@@ -7,7 +7,7 @@
  */
 import { createHash } from "node:crypto";
 import { mkdir, lstat, open, realpath, rm } from "node:fs/promises";
-import { resolve, sep } from "node:path";
+import { isAbsolute, resolve, sep } from "node:path";
 import process from "node:process";
 import { Client } from "pg";
 
@@ -22,7 +22,7 @@ const lotes = new Map([
 ]);
 const md5 = (data) => createHash("md5").update(data).digest("hex");
 function requireDir(arg) {
-  if (!arg || process.argv.length !== 3 || !resolve(arg).startsWith("/")) {
+  if (!arg || process.argv.length !== 3 || !isAbsolute(arg)) {
     throw new Error("Uso: node scripts/exportar-lotes-v185-privado.mjs /caminho/absoluto/privado");
   }
 }
