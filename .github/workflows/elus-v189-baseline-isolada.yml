@@ -1,0 +1,40 @@
+name: ELUS v1.89 - ensaio isolado de baseline
+
+# Execução manual, sem Supabase de produção, secrets ou E2E.
+# ATENÇÃO: comprova instalação/idempotência da baseline candidata,
+# NÃO comprova upgrade real do ledger v1.85 (sete SQLs privados ausentes).
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  baseline-efemera:
+    name: Baseline candidata PostgreSQL ${{ matrix.pg }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        pg: ["15", "17"]
+    env:
+      TEST_DB_IMAGE: pgvector/pgvector:pg${{ matrix.pg }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: pnpm
+      - name: Instalar dependências fixadas
+        run: pnpm install --frozen-lockfile
+      - name: Verificar contratos estáticos da exportação
+        run: pnpm exec vitest run tests/unit/elus-v185-exportacao-privada.test.ts
+      - name: Instalação e atualização idempotente em PostgreSQL efêmero
+        run: pnpm test:db
+      - name: Resultado e limite da prova
+        if: success()
+        run: |
+          echo "PASS: baseline candidata PostgreSQL ${{ matrix.pg }} (instalação + reaplicação + invariantes)." >> "$GITHUB_STEP_SUMMARY"
+          echo "NÃO TESTADO: replay fiel dos 7 blocos SQL privados v1.85 nem upgrade do ledger real." >> "$GITHUB_STEP_SUMMARY"
