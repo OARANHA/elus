@@ -28,3 +28,24 @@ O Supabase ELUS (PostgreSQL 17.11) possui 11 registros no ledger: preparação, 
 - PR #44 depende do HEAD de PR #43 anterior à correção `0765`; reconciliar a pilha antes de integrar.
 
 **Proibições:** sem E2E/Playwright automático, VendERP real, alteração de ledger/banco ativo, merge, publicação, deploy ou canário neste gate. Nunca registrar GREEN de upgrade por testes estáticos.
+
+
+## Evidência adicional do ledger real — 26/10/2026 (somente leitura)
+
+O catálogo `information_schema.columns` confirmou que `supabase_migrations.schema_migrations` possui as colunas `statements` e `rollback` como arrays de texto. Consulta agregada, sem retornar **nenhum SQL, dado pessoal ou segredo**, comprovou que cada um dos seis lotes aplicados possui **um statement preservado no ledger**. Portanto, o SQL historicamente aplicado está disponível **no banco original** para eventual exportação controlada, sem inferir os pontos de divisão do Git.
+
+| Registro | Statements | Bytes SQL | Fingerprint MD5 agregada |
+| --- | ---: | ---: | --- |
+| preparação `20261018200431` | 1 | 174 | `72db224ba3b80c474d771d66cb593668` |
+| parte 01 `20261018204508` | 1 | 508044 | `a1bfe00566688f95f316e4e37ffeb97c` |
+| parte 02 `20261018204837` | 1 | 509703 | `f7e534e726ec192c1db7fe984cf5c2a3` |
+| parte 03 `20261018204851` | 1 | 510397 | `df7399b2361471a32f6baebb5a51823b` |
+| parte 04 `20261018204924` | 1 | 510108 | `f3a0b9ea9d0cce746c2d403f9a04dd7f` |
+| parte 05 `20261018204939` | 1 | 509661 | `e6038fa04f2faa45f9416dc462beeb52` |
+| parte 06 `20261018204955` | 1 | 484187 | `dab84f1d8332894d78cf737b28488450` |
+
+Todos os sete registros acima têm `rollback_count=0`. Essas impressões digitais são **identificadores de comparação, não certificação criptográfica do conteúdo**. Um `statement` pode conter SQL sensível ou dados embutidos: **não extrair esses valores diretamente para resposta, logs, GitHub, Hindsight ou artefatos públicos**. Também não confundir ausência do array `rollback` com impossibilidade absoluta de restauração por backup.
+
+**Gate desbloqueado parcialmente:** existe fonte concreta dos seis lotes originais. **Gate ainda pendente:** especificar canal privado e ambiente autorizado para exportar, inspecionar por segredos, recompor e executar as instruções num banco descartável; verificar equivalência do catálogo v1.85 e incorporar com cautela as quatro migrations próprias. O trabalho com conteúdo SQL real não ocorreu nesta inspeção. Proibir `db push` e alteração do banco produtivo.
+
+**Precisão histórica:** `92d37f6ec0036162470a3f1beab013440310071b` é commit existente no fork ELUS, mas seu hash no nome das migrations **não prova** equivalência byte a byte com o SQL armazenado no ledger. O SHA de upstream v1.85 referido em docs anteriores não foi resolvido como commit local do fork na consulta GitHub; não usá-lo como artefato reconstruído sem verificar no upstream correto.
