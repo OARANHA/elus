@@ -66,19 +66,19 @@ describe("ELUS v1.85 — conferência offline dos lotes históricos", () => {
 
   it("rejeita múltiplos statements, mudança de bytes e alteração do SQL", () => {
     const varios = exportacao();
-    varios.rows[0].statements.push("extra");
+    varios.rows[0]!.statements.push("extra");
     expect(() => verificarLedgerV185(varios, expected)).toThrow();
     const alterado = exportacao();
-    alterado.rows[0].statements[0] = "abd";
+    alterado.rows[0]!.statements[0] = "abd";
     expect(() => verificarLedgerV185(alterado, expected)).toThrow();
     const tamanho = exportacao();
-    tamanho.rows[0].statements[0] = "abcd";
+    tamanho.rows[0]!.statements[0] = "abcd";
     expect(() => verificarLedgerV185(tamanho, expected)).toThrow();
   });
 
   it("não inclui conteúdo de SQL nos erros de validação", () => {
     const entrada = exportacao();
-    entrada.rows[0].statements[0] = "SEGREDO_NAO_IMPRIMIR";
+    entrada.rows[0]!.statements[0] = "SEGREDO_NAO_IMPRIMIR";
     expect(() => verificarLedgerV185(entrada, expected)).toThrowError(
       /^Fingerprint histórica divergente na posição 1$/,
     );
