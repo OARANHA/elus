@@ -211,6 +211,13 @@ const GATILHO_ESPERADO: Record<string, { condicao: string | null; efeito: string
       "com o teste de isolamento do kit. Desligá-lo por if deixa uma mudança de schema " +
       "sem a prova de idempotência e sem detectar a ausência de regras RLS.",
   },
+  "elus-v185-reconstrucao-privada.yml::reconstruir-v185": {
+    condicao: null,
+    efeito:
+      "Este job manual exporta sete lotes históricos de uma conexão privada somente leitura " +
+      "e reconstrói a baseline v1.85 em PostgreSQL descartável. Não pode ser pulado por " +
+      "condição no nível do job, pois isso esconderia uma reconstrução não executada.",
+  },
   "ci.yml::invariants-alcance": {
     condicao: null,
     efeito:
