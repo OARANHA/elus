@@ -4,6 +4,14 @@ name: ELUS v1.89 - ensaio isolado de baseline
 # ATENÇÃO: comprova instalação/idempotência da baseline candidata,
 # NÃO comprova upgrade real do ledger v1.85 (sete SQLs privados ausentes).
 on:
+  pull_request:
+    paths:
+      - 'supabase/baseline.sql'
+      - 'supabase/migrations/**'
+      - 'scripts/test-db.sh'
+      - 'scripts/exportar-lotes-v185-privado.mjs'
+      - 'tests/unit/elus-v185-exportacao-privada.test.ts'
+      - '.github/workflows/elus-v189-baseline-isolada.yml'
   workflow_dispatch:
 
 permissions:
