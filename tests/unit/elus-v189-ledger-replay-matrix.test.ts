@@ -39,12 +39,12 @@ function pinned(name: "IMPORTADAS" | "ELUS_PROPRIAS"): Record<string, string> {
     new RegExp("const " + name + ": Readonly<Record<string, string>> = \\{([\\s\\S]*?)\\n\\};"),
   );
   expect(block, "Pinagem original ausente: " + name).not.toBeNull();
-  const entries = [...block![1].matchAll(/^\\s*"([^"]+\\.sql)": "([a-f0-9]{40})",?$/gm)];
+  const entries = [...block![1].matchAll(/^\s*"([^"]+\.sql)": "([a-f0-9]{40})",?$/gm)];
   return Object.fromEntries(entries.map((m) => [m[1], m[2]]));
 }
 function blob(file: string): string {
   const bytes = readFileSync(join(root, "supabase/migrations", file));
-  return createHash("sha1").update("blob " + bytes.length + "\\0").update(bytes).digest("hex");
+  return createHash("sha1").update("blob " + bytes.length + "\0").update(bytes).digest("hex");
 }
 
 describe("ELUS v1.89 — matriz estática de replay (bloqueada)", () => {
@@ -72,7 +72,7 @@ describe("ELUS v1.89 — matriz estática de replay (bloqueada)", () => {
     expect(versions.at(-1)).toBe(matrix.ledger_snapshot.cutoff);
     const counts = { before: 0, after: 0 };
     for (const e of matrix.migrations) {
-      const parts = e.file.match(/^(\\d{14})_(\\d{4})_.+\\.sql$/);
+      const parts = e.file.match(/^(\d{14})_(\d{4})_.+\.sql$/);
       expect(parts, "Nome inválido: " + e.file).not.toBeNull();
       expect(e.version).toBe(parts![1]);
       expect(e.logical_number).toBe(parts![2]);
