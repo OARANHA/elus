@@ -15,12 +15,6 @@ jobs:
     timeout-minutes: 30
     environment: elus-upgrade-readonly
     env:
-      PGHOST: ${{ secrets.ELUS_UPGRADE_PGHOST }}
-      PGPORT: ${{ secrets.ELUS_UPGRADE_PGPORT }}
-      PGUSER: ${{ secrets.ELUS_UPGRADE_PGUSER }}
-      PGPASSWORD: ${{ secrets.ELUS_UPGRADE_PGPASSWORD }}
-      PGDATABASE: ${{ secrets.ELUS_UPGRADE_PGDATABASE }}
-      PGSSLMODE: verify-full
       NODE_ENV: test
     steps:
       - uses: actions/checkout@v7
@@ -28,8 +22,15 @@ jobs:
           persist-credentials: false
       - uses: ./.github/actions/preparar-node
         timeout-minutes: 5
-      - name: Recusar execução sem configuração protegida
+      - name: Exportar e verificar os sete lotes apenas no runner
         shell: bash
+        env:
+      PGHOST: ${{ secrets.ELUS_UPGRADE_PGHOST }}
+      PGPORT: ${{ secrets.ELUS_UPGRADE_PGPORT }}
+      PGUSER: ${{ secrets.ELUS_UPGRADE_PGUSER }}
+      PGPASSWORD: ${{ secrets.ELUS_UPGRADE_PGPASSWORD }}
+      PGDATABASE: ${{ secrets.ELUS_UPGRADE_PGDATABASE }}
+      PGSSLMODE: verify-full
         run: |
           set -euo pipefail
           [ -n "$PGHOST" ] && [ -n "$PGPORT" ] && [ -n "$PGUSER" ] &&
@@ -37,10 +38,11 @@ jobs:
             echo "::error::Conexão privada read-only indisponível; nenhum SQL exportado"
             exit 1
           }
-      - name: Exportar e verificar os sete lotes apenas no runner
-        shell: bash
-        run: |
-          set -euo pipefail
+          # Falhar fechado se os secrets apontarem acidentalmente à conta administrativa.
+          [ "$PGUSER" = "elus_upgrade_readonly" ] || {
+            echo "::error::Usuário de exportação não corresponde à conta de leitura dedicada"
+            exit 1
+          }
           umask 077
           private_dir="$(mktemp -d /tmp/elus-v185-private.XXXXXXXX)"
           echo "ELUS_PRIVATE_DIR=$private_dir" >> "$GITHUB_ENV"
