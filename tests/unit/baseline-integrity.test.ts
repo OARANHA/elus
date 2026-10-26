@@ -26,6 +26,6 @@ describe("integridade da baseline ELUS v1.89.0 candidata", () => {
     );
     const texto = baseline.toString("utf8");
     expect(texto.endsWith(migration)).toBe(true);
-    expect(texto.match(/CREATE OR REPLACE FUNCTION public\\.fn_elus_rotacionar_codigos_recuperacao\\(/g)).toHaveLength(1);
+    expect(texto.match(/CREATE OR REPLACE FUNCTION public\.fn_elus_rotacionar_codigos_recuperacao\(/g)).toHaveLength(1);
   });
 });
