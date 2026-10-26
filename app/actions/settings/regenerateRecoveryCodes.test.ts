@@ -1,8 +1,10 @@
 /**
- * Gate unitário das ações de regeneração MFA na PR #43.
- * Usa clientes simulados: NÃO acessa Supabase, NÃO executa SQL e NÃO prova
- * serialização entre duas requisições concorrentes (gate separado).
+ * Contrato de autorização e chamada RPC da rotação MFA.
+ * Clientes simulados NÃO provam concorrência real nem aplicam migration.
+ * A prova de duas transações concorrentes requer Postgres isolado.
  */
+import { createHash } from "node:crypto";
+import { readFileSync } from "node:fs";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
@@ -11,6 +13,7 @@ const mocks = vi.hoisted(() => ({
   sessionAal: vi.fn(),
   isServiceRoleConfigured: vi.fn(),
   createAdminClient: vi.fn(),
+  rpc: vi.fn(),
   audit: vi.fn(),
   generateRecoveryCodes: vi.fn(),
   hashRecoveryCode: vi.fn(),
@@ -38,101 +41,63 @@ import { regenerateRecoveryCodes } from "./regenerateRecoveryCodes";
 
 const USER_ID = "00000000-0000-4000-8000-000000000001";
 const CODES = Array.from({ length: 10 }, (_, i) => "CODE" + String(i).padStart(4, "0"));
-const NEW_IDS = CODES.map((_, i) => "new-" + i);
-
-function bancoSimulado(falhas: { read?: boolean; insert?: boolean; delete?: boolean } = {}) {
-  const leituraEq = vi.fn(async () => ({
-    data: falhas.read ? null : [{ id: "old-1" }],
-    error: falhas.read ? { message: "read failed" } : null,
-  }));
-  const insercaoSelect = vi.fn(async () => ({
-    data: falhas.insert ? null : NEW_IDS.map((id) => ({ id })),
-    error: falhas.insert ? { message: "insert failed" } : null,
-  }));
-  const insert = vi.fn((_rows: unknown) => ({ select: insercaoSelect }));
-  const exclusoes: Array<{ coluna: string; usuario: string; ids: string[] }> = [];
-  const deleteEq = vi.fn((coluna: string, usuario: string) => ({
-    in: async (_colunaIds: string, ids: string[]) => {
-      exclusoes.push({ coluna, usuario, ids });
-      return {
-        error: falhas.delete && exclusoes.length === 1
-          ? { message: "delete failed" }
-          : null,
-      };
-    },
-  }));
-  const from = vi.fn((_tabela: string) => ({
-    select: (_colunas: string) => ({ eq: leituraEq }),
-    insert,
-    delete: () => ({ eq: deleteEq }),
-  }));
-  return { from, leituraEq, insercaoSelect, insert, deleteEq, exclusoes };
-}
+const HEX_HASHES = CODES.map((code) => createHash("sha256").update(code).digest("hex"));
+const rpcName = "fn_elus_rotacionar_codigos_recuperacao";
+const rpcArgs = { p_user_id: USER_ID, p_hashes_hex: HEX_HASHES };
 
 beforeEach(() => {
   vi.resetAllMocks();
   mocks.getUser.mockResolvedValue({ data: { user: { id: USER_ID } } });
-  mocks.listFactors.mockResolvedValue({
-    data: { totp: [{ status: "verified" }] },
-  });
+  mocks.listFactors.mockResolvedValue({ data: { totp: [{ status: "verified" }] } });
   mocks.sessionAal.mockResolvedValue("aal2");
   mocks.isServiceRoleConfigured.mockReturnValue(true);
   mocks.generateRecoveryCodes.mockReturnValue(CODES);
-  mocks.hashRecoveryCode.mockImplementation((code: string) => Buffer.from(code));
+  mocks.hashRecoveryCode.mockImplementation((code: string) => createHash("sha256").update(code).digest());
+  mocks.rpc.mockResolvedValue({ data: 10, error: null });
   mocks.audit.mockResolvedValue(undefined);
-  mocks.createAdminClient.mockReturnValue(bancoSimulado());
+  mocks.createAdminClient.mockReturnValue({ rpc: mocks.rpc });
 });
 
-describe("regenerateRecoveryCodes — autorização e persistência", () => {
-  it("recusa sessão ausente sem ler fatores nem escrever", async () => {
+describe("regenerateRecoveryCodes — contrato da rotação atômica", () => {
+  it("recusa sessão ausente sem tocar na RPC", async () => {
     mocks.getUser.mockResolvedValue({ data: { user: null } });
     expect(await regenerateRecoveryCodes()).toEqual({ ok: false, error: "unauthenticated" });
-    expect(mocks.listFactors).not.toHaveBeenCalled();
-    expect(mocks.createAdminClient).not.toHaveBeenCalled();
+    expect(mocks.rpc).not.toHaveBeenCalled();
   });
 
-  it("recusa conta sem TOTP verificado", async () => {
+  it("recusa usuário sem fator verificado", async () => {
     mocks.listFactors.mockResolvedValue({ data: { totp: [] } });
     expect(await regenerateRecoveryCodes()).toEqual({ ok: false, error: "mfa_not_enrolled" });
-    expect(mocks.sessionAal).not.toHaveBeenCalled();
-    expect(mocks.createAdminClient).not.toHaveBeenCalled();
+    expect(mocks.rpc).not.toHaveBeenCalled();
   });
 
-  it.each(["aal1", null, undefined])(
-    "recusa nível de sessão %s sem qualquer escrita",
-    async (nivel) => {
-      mocks.sessionAal.mockResolvedValue(nivel);
-      expect(await regenerateRecoveryCodes()).toEqual({
-        ok: false,
-        error: "mfa_session_verification_required",
-      });
-      expect(mocks.createAdminClient).not.toHaveBeenCalled();
-      expect(mocks.audit).not.toHaveBeenCalled();
-    },
-  );
+  it.each(["aal1", null, undefined])("recusa sessão %s sem escrita", async (nivel) => {
+    mocks.sessionAal.mockResolvedValue(nivel);
+    expect(await regenerateRecoveryCodes()).toEqual({
+      ok: false, error: "mfa_session_verification_required",
+    });
+    expect(mocks.createAdminClient).not.toHaveBeenCalled();
+    expect(mocks.audit).not.toHaveBeenCalled();
+  });
 
-  it("falha na leitura de AAL sem abrir o cliente administrativo", async () => {
+  it("falha de leitura AAL não inicia a rotação", async () => {
     mocks.sessionAal.mockRejectedValue(new Error("auth indisponível"));
     await expect(regenerateRecoveryCodes()).rejects.toThrow("auth indisponível");
-    expect(mocks.createAdminClient).not.toHaveBeenCalled();
+    expect(mocks.rpc).not.toHaveBeenCalled();
   });
 
-  it("recusa serviço ausente antes de consultar códigos", async () => {
+  it("recusa service role ausente", async () => {
     mocks.isServiceRoleConfigured.mockReturnValue(false);
     expect(await regenerateRecoveryCodes()).toEqual({ ok: false, error: "service_unavailable" });
-    expect(mocks.createAdminClient).not.toHaveBeenCalled();
+    expect(mocks.rpc).not.toHaveBeenCalled();
   });
 
-  it("em AAL2, grava dez hashes por usuário, exclui só IDs antigos e entrega após persistir", async () => {
-    const db = bancoSimulado();
-    mocks.createAdminClient.mockReturnValue(db);
+  it("chama uma única RPC com usuário confiável e dez hashes hex de 32 bytes", async () => {
     expect(await regenerateRecoveryCodes()).toEqual({ ok: true, recovery_codes: CODES });
-    expect(db.from).toHaveBeenCalledWith("user_recovery_codes");
-    expect(db.leituraEq).toHaveBeenCalledWith("user_id", USER_ID);
-    expect(db.insert).toHaveBeenCalledWith(
-      CODES.map((code) => ({ user_id: USER_ID, code_hash: Buffer.from(code) })),
-    );
-    expect(db.exclusoes).toEqual([{ coluna: "user_id", usuario: USER_ID, ids: ["old-1"] }]);
+    expect(mocks.rpc).toHaveBeenCalledOnce();
+    expect(mocks.rpc).toHaveBeenCalledWith(rpcName, rpcArgs);
+    expect(HEX_HASHES).toHaveLength(10);
+    HEX_HASHES.forEach((h) => expect(h).toMatch(/^[0-9a-f]{64}$/));
     expect(mocks.audit).toHaveBeenCalledWith(
       expect.objectContaining({
         action: "mfa.recovery_codes_regenerated",
@@ -142,30 +107,50 @@ describe("regenerateRecoveryCodes — autorização e persistência", () => {
     );
   });
 
-  it("falha de SELECT não insere nem revela códigos", async () => {
-    const db = bancoSimulado({ read: true });
-    mocks.createAdminClient.mockReturnValue(db);
-    expect(await regenerateRecoveryCodes()).toEqual({ ok: false, error: "read_failed" });
-    expect(db.insert).not.toHaveBeenCalled();
+  it("se a RPC falha, não retorna os códigos nem audita sucesso", async () => {
+    mocks.rpc.mockResolvedValue({ data: null, error: { message: "database failed" } });
+    expect(await regenerateRecoveryCodes()).toEqual({ ok: false, error: "rotation_failed" });
     expect(mocks.audit).not.toHaveBeenCalled();
   });
 
-  it("falha de INSERT preserva códigos antigos e não revela novos", async () => {
-    const db = bancoSimulado({ insert: true });
-    mocks.createAdminClient.mockReturnValue(db);
-    expect(await regenerateRecoveryCodes()).toEqual({ ok: false, error: "insert_failed" });
-    expect(db.exclusoes).toHaveLength(0);
+  it.each([null, 0, 9, 11])("se RPC retorna contagem %s, não revela os códigos", async (data) => {
+    mocks.rpc.mockResolvedValue({ data, error: null });
+    expect(await regenerateRecoveryCodes()).toEqual({ ok: false, error: "rotation_failed" });
     expect(mocks.audit).not.toHaveBeenCalled();
   });
 
-  it("falha de DELETE tenta compensar somente IDs novos e não revela códigos", async () => {
-    const db = bancoSimulado({ delete: true });
-    mocks.createAdminClient.mockReturnValue(db);
-    expect(await regenerateRecoveryCodes()).toEqual({ ok: false, error: "delete_failed" });
-    expect(db.exclusoes).toEqual([
-      { coluna: "user_id", usuario: USER_ID, ids: ["old-1"] },
-      { coluna: "user_id", usuario: USER_ID, ids: NEW_IDS },
-    ]);
-    expect(mocks.audit).not.toHaveBeenCalled();
+  it("não usa consultas separadas de DELETE/INSERT no cliente", async () => {
+    const from = vi.fn();
+    mocks.createAdminClient.mockReturnValue({ rpc: mocks.rpc, from });
+    expect((await regenerateRecoveryCodes()).ok).toBe(true);
+    expect(from).not.toHaveBeenCalled();
+  });
+});
+
+describe("migration ELUS 0765 — cerca estática, sem executar SQL", () => {
+  const sql = readFileSync(
+    new URL("../../../supabase/migrations/20261026010000_0765_elus_rotacao_atomica_codigos_recuperacao.sql", import.meta.url),
+    "utf8",
+  );
+
+  it("usa SECURITY DEFINER e search_path vazio", () => {
+    expect(sql).toMatch(/SECURITY DEFINER\s+SET search_path = ''/i);
+  });
+
+  it("trava por usuário na transação antes de apagar e inserir", () => {
+    const lock = sql.indexOf("pg_advisory_xact_lock(");
+    const del = sql.indexOf("DELETE FROM public.user_recovery_codes WHERE user_id = p_user_id");
+    const ins = sql.indexOf("INSERT INTO public.user_recovery_codes");
+    expect(lock).toBeGreaterThan(-1);
+    expect(del).toBeGreaterThan(lock);
+    expect(ins).toBeGreaterThan(del);
+  });
+
+  it("restringe execução a service_role e valida exatamente 10 hashes", () => {
+    expect(sql).toMatch(/REVOKE ALL ON FUNCTION[\s\S]+?FROM PUBLIC, anon, authenticated;/i);
+    expect(sql).toMatch(/GRANT EXECUTE ON FUNCTION[\s\S]+?TO service_role;/i);
+    expect(sql).toMatch(/cardinality\(p_hashes_hex\) <> 10/);
+    expect(sql).toMatch(/count\(DISTINCT c\.hex_hash\)/);
+    expect(sql).toMatch(/v_inseridos <> 10/);
   });
 });
