@@ -1,0 +1,21 @@
+name: ELUS v1.85 - reconstrução privada isolada
+
+# Registro seguro na branch padrão para habilitar workflow_dispatch.
+# Esta versão da main NÃO exporta SQL, NÃO usa secrets e NÃO toca em banco.
+# Execute selecionando exclusivamente feat/elus-v189-migrations-20261025,
+# que contém o workflow completo, sujeito ao ambiente protegido do GitHub.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  registrar-sem-executar:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Bloquear disparos pela branch padrão
+        shell: bash
+        run: |
+          echo "::error::Não execute este workflow na main. Selecione feat/elus-v189-migrations-20261025 no menu Run workflow."
+          exit 1
