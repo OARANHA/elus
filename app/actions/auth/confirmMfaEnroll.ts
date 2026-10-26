@@ -11,7 +11,7 @@ import { generateRecoveryCodes, hashRecoveryCode } from "@/lib/auth/recovery-cod
 
 export type ConfirmMfaEnrollResult =
   | { ok: true; recovery_codes: string[] }
-  | { ok: false; error: "invalid_code" | "challenge_failed" | "verify_failed"; message?: string };
+  | { ok: false; error: "invalid_code" | "challenge_failed" | "verify_failed" | "recovery_codes_unavailable"; message?: string };
 
 /**
  * Confirms a TOTP enrollment by issuing a challenge + verifying the code, then
@@ -40,6 +40,12 @@ export async function confirmMfaEnroll(
     return { ok: false, error: "invalid_code" };
   }
 
+  // A migration 0755 revoga INSERT para authenticated. Nunca confirmar o
+  // cadastro se não há um cliente de serviço capaz de persistir os códigos.
+  if (!isServiceRoleConfigured()) {
+    return { ok: false, error: "recovery_codes_unavailable", message: "O armazenamento seguro de códigos está indisponível. Contate o administrador." };
+  }
+
   const { data: challenge, error: challengeErr } = await supabase.auth.mfa.challenge({
     factorId,
   });
@@ -63,17 +69,23 @@ export async function confirmMfaEnroll(
     code_hash: hashRecoveryCode(c),
   }));
 
-  // Try user-scoped first (RLS policy `recovery_codes_self` permits insert
-  // where user_id = auth.uid()). Fall back to admin if RLS rejects (e.g. AAL
-  // policy mismatch).
-  let { error: insertErr } = await supabase.from("user_recovery_codes").insert(rows);
-  if (insertErr && isServiceRoleConfigured()) {
-    const admin = createAdminClient();
-    const r = await admin.from("user_recovery_codes").insert(rows);
-    insertErr = r.error;
-  }
+  // Só o servidor pode gravar na tabela após a migration 0755.
+  // Falha de persistência nunca deve gerar sucesso/códigos inutilizáveis.
+  const { error: insertErr } = await createAdminClient()
+    .from("user_recovery_codes")
+    .insert(rows);
   if (insertErr) {
-    console.error("[confirmMfaEnroll] failed to insert recovery codes:", insertErr.message);
+    console.error("[confirmMfaEnroll] failed to persist recovery codes");
+    // A verificação TOTP já ocorreu: desfazer o fator quando possível para
+    // evitar ativação sem códigos de recuperação. Se a remoção falhar, o
+    // resultado ainda será um erro, nunca uma lista de códigos não gravados.
+    try {
+      const { error: unenrollErr } = await supabase.auth.mfa.unenroll({ factorId });
+      if (unenrollErr) console.error("[confirmMfaEnroll] failed to undo MFA enrollment");
+    } catch {
+      console.error("[confirmMfaEnroll] failed to undo MFA enrollment");
+    }
+    return { ok: false, error: "recovery_codes_unavailable", message: "Não foi possível salvar os códigos. Verifique a segurança da conta antes de tentar novamente." };
   }
 
   await audit({

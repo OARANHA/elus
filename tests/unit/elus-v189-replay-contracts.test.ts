@@ -19,6 +19,7 @@ const ARQUIVOS = {
   mfa: "20261023160002_0747_mfa_dispositivo_confiavel.sql",
   sessao: "20261023160012_0757_poder_de_plataforma_exige_sessao_confirmada.sql",
   policies: "20261023160007_0752_channel_sessions_leitura_sem_regra_de_escrita.sql",
+  codigosSomenteServidor: "20261023160010_0755_codigos_de_recuperacao_so_pelo_servidor.sql",
   codigos: "20261023180557_0759_codigos_de_recuperacao_antigos_saem.sql",
 } as const;
 
@@ -38,6 +39,7 @@ const ORDEM_CRITICA: ReadonlyArray<readonly [Chave, Chave]> = [
   ["dbType", "receitas"],
   ["eventoInicial", "eventoFinal"],
   ["mfa", "sessao"],
+  ["codigosSomenteServidor", "codigos"],
 ];
 
 describe("ELUS v1.89 — pré-voo estático de replay (sem banco)", () => {
@@ -50,6 +52,22 @@ describe("ELUS v1.89 — pré-voo estático de replay (sem banco)", () => {
         "Ordem insegura: " + antes + " precisa anteceder " + depois,
       ).toBe(true);
     }
+  });
+
+  it("mantém códigos de recuperação inacessíveis aos clientes antes do DELETE de 0759", () => {
+    const corpo = sql("codigosSomenteServidor");
+    expect(corpo).toMatch(
+      /revoke\s+all\s+on\s+table\s+public\.user_recovery_codes\s+from\s+anon\s*,\s*authenticated\s*;/i,
+    );
+    expect(corpo).toMatch(
+      /drop\s+policy\s+if\s+exists\s+recovery_codes_self\s+on\s+public\.user_recovery_codes\s*;/i,
+    );
+    expect(corpo).toMatch(
+      /create\s+policy\s+user_recovery_codes_ninguem_le\s+on\s+public\.user_recovery_codes\s+for\s+select\s+using\s*\(\s*false\s*\)\s*;/i,
+    );
+    expect(corpo).not.toMatch(
+      /grant\s+(?:all|select|insert|update|delete)\s+on\s+(?:table\s+)?public\.user_recovery_codes\s+to\s+(?:anon|authenticated)\b/i,
+    );
   });
 
   it("explicita o DELETE destrutivo de 0759 e exige o predicado por formato", () => {

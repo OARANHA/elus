@@ -59,6 +59,24 @@ const ELUS_PROPRIAS: Readonly<Record<string, string>> = {
   "20261020230000_0692_chutes_catalog_sync.sql": "20a38af9bd51e7f3d37d9601d9392613a2700f68",
 };
 
+/** Identidades exatas dos imports no lado anterior/igual ao corte observado.
+ * Contagem 11/27 isolada não detecta troca silenciosa entre arquivos.
+ * É um snapshot histórico, não um plano de replay.
+ */
+const IMPORTADAS_ATE_CORTE_20261025 = [
+  "20261007205228_0593_nome_da_agenda.sql",
+  "20261013120000_0657_rotulo_opaco_e_external_id_na_cascata.sql",
+  "20261015090000_0669_o_endereco_do_servidor_aceita_sublinhado.sql",
+  "20261019000002_0655_avisos_de_tarefa_na_central.sql",
+  "20261020000001_0684_a_reacao_nao_passa_pelos_gatilhos.sql",
+  "20261020000004_0687_responder_caso_pelo_whatsapp_interno.sql",
+  "20261020000006_0762_aviso_da_central_com_destinatario.sql",
+  "20261020120002_0763_banco_externo_db_type_e_aviso.sql",
+  "20261020130000_0764_rodizio_na_acao_atribuir.sql",
+  "20261020230856_0716_agendas_de_servicos.sql",
+  "20261021000000_0693_motivo_verificacao_manual.sql",
+] as const;
+
 /** Último registro do snapshot somente leitura de 25/10/2026 (11 entradas). */
 const LEDGER_VERSOES_20261025 = [
   "20261018200431",
@@ -127,6 +145,12 @@ describe("ELUS v1.89 — integridade das migrations importadas (sem banco)", () 
     const posteriores = importadas.filter((nome) => nome.slice(0, 14) > corte);
     expect(anteriores).toHaveLength(11);
     expect(posteriores).toHaveLength(27);
+    expect(anteriores.sort()).toEqual([...IMPORTADAS_ATE_CORTE_20261025].sort());
+    // Os quatro SQL ELUS foram aplicados sob versões do ledger diferentes
+    // dos timestamps locais; não inferir aplicação por igualdade nominal.
+    for (const nome of Object.keys(ELUS_PROPRIAS)) {
+      expect(LEDGER_VERSOES_20261025).not.toContain(nome.slice(0, 14));
+    }
     // Prova somente a classificação por timestamp, NÃO valida replay/upgrade.
     // Nunca inferir que db push aplicará os 38 arquivos ou que o banco está pronto.
   });
