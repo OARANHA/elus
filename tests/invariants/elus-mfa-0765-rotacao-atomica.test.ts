@@ -116,7 +116,7 @@ describe("ELUS 0765 — PostgreSQL real efêmero", () => {
 
   it("entrada inválida preserva lote anterior", () => {
     sql(call(USER_A, A));
-    for (const invalid of [A.slice(0, 9), [...A.slice(0, 9), A[0]], [...A.slice(0, 9), "zz".repeat(32)]]) {
+    for (const invalid of [A.slice(0, 9), [...A.slice(0, 9), ...A.slice(0, 1)], [...A.slice(0, 9), "zz".repeat(32)]]) {
       expect(() => sql(call(USER_A, invalid))).toThrow();
       expect(stored(USER_A)).toEqual([...A].sort());
     }
