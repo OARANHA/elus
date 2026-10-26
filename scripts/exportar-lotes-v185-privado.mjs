@@ -9,6 +9,7 @@ import { createHash } from "node:crypto";
 import { mkdir, lstat, open, realpath, rm } from "node:fs/promises";
 import { dirname, isAbsolute, resolve, sep } from "node:path";
 import process from "node:process";
+import { fileURLToPath } from "node:url";
 import { Client } from "pg";
 
 const lotes = new Map([
@@ -30,13 +31,17 @@ async function main() {
   const destination = process.argv[2];
   requireDir(destination);
   const root = await realpath(process.cwd());
+  // Proteger o checkout real mesmo quando o script é invocado de outro cwd.
+  const scriptRoot = await realpath(resolve(dirname(fileURLToPath(import.meta.url)), ".."));
+  const inside = (base, path) => path === base || path.startsWith(base + sep);
+  const forbidden = (path) => inside(root, path) || inside(scriptRoot, path);
   const dir = resolve(destination);
-  if (dir === root || dir.startsWith(root + sep)) {
+  if (forbidden(dir)) {
     throw new Error("Destino dentro do checkout não é permitido");
   }
   // O caminho lexical pode estar fora do repo, mas o pai ser um symlink para dentro dele.
   const canonicalParent = await realpath(dirname(dir));
-  if (canonicalParent === root || canonicalParent.startsWith(root + sep)) {
+  if (forbidden(canonicalParent)) {
     throw new Error("Destino indireto dentro do checkout não é permitido");
   }
   if (!process.env.PGHOST || !process.env.PGUSER || !process.env.PGDATABASE) {
@@ -47,7 +52,7 @@ async function main() {
   const mode = (await lstat(dir)).mode;
   if ((mode & 0o077) !== 0) throw new Error("Diretório não é privado");
   const canonicalDir = await realpath(dir);
-  if (canonicalDir === root || canonicalDir.startsWith(root + sep)) {
+  if (forbidden(canonicalDir)) {
     throw new Error("Destino real dentro do checkout não é permitido");
   }
   const originalUmask = process.umask(0o077);
