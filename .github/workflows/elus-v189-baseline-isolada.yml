@@ -43,8 +43,8 @@ jobs:
             '+refs/tags/v1.63.0:refs/tags/v1.63.0'
           test "$(git rev-parse 'refs/tags/v1.89.0^{commit}')" = '6540929d5ef7a951531dda550db0bf54affa516a'
           test "$(git rev-parse 'refs/tags/v1.63.0^{commit}')" = '0fd9bda24fac7430dbb240e87c35cc9fd7ce7633'
-      - name: Verificar contratos estáticos da exportação
-        run: pnpm exec vitest run tests/unit/elus-v185-exportacao-privada.test.ts
+      - name: Verificar exportação e verificação privada offline
+        run: pnpm exec vitest run tests/unit/elus-v185-exportacao-privada.test.ts tests/unit/elus-v185-verificacao-privada.test.ts
       - name: Instalação e atualização idempotente em PostgreSQL efêmero
         env:
           # A release publicada pertence ao upstream, não ao fork ELUS.

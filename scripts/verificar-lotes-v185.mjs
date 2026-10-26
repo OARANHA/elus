@@ -1,8 +1,9 @@
 #!/usr/bin/env node
 // Gate local read-only: não consulta Supabase, não executa SQL nem imprime conteúdo.
 import { createHash } from "node:crypto";
-import { lstat, readFile, realpath } from "node:fs/promises";
-import { resolve, sep } from "node:path";
+import { lstat, readFile, realpath, readdir } from "node:fs/promises";
+import { dirname, isAbsolute, resolve, sep } from "node:path";
+import { fileURLToPath } from "node:url";
 
 const LOTES = [
   ["20261018200431", 174, "72db224ba3b80c474d771d66cb593668"],
@@ -17,17 +18,30 @@ const md5 = (bytes) => createHash("md5").update(bytes).digest("hex");
 
 async function main() {
   const dirArg = process.argv[2];
-  if (!dirArg || process.argv.length !== 3) {
-    throw new Error("Uso: node scripts/verificar-lotes-v185.mjs /diretorio-privado");
+  if (!dirArg || process.argv.length !== 3 || !isAbsolute(dirArg)) {
+    throw new Error("Uso: diretório privado absoluto obrigatório");
   }
-  const dir = await realpath(resolve(dirArg));
-  const repo = await realpath(process.cwd());
+  const requested = resolve(dirArg);
+  const requestedStat = await lstat(requested);
+  if (!requestedStat.isDirectory() || requestedStat.isSymbolicLink()) {
+    throw new Error("Diretório irregular");
+  }
+  const dir = await realpath(requested);
+  const repo = await realpath(resolve(dirname(fileURLToPath(import.meta.url)), ".."));
   if (dir === repo || dir.startsWith(repo + sep)) {
     throw new Error("Recusado: exportações dentro do repositório");
   }
   const dirStat = await lstat(dir);
   if (!dirStat.isDirectory() || (dirStat.mode & 0o077) !== 0) {
     throw new Error("Diretório deve ser privado (chmod 700)");
+  }
+  const expectedNames = LOTES.map(([version]) => version + ".sql").sort();
+  const actualNames = (await readdir(dir)).sort();
+  if (
+    actualNames.length !== expectedNames.length ||
+    actualNames.some((name, index) => name !== expectedNames[index])
+  ) {
+    throw new Error("Conjunto de lotes divergente");
   }
   let ok = 0;
   for (const [version, bytes, expected] of LOTES) {
@@ -42,11 +56,21 @@ async function main() {
       throw new Error("Lote " + version + ": fingerprint divergente; NÃO executar replay");
     }
     ok++;
-    console.log("Lote " + version + ": OK (conteúdo omitido)");
   }
   console.log("VALIDAÇÃO LOCAL: " + ok + "/7 lotes íntegros. NÃO aprova replay nem semântica do SQL.");
 }
 main().catch((error) => {
-  console.error("BLOQUEADO: " + error.message);
+  // Erros de filesystem podem conter caminhos privados: nunca imprimi-los.
+  const safeReasons = new Set([
+    "Uso: diretório privado absoluto obrigatório",
+    "Diretório irregular",
+    "Recusado: exportações dentro do repositório",
+    "Diretório deve ser privado (chmod 700)",
+    "Conjunto de lotes divergente",
+  ]);
+  const reason = error instanceof Error && safeReasons.has(error.message)
+    ? error.message
+    : "verificação privada falhou";
+  console.error("BLOQUEADO: " + reason + ". Nenhum SQL foi executado.");
   process.exitCode = 1;
 });

@@ -55,3 +55,10 @@ Todos os sete registros acima têm `rollback_count=0`. Essas impressões digitai
 O exportador `scripts/exportar-lotes-v185-privado.mjs` foi reforçado para rejeitar um destino aparentemente externo cujo diretório-pai resolva, por symlink, para dentro do checkout. Após criar o diretório privado, confirma o caminho canônico; antes de cada escrita, revalida identidade e permissões do diretório. Um teste unitário usa checkout temporário e symlink para exigir recusa **antes de conectar ao banco**, sem SQL nem credenciais reais.
 
 **Escopo desta alteração:** proteção do procedimento futuro de exportação dos sete registros v1.85, não exportação efetiva. Os sete statements históricos continuam no Supabase; não foram copiados, executados, versionados nem inspecionados. O ensaio v1.85→v1.89, a revisão de `0759` e o aceite de upgrade continuam pendentes.
+
+
+## Gate offline do verificador v1.85 — 26/10/2026
+
+O script `scripts/verificar-lotes-v185.mjs` continua **somente leitura** e sem acesso a banco. Agora exige caminho absoluto e diretório real (não symlink) fora do checkout, permissões privadas e **exatamente os sete nomes esperados**, sem arquivos adicionais. Mantém comparação por tamanho e impressão digital MD5 agregada do ledger; erros de filesystem não imprimem caminhos privados e resultados parciais não são anunciados como sucesso.
+
+O teste `tests/unit/elus-v185-verificacao-privada.test.ts` usa apenas sentinelas sintéticas inválidas e cobre arquivo inesperado, symlink de diretório, arquivo público/symlink e falha de filesystem sem vazamento do caminho. O workflow de baseline efêmera executa esses testes juntamente com os contratos do exportador. **Não foram exportados nem executados statements reais**; isso não valida a restauração ou o replay v1.85→v1.89, nem elimina a decisão pendente sobre `0759`.
