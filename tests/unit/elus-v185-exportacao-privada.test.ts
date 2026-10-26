@@ -38,6 +38,7 @@ describe("ELUS v1.85 — exportação privada dos lotes", () => {
     expect(source).not.toMatch(/console\.(log|error)\([^\n]*(?:row\.statements|e\.message|PGPASSWORD)/);
     expect(source).toMatch(/Exportação recusada/);
   });
+
   it("recusa exportação por symlink que aponta para dentro do checkout, antes de abrir conexão", () => {
     if (process.platform === "win32") return;
     const temp = mkdtempSync(join(tmpdir(), "elus-v185-export-"));
@@ -70,5 +71,4 @@ describe("ELUS v1.85 — exportação privada dos lotes", () => {
       rmSync(temp, { recursive: true, force: true });
     }
   });
-
 });
