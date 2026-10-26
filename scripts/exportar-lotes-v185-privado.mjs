@@ -85,4 +85,4 @@ async function main() {
     process.umask(originalUmask);
   }
 }
-main().catch(e => { console.error(e.message); process.exitCode = 1; });
+main().catch(() => { console.error("Exportação bloqueada; verifique conexão privada e integridade dos lotes."); process.exitCode = 1; });
