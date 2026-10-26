@@ -65,7 +65,7 @@ export function avaliarAclV189(snapshot) {
       service_role_execute: booleano(row.service_role_execute),
     };
   });
-  if (new Set(funcoes.map((f) => \`\${f.nome}/\${f.identidade}\`)).size !== funcoes.length) {
+  if (new Set(funcoes.map((f) => `${f.nome}/${f.identidade}`)).size !== funcoes.length) {
     throw new Error("Funcao duplicada");
   }
   const tabelas = linhas(snapshot.tabelas).map((row) => {
@@ -98,19 +98,19 @@ export function avaliarAclV189(snapshot) {
     }
     return { tabela, policy, comando: row.cmd, roles: ordenar(row.roles) };
   });
-  if (new Set(policies.map((p) => \`\${p.tabela}/\${p.policy}\`)).size !== policies.length) {
+  if (new Set(policies.map((p) => `${p.tabela}/${p.policy}`)).size !== policies.length) {
     throw new Error("Policy duplicada");
   }
 
   const alertas = [];
   for (const tabela of TABELAS_ALVO) {
     const t = tabelas.find((row) => row.nome === tabela);
-    if (!t) alertas.push(\`tabela_ausente:\${tabela}\`);
-    else if (!t.rls_ativa) alertas.push(\`rls_desativada:\${tabela}\`);
+    if (!t) alertas.push(`tabela_ausente:${tabela}`);
+    else if (!t.rls_ativa) alertas.push(`rls_desativada:${tabela}`);
   }
   const recovery = tabelas.find((t) => t.nome === "user_recovery_codes");
   if (recovery && ["select", "insert", "update", "delete"].some((verb) =>
-    recovery[\`anon_\${verb}\`] || recovery[\`authenticated_\${verb}\`])) {
+    recovery[`anon_${verb}`] || recovery[`authenticated_${verb}`])) {
     alertas.push("recovery_codes_privilegio_cliente_efetivo");
   }
   const rotacao = funcoes.filter((f) => f.nome === "fn_elus_rotacionar_codigos_recuperacao");
@@ -127,8 +127,8 @@ export function avaliarAclV189(snapshot) {
   }
   for (const verb of ["insert", "update", "delete"]) {
     if (!policies.some((p) => p.tabela === "channel_sessions" &&
-      p.policy === \`channel_sessions_tenant_\${verb}\` && p.comando === verb.toUpperCase())) {
-      alertas.push(\`policy_channel_sessions_\${verb}_ausente\`);
+      p.policy === `channel_sessions_tenant_${verb}` && p.comando === verb.toUpperCase())) {
+      alertas.push(`policy_channel_sessions_${verb}_ausente`);
     }
   }
   if (!policies.some((p) => p.tabela === "user_recovery_codes" &&
@@ -138,7 +138,7 @@ export function avaliarAclV189(snapshot) {
   for (const f of funcoes) {
     if (f.security_definer && (f.anon_execute || f.authenticated_execute) &&
         f.nome !== "fn_elus_rotacionar_codigos_recuperacao") {
-      alertas.push(\`security_definer_exposta_requer_revisao:\${f.nome}\`);
+      alertas.push(`security_definer_exposta_requer_revisao:${f.nome}`);
     }
   }
   return Object.freeze({
@@ -170,7 +170,7 @@ export async function consultarAclV189(db) {
     );
     const grants = ["anon", "authenticated"].flatMap((role) =>
       ["SELECT", "INSERT", "UPDATE", "DELETE"].map((verb) =>
-        \`has_table_privilege('\${role}', c.oid, '\${verb}') AS \${role}_\${verb.toLowerCase()}\`),
+        `has_table_privilege('${role}', c.oid, '${verb}') AS ${role}_${verb.toLowerCase()}`),
     ).join(", ");
     const tabelas = await db.query(
       "SELECT c.relname, c.relrowsecurity, " + grants + " FROM pg_catalog.pg_class c " +
