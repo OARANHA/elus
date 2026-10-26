@@ -79,7 +79,7 @@ async function main() {
     console.log("Executar verificador offline antes de qualquer ensaio. NÃO executar SQL de produção.");
   } catch (e) {
     for (const path of written) await rm(path, { force: true });
-    throw new Error("Exportação recusada: " + (e.code ?? e.message?.replace(/postgres(?:ql)?:\/\/[^ ]+/gi, "[redacted]") ?? "erro"));
+    throw new Error("Exportação recusada" + (typeof e.code === "string" && /^[A-Z0-9]{4,6}$/.test(e.code) ? " (código " + e.code + ")" : ""));
   } finally {
     if (connected) await db.end().catch(() => {});
     process.umask(originalUmask);
