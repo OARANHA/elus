@@ -7,7 +7,7 @@
  */
 import { createHash } from "node:crypto";
 import { mkdir, lstat, open, realpath, rm } from "node:fs/promises";
-import { isAbsolute, resolve, sep } from "node:path";
+import { dirname, isAbsolute, resolve, sep } from "node:path";
 import process from "node:process";
 import { Client } from "pg";
 
@@ -34,6 +34,11 @@ async function main() {
   if (dir === root || dir.startsWith(root + sep)) {
     throw new Error("Destino dentro do checkout não é permitido");
   }
+  // O caminho lexical pode estar fora do repo, mas o pai ser um symlink para dentro dele.
+  const canonicalParent = await realpath(dirname(dir));
+  if (canonicalParent === root || canonicalParent.startsWith(root + sep)) {
+    throw new Error("Destino indireto dentro do checkout não é permitido");
+  }
   if (!process.env.PGHOST || !process.env.PGUSER || !process.env.PGDATABASE) {
     throw new Error("Conexão PGHOST, PGUSER e PGDATABASE deve estar configurada privadamente");
   }
@@ -41,6 +46,10 @@ async function main() {
   await mkdir(dir, { recursive: false, mode: 0o700 });
   const mode = (await lstat(dir)).mode;
   if ((mode & 0o077) !== 0) throw new Error("Diretório não é privado");
+  const canonicalDir = await realpath(dir);
+  if (canonicalDir === root || canonicalDir.startsWith(root + sep)) {
+    throw new Error("Destino real dentro do checkout não é permitido");
+  }
   const originalUmask = process.umask(0o077);
   const db = new Client({ connectionTimeoutMillis: 7000, query_timeout: 30000, application_name: "elus-v185-private-ledger-export" });
   let connected = false;
@@ -70,6 +79,12 @@ async function main() {
     }
     await db.query("ROLLBACK");
     for (const [version, bytes] of checked) {
+      // Revalidar antes de cada escrita: não seguir um destino substituído por symlink.
+      const currentDir = await realpath(dir);
+      const currentMode = await lstat(dir);
+      if (currentDir !== canonicalDir || !currentMode.isDirectory() || (currentMode.mode & 0o077) !== 0) {
+        throw new Error("Destino privado alterado durante a exportação");
+      }
       const path = resolve(dir, version + ".sql");
       const fh = await open(path, "wx", 0o600);
       written.push(path);

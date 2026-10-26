@@ -49,3 +49,9 @@ Todos os sete registros acima têm `rollback_count=0`. Essas impressões digitai
 **Gate desbloqueado parcialmente:** existe fonte concreta dos seis lotes originais. **Gate ainda pendente:** especificar canal privado e ambiente autorizado para exportar, inspecionar por segredos, recompor e executar as instruções num banco descartável; verificar equivalência do catálogo v1.85 e incorporar com cautela as quatro migrations próprias. O trabalho com conteúdo SQL real não ocorreu nesta inspeção. Proibir `db push` e alteração do banco produtivo.
 
 **Precisão histórica:** `92d37f6ec0036162470a3f1beab013440310071b` é commit existente no fork ELUS, mas seu hash no nome das migrations **não prova** equivalência byte a byte com o SQL armazenado no ledger. O SHA de upstream v1.85 referido em docs anteriores não foi resolvido como commit local do fork na consulta GitHub; não usá-lo como artefato reconstruído sem verificar no upstream correto.
+
+## Guarda adicional da exportação privada — 26/10/2026
+
+O exportador `scripts/exportar-lotes-v185-privado.mjs` foi reforçado para rejeitar um destino aparentemente externo cujo diretório-pai resolva, por symlink, para dentro do checkout. Após criar o diretório privado, confirma o caminho canônico; antes de cada escrita, revalida identidade e permissões do diretório. Um teste unitário usa checkout temporário e symlink para exigir recusa **antes de conectar ao banco**, sem SQL nem credenciais reais.
+
+**Escopo desta alteração:** proteção do procedimento futuro de exportação dos sete registros v1.85, não exportação efetiva. Os sete statements históricos continuam no Supabase; não foram copiados, executados, versionados nem inspecionados. O ensaio v1.85→v1.89, a revisão de `0759` e o aceite de upgrade continuam pendentes.
