@@ -25,12 +25,12 @@ jobs:
       - name: Exportar e verificar os sete lotes apenas no runner
         shell: bash
         env:
-      PGHOST: ${{ secrets.ELUS_UPGRADE_PGHOST }}
-      PGPORT: ${{ secrets.ELUS_UPGRADE_PGPORT }}
-      PGUSER: ${{ secrets.ELUS_UPGRADE_PGUSER }}
-      PGPASSWORD: ${{ secrets.ELUS_UPGRADE_PGPASSWORD }}
-      PGDATABASE: ${{ secrets.ELUS_UPGRADE_PGDATABASE }}
-      PGSSLMODE: verify-full
+          PGHOST: ${{ secrets.ELUS_UPGRADE_PGHOST }}
+          PGPORT: ${{ secrets.ELUS_UPGRADE_PGPORT }}
+          PGUSER: ${{ secrets.ELUS_UPGRADE_PGUSER }}
+          PGPASSWORD: ${{ secrets.ELUS_UPGRADE_PGPASSWORD }}
+          PGDATABASE: ${{ secrets.ELUS_UPGRADE_PGDATABASE }}
+          PGSSLMODE: verify-full
         run: |
           set -euo pipefail
           [ -n "$PGHOST" ] && [ -n "$PGPORT" ] && [ -n "$PGUSER" ] &&
