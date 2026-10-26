@@ -1,4 +1,5 @@
 import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   avaliarContagens0759,
@@ -90,7 +91,7 @@ describe("ELUS v1.89 — pré-voo READ ONLY da migration 0759", () => {
 
   it("não altera a migration upstream nem contém gatilhos E2E", () => {
     const source = readFileSync(
-      new URL("../../scripts/elus-v189-0759-preflight.mjs", import.meta.url),
+      resolve(process.cwd(), "scripts/elus-v189-0759-preflight.mjs"),
       "utf8",
     );
     expect(source).not.toMatch(/\b(?:db push|db reset|playwright|test:e2e)\b/i);
