@@ -46,44 +46,20 @@ export async function regenerateRecoveryCodes(): Promise<RegenerateRecoveryCodes
   if (!isServiceRoleConfigured()) return { ok: false, error: "service_unavailable" };
   const admin = createAdminClient();
 
-  // Guardar os IDs antigos ANTES de inserir, para não apagar os novos por
-  // acidente e preservar os antigos em caso de falha na gravação.
-  const { data: antigos, error: readErr } = await admin
-    .from("user_recovery_codes")
-    .select("id")
-    .eq("user_id", user.id);
-  if (readErr || !antigos) return { ok: false, error: "read_failed" };
-
   const codes = generateRecoveryCodes();
-  const rows = codes.map((c) => ({ user_id: user.id, code_hash: hashRecoveryCode(c) }));
+  // A RPC aceita hashes SHA256 em hexadecimal, não códigos em texto claro.
+  const hashes = codes.map((code) => hashRecoveryCode(code).toString("hex"));
 
-  // Inserir ANTES de remover os antigos: uma falha de INSERT não inutiliza
-  // os códigos que o usuário já possui.
-  const { data: novos, error: insertErr } = await admin
-    .from("user_recovery_codes")
-    .insert(rows)
-    .select("id");
-  if (insertErr || !novos || novos.length !== rows.length) {
-    return { ok: false, error: "insert_failed" };
-  }
-
-  const idsAntigos = antigos.map((row) => row.id);
-  if (idsAntigos.length > 0) {
-    const { error: deleteErr } = await admin
-      .from("user_recovery_codes")
-      .delete()
-      .eq("user_id", user.id)
-      .in("id", idsAntigos);
-    if (deleteErr) {
-      // Melhor esforço: remover novos hashes não entregues ao usuário.
-      const { error: rollbackErr } = await admin
-        .from("user_recovery_codes")
-        .delete()
-        .eq("user_id", user.id)
-        .in("id", novos.map((row) => row.id));
-      if (rollbackErr) console.error("[regenerateRecoveryCodes] cleanup of new hashes failed");
-      return { ok: false, error: "delete_failed" };
-    }
+  // A migration ELUS 0765 executa DELETE e INSERT na MESMA transação do
+  // Postgres, com advisory lock por usuário. Se a função ainda não existir,
+  // o PostgREST falha fechado e nenhum código antigo é removido.
+  const { data: inseridos, error: rotateErr } = await admin.rpc(
+    "fn_elus_rotacionar_codigos_recuperacao",
+    { p_user_id: user.id, p_hashes_hex: hashes },
+  );
+  if (rotateErr || inseridos !== codes.length) {
+    console.error("[regenerateRecoveryCodes] atomic recovery rotation failed");
+    return { ok: false, error: "rotation_failed" };
   }
 
   await audit({
