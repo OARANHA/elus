@@ -25,12 +25,15 @@ describe("ELUS v1.85 — exportação privada dos lotes", () => {
   });
 
   it("nega saída dentro do checkout, sobrescrita e acesso público", () => {
-    expect(source).toMatch(/dir\.startsWith\(root \+ sep\)/);
+    expect(source).toMatch(/realpath\(resolve\(dirname\(fileURLToPath\(import\.meta\.url\)\), "\.\."\)\)/);
+    expect(source).toMatch(/inside\(scriptRoot, path\)/);
+    expect(source).toMatch(/forbidden\(dir\)/);
     expect(source).toMatch(/realpath\(dirname\(dir\)\)/);
-    expect(source).toMatch(/canonicalParent === root/);
-    expect(source).toMatch(/canonicalDir === root/);
+    expect(source).toMatch(/forbidden\(canonicalParent\)/);
+    expect(source).toMatch(/forbidden\(canonicalDir\)/);
     expect(source).toMatch(/recursive: false, mode: 0o700/);
     expect(source).toMatch(/open\(path, "wx", 0o600\)/);
+    expect(source.indexOf("if (forbidden(dir))")).toBeLessThan(source.indexOf("if (!process.env.PGHOST"));
     expect(source).toMatch(/process\.umask\(0o077\)/);
   });
 
