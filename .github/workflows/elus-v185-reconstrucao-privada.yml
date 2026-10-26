@@ -1,0 +1,79 @@
+name: ELUS v1.85 - reconstrução privada isolada
+
+# Manual e protegido: exige secrets de uma conta PostgreSQL SOMENTE LEITURA
+# e acesso à tabela supabase_migrations.schema_migrations do ELUS.
+# Não reproduz automaticamente as quatro migrations ELUS nem o upgrade v1.89.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  reconstruir-v185:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: elus-upgrade-readonly
+    env:
+      PGHOST: ${{ secrets.ELUS_UPGRADE_PGHOST }}
+      PGPORT: ${{ secrets.ELUS_UPGRADE_PGPORT }}
+      PGUSER: ${{ secrets.ELUS_UPGRADE_PGUSER }}
+      PGPASSWORD: ${{ secrets.ELUS_UPGRADE_PGPASSWORD }}
+      PGDATABASE: ${{ secrets.ELUS_UPGRADE_PGDATABASE }}
+      PGSSLMODE: verify-full
+      NODE_ENV: test
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/preparar-node
+        timeout-minutes: 5
+      - name: Recusar execução sem configuração protegida
+        shell: bash
+        run: |
+          set -euo pipefail
+          [ -n "$PGHOST" ] && [ -n "$PGPORT" ] && [ -n "$PGUSER" ] &&
+          [ -n "$PGPASSWORD" ] && [ -n "$PGDATABASE" ] || {
+            echo "::error::Conexão privada read-only indisponível; nenhum SQL exportado"
+            exit 1
+          }
+      - name: Exportar e verificar os sete lotes apenas no runner
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          private_dir="$(mktemp -d /tmp/elus-v185-private.XXXXXXXX)"
+          echo "ELUS_PRIVATE_DIR=$private_dir" >> "$GITHUB_ENV"
+          node scripts/exportar-lotes-v185-privado.mjs "$private_dir/lotes"
+          node scripts/verificar-lotes-v185.mjs "$private_dir/lotes"
+      - name: Reconstruir somente baseline v1.85 em PostgreSQL efêmero
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker run --detach --rm --name "elus-v185-${GITHUB_RUN_ID}" \
+            --env POSTGRES_PASSWORD=ephemeral-only \
+            --env POSTGRES_DB=elus_isolado \
+            pgvector/pgvector:pg17 >/dev/null
+          for attempt in $(seq 1 45); do
+            if docker exec "elus-v185-${GITHUB_RUN_ID}" pg_isready -U postgres -d elus_isolado >/dev/null 2>&1; then break; fi
+            sleep 1
+          done
+          docker exec "elus-v185-${GITHUB_RUN_ID}" pg_isready -U postgres -d elus_isolado >/dev/null
+          for version in 20261018200431 20261018204508 20261018204837 20261018204851 20261018204924 20261018204939 20261018204955; do
+            # Não imprimir consultas SQL nem mensagens internas que possam conter SQL.
+            if ! docker exec -i "elus-v185-${GITHUB_RUN_ID}" psql -X -q -v ON_ERROR_STOP=1 -U postgres -d elus_isolado \
+              < "$ELUS_PRIVATE_DIR/lotes/$version.sql" >/dev/null 2>&1; then
+              echo "::error::Reprodução v1.85 bloqueada no lote $version (detalhes SQL omitidos)"
+              exit 1
+            fi
+          done
+          echo "Reprodução isolada dos sete lotes v1.85: PASS" >> "$GITHUB_STEP_SUMMARY"
+          echo "NÃO PROVADO: quatro migrations ELUS, upgrade v1.89, rollback e paridade de Supabase." >> "$GITHUB_STEP_SUMMARY"
+      - name: Destruir os artefatos privados e o banco temporário
+        if: always()
+        shell: bash
+        run: |
+          if [ -n "${ELUS_PRIVATE_DIR:-}" ]; then
+            rm -rf -- "$ELUS_PRIVATE_DIR"
+          fi
+          docker rm -f "elus-v185-${GITHUB_RUN_ID}" >/dev/null 2>&1 || true
