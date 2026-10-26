@@ -5,6 +5,7 @@
  */
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
@@ -129,7 +130,7 @@ describe("regenerateRecoveryCodes — contrato da rotação atômica", () => {
 
 describe("migration ELUS 0765 — cerca estática, sem executar SQL", () => {
   const sql = readFileSync(
-    new URL("../../../supabase/migrations/20261026010000_0765_elus_rotacao_atomica_codigos_recuperacao.sql", import.meta.url),
+    resolve(process.cwd(), "supabase/migrations/20261026010000_0765_elus_rotacao_atomica_codigos_recuperacao.sql"),
     "utf8",
   );
 
