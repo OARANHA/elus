@@ -39,7 +39,7 @@ describe("ELUS v189: histórico do ledger oficial no laboratório", () => {
       cwd: process.cwd(),
       encoding: "utf8",
       timeout: 15000,
-      env: { PATH: process.env.PATH, PYTHONDONTWRITEBYTECODE: "1" },
+      env: { PATH: process.env.PATH, NODE_ENV: "test", PYTHONDONTWRITEBYTECODE: "1" },
     });
     expect(output.trim()).toBe("OFFICIAL_LEDGER_UNIT_GREEN=6");
   });
