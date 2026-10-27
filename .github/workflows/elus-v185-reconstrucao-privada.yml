@@ -105,12 +105,23 @@ jobs:
           done
           docker exec "elus-v185-${GITHUB_RUN_ID}" pg_isready -U postgres -d elus_isolado >/dev/null
           for version in 20261018200431 20261018204508 20261018204837 20261018204851 20261018204924 20261018204939 20261018204955; do
-            # Não imprimir consultas SQL nem mensagens internas que possam conter SQL.
-            if ! docker exec -i "elus-v185-${GITHUB_RUN_ID}" psql -X -q -v ON_ERROR_STOP=1 -U postgres -d elus_isolado \
-              < "$ELUS_PRIVATE_DIR/lotes/$version.sql" >/dev/null 2>&1; then
-              echo "::error::Reprodução v1.85 bloqueada no lote $version (detalhes SQL omitidos)"
+            # O SQL original e stderr ficam privados. VERBOSITY=sqlstate só
+            # emite o código PostgreSQL (sem mensagens, objetos ou queries).
+            error_file="$ELUS_PRIVATE_DIR/pg-error-private"
+            if ! docker exec -i "elus-v185-${GITHUB_RUN_ID}" psql -X -q \
+              -v ON_ERROR_STOP=1 -v VERBOSITY=sqlstate -U postgres -d elus_isolado \
+              < "$ELUS_PRIVATE_DIR/lotes/$version.sql" >/dev/null 2>"$error_file"; then
+              sqlstate="UNKNOWN"
+              while IFS= read -r line; do
+                if [[ "$line" =~ ERROR:[[:space:]]*([0-9A-Z]{5}) ]]; then
+                  sqlstate="${BASH_REMATCH[1]}"
+                  break
+                fi
+              done < "$error_file"
+              echo "::error::Reprodução v1.85 bloqueada no lote $version; SQLSTATE=$sqlstate (SQL omitido)"
               exit 1
             fi
+            rm -f -- "$error_file"
           done
           echo "Reprodução isolada dos sete lotes v1.85: PASS" >> "$GITHUB_STEP_SUMMARY"
           echo "NÃO PROVADO: quatro migrations ELUS, upgrade v1.89, rollback e paridade de Supabase." >> "$GITHUB_STEP_SUMMARY"
