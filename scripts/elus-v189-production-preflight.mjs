@@ -22,12 +22,12 @@ const section = registry.split("const IMPORTADAS:",2)[1]?.split("const ELUS_PROP
 if (!section) throw new Error("MANIFEST_NOT_FOUND");
 const files = Array.from(section.matchAll(/"(\d{14}_[^"]+\.sql)":\s*"([a-f0-9]{40})"/g), m => [m[1],m[2]]);
 if (files.length !== 38 || new Set(files.map(([n])=>n)).size !== 38) throw new Error("MANIFEST_COUNT_INVALID");
-files.push([EXTRA,null]);
+files.push([EXTRA,"a05333f5b12b78c334181887f089b39398d9aa50"]);
 files.sort(([a],[b])=>a.localeCompare(b));
 const hashes=files.map(([name,expected])=>{
   const contents=readFileSync(resolve(PREFIX,name));
   const blob=createHash("sha1").update("blob "+contents.length+"\0").update(contents).digest("hex");
-  if (expected && expected!==blob) throw new Error("MIGRATION_BLOB_MISMATCH");
+  if (expected!==blob) throw new Error("MIGRATION_BLOB_MISMATCH");
   return {version:name.slice(0,14),name,sha256:createHash("sha256").update(contents).digest("hex")};
 });
 if(new Set(hashes.map(x=>x.version)).size!==39)throw new Error("DUPLICATE_MIGRATION_VERSION");
@@ -47,6 +47,12 @@ try{
  await client.connect();
  await client.query("BEGIN READ ONLY");
  const q=await client.query("SELECT version,name FROM supabase_migrations.schema_migrations ORDER BY version");
+ const cols=await client.query("SELECT column_name,data_type,udt_name,is_nullable FROM information_schema.columns WHERE table_schema=$1 AND table_name=$2 ORDER BY ordinal_position",["supabase_migrations","schema_migrations"]);
+ const required = new Map([["version","text"],["name","text"],["statements","_text"],["rollback","_text"]]);
+ for(const [field,type] of required){
+   if(!cols.rows.some(c=>c.column_name===field && (c.data_type===type || c.udt_name===type)))throw new Error("OFFICIAL_LEDGER_SCHEMA_DRIFT");
+ }
+ const ledgerShape = cols.rows.map(c=>({name:c.column_name,dataType:c.data_type,udtName:c.udt_name,nullable:c.is_nullable}));
  const versions=q.rows.map(x=>x.version);
  if(JSON.stringify(versions)!==JSON.stringify(EXPECTED))throw new Error("HISTORICAL_LEDGER_MISMATCH");
  const schema=await client.query("SELECT count(*)::int AS n FROM pg_tables WHERE schemaname = 'public'");
@@ -57,8 +63,9 @@ try{
  console.log("HISTORICAL_LEDGER=11");
  console.log("PUBLIC_TABLES=191");
  console.log("MANIFEST=39");
+ console.log("OFFICIAL_LEDGER_SCHEMA="+JSON.stringify(ledgerShape));
 } catch(e){
- console.error("GATE_RED="+(/HISTORICAL_LEDGER_MISMATCH|SCHEMA_PRECONDITION_CHANGED|MIGRATION_VERSION_COLLISION/.test(e.message)?e.message:"PREFLIGHT_FAILED"));
+ console.error("GATE_RED="+(/HISTORICAL_LEDGER_MISMATCH|SCHEMA_PRECONDITION_CHANGED|MIGRATION_VERSION_COLLISION|OFFICIAL_LEDGER_SCHEMA_DRIFT/.test(e.message)?e.message:"PREFLIGHT_FAILED"));
  process.exitCode=1;
 } finally{
  await client.query("ROLLBACK").catch(()=>{});
