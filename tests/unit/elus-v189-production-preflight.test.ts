@@ -2,10 +2,11 @@
  * Exercita realmente o manifesto do preflight sem conectar ao Supabase.
  * Fail closed se a convenção do teste/manifesto mudar.
  */
-import { execFileSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { execFileSync, spawnSync } from "node:child_process";
+import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { join } from "node:path";
+import { tmpdir } from "node:os";
 import { describe, expect, it } from "vitest";
 
 const root = process.cwd();
@@ -89,4 +90,45 @@ describe("preflight v189: manifesto offline e cercas produtivas", () => {
     expect(source).toContain("row.name!==EXPECTED_NAMES[i]");
     expect(source).toContain("HISTORICAL_LEDGER_NAME_MISMATCH");
   });
+  it("rejeita cutoff adulterado, troca de grupos e versão incoerente sem acessar banco", () => {
+    const original = JSON.parse(readFileSync(
+      join(root, "docs/integracao/elus-v189-ledger-replay-matrix.json"), "utf8",
+    ));
+    const wrongCutoff = structuredClone(original);
+    wrongCutoff.ledger_snapshot.cutoff = "20261021025612";
+
+    const swapped = structuredClone(original);
+    const before = swapped.migrations.find(
+      (m: { cutoff_group: string }) => m.cutoff_group === "AT_OR_BEFORE_LEDGER_CUTOFF",
+    );
+    const after = swapped.migrations.find(
+      (m: { cutoff_group: string }) => m.cutoff_group === "AFTER_LEDGER_CUTOFF",
+    );
+    if (!before || !after) throw new Error("TEST_FIXTURE_INVALID");
+    before.cutoff_group = "AFTER_LEDGER_CUTOFF";
+    after.cutoff_group = "AT_OR_BEFORE_LEDGER_CUTOFF";
+
+    const wrongVersion = structuredClone(original);
+    wrongVersion.migrations[0].version = "19000101000000";
+
+    for (const drift of [wrongCutoff, swapped, wrongVersion]) {
+      const temp = mkdtempSync(join(tmpdir(), "elus-v189-cutoff-"));
+      try {
+        mkdirSync(join(temp, "docs/integracao"), { recursive: true });
+        writeFileSync(
+          join(temp, "docs/integracao/elus-v189-ledger-replay-matrix.json"),
+          JSON.stringify(drift),
+        );
+        const result = spawnSync(process.execPath, [script, "manifest"], {
+          cwd: temp, encoding: "utf8", timeout: 15000,
+          env: { PATH: process.env.PATH, NODE_ENV: "test" },
+        });
+        expect(result.status).not.toBe(0);
+        expect(result.stderr).toContain("REPLAY_CUTOFF_DRIFT");
+      } finally {
+        rmSync(temp, { recursive: true, force: true });
+      }
+    }
+  });
+
 });
