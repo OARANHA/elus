@@ -105,11 +105,20 @@ const PDFJS_LEGACY = "pdfjs-dist/legacy/build/pdf.mjs";
 const HEAP_DO_FILHO_MB = 160;
 const TEMPO_MAXIMO_MS = 60_000;
 
-/** `processo-a-parte` só sob o `tsx` — é o único lugar onde o custo existe. */
+/**
+ * `processo-a-parte` só sob o `tsx` — é o único lugar onde o custo existe.
+ *
+ * O tsx aparece no execArgv tanto pelo caminho absoluto do loader quanto
+ * como especificador cru do hook (`node --import tsx` e `--import=tsx`).
+ * A segunda forma é usada no Dockerfile.worker e precisa preservar o
+ * isolamento do heap do leitor de PDF.
+ */
 export function estrategiaPadrao(
   execArgv: readonly string[] = process.execArgv,
 ): EstrategiaDeExtracao {
-  return execArgv.some((arg) => /[\\/]tsx[\\/]/.test(arg)) ? "processo-a-parte" : "em-processo";
+  return execArgv.some((arg) => /(^|[\\/=])tsx([\\/]|$)/.test(arg))
+    ? "processo-a-parte"
+    : "em-processo";
 }
 
 /**

@@ -384,7 +384,27 @@ function expectParidade(func: string, actor: string, org: string, de: string, at
   const ref = linhas.find((l) => l.startsWith("REF:"));
   expect(novo, `a saída da RPC nova não chegou: ${out.slice(0, 200)}`).toBeDefined();
   expect(ref, `a saída da régua de referência não chegou: ${out.slice(0, 200)}`).toBeDefined();
-  expect(JSON.parse(novo!.slice(5))).toEqual(JSON.parse(ref!.slice(4)));
+  const atual = JSON.parse(novo!.slice(5)) as Array<Record<string, unknown>>;
+  const legado = JSON.parse(ref!.slice(4)) as Array<Record<string, unknown>>;
+  if (func === "fn_attendant_metrics") {
+    // A migration 0754 acrescentou a mediana sem alterar os sete campos
+    // legados. A régua #2514 continua exigindo paridade EXATA desses campos;
+    // o novo campo precisa existir e conter mediana válida ou null.
+    const semCampoNovo = atual.map((linha) => {
+      expect(linha).toHaveProperty("median_first_response_seconds");
+      const mediana = linha.median_first_response_seconds;
+      expect(
+        mediana === null ||
+          (typeof mediana === "number" && Number.isFinite(mediana) && mediana >= 0),
+      ).toBe(true);
+      const camposLegados = { ...linha };
+      delete camposLegados.median_first_response_seconds;
+      return camposLegados;
+    });
+    expect(semCampoNovo).toEqual(legado);
+    return;
+  }
+  expect(atual).toEqual(legado);
 }
 
 type NoPlano = {

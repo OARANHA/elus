@@ -72,7 +72,10 @@ const INVENTA_DADO = "format('%I = %L', c, v_rotulo)";
 
 describe("o rótulo da seção de LGPD preserva o nulo (issue #2656)", () => {
   it("a sonda está viva — a função existe nas duas origens e a cadeia tem histórico", () => {
-    expect(queRedefinem.length, "nenhuma migration redefine a função — o parser mudou?").toBeGreaterThan(1);
+    expect(
+      queRedefinem.length,
+      "nenhuma migration redefine a função — o parser mudou?",
+    ).toBeGreaterThan(1);
     expect(ultimaNoBaseline, "a última definição da função sumiu do baseline").not.toBe("");
     expect(ultimaNaCadeia, "nenhuma migration redefine a função").not.toBe("");
     // As duas migrations que hoje a definem continuam lá: apagá-las seria reescrever história.
@@ -81,42 +84,54 @@ describe("o rótulo da seção de LGPD preserva o nulo (issue #2656)", () => {
   });
 
   it("NA CADEIA: a última definição monta o set preservando o nulo, e não grava rótulo às cegas", () => {
-    expect(ultimaNaCadeia, "a última definição da cadeia não preserva o nulo do colunas_rotulo").toContain(
-      PRESERVA_NULO,
-    );
-    expect(ultimaNaCadeia, "a última definição da cadeia ainda grava o rótulo sobre a coluna nula").not.toContain(
-      INVENTA_DADO,
-    );
+    expect(
+      ultimaNaCadeia,
+      "a última definição da cadeia não preserva o nulo do colunas_rotulo",
+    ).toContain(PRESERVA_NULO);
+    expect(
+      ultimaNaCadeia,
+      "a última definição da cadeia ainda grava o rótulo sobre a coluna nula",
+    ).not.toContain(INVENTA_DADO);
   });
 
   it("NO BASELINE: a última definição monta o set preservando o nulo, e não grava rótulo às cegas", () => {
-    expect(ultimaNoBaseline, "a última definição do baseline não preserva o nulo do colunas_rotulo").toContain(
-      PRESERVA_NULO,
-    );
-    expect(ultimaNoBaseline, "a última definição do baseline ainda grava o rótulo sobre a coluna nula").not.toContain(
-      INVENTA_DADO,
-    );
+    expect(
+      ultimaNoBaseline,
+      "a última definição do baseline não preserva o nulo do colunas_rotulo",
+    ).toContain(PRESERVA_NULO);
+    expect(
+      ultimaNoBaseline,
+      "a última definição do baseline ainda grava o rótulo sobre a coluna nula",
+    ).not.toContain(INVENTA_DADO);
   });
 
   it("o conserto é FORWARD-FIX: sai em migration posterior às já aplicadas", () => {
     const ultima = queRedefinem[queRedefinem.length - 1]!;
-    expect(ultima, "o conserto reescreveu uma migration já aplicada em vez de abrir uma nova").not.toMatch(
-      /_(0485|0619)_/,
+    expect(
+      ultima,
+      "o conserto reescreveu uma migration já aplicada em vez de abrir uma nova",
+    ).not.toMatch(/_(0485|0619)_/);
+    expect(ultimaNaCadeia, "a migration do conserto não carrega a cláusula nova").toContain(
+      PRESERVA_NULO,
     );
-    expect(ultimaNaCadeia, "a migration do conserto não carrega a cláusula nova").toContain(PRESERVA_NULO);
   });
 
   it("a 0619 continua com o corpo antigo — a história não foi reescrita", () => {
     const aplicada = queRedefinem.find((f) => f.includes("_0619_"));
     expect(aplicada, "a migration 0619 sumiu da árvore").toBeTruthy();
-    expect(ler(aplicada!), "a 0619 foi editada — migration aplicada é intocável").toContain(INVENTA_DADO);
+    expect(ler(aplicada!), "a 0619 foi editada — migration aplicada é intocável").toContain(
+      INVENTA_DADO,
+    );
   });
 
   it("o rótulo continua sendo o único valor possível para a coluna PREENCHIDA", () => {
     // Preservar o nulo não pode virar apagar o efeito: a coluna preenchida recebe o rótulo,
     // e é o invariante de efeito que mede isto no banco.
     for (const origem of [ultimaNaCadeia, ultimaNoBaseline]) {
-      expect(origem).toContain("v_rotulo text := 'Cliente Anonimizado #' || substring(new.id::text from 1 for 8)");
+      expect(origem).toContain(
+        "when new.name ~ '^Cliente Anonimizado #[0-9a-f]{8}$' then new.name",
+      );
+      expect(origem).toContain("else public.fn_lgpd_rotulo_anonimizado(new.id)");
     }
   });
 });

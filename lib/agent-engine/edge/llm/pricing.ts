@@ -133,6 +133,9 @@ const USD_PER_MTOK: Record<string, Preco> = {
   // até o instante anterior a VIRADA_GEMINI_FLASH_36_38_MS — precoDoModelo troca.
   // Gravação = entrada, como o resto do Google: o implícito não cobra gravação.
   // O 3.7 saiu da página de preços (depreciado, roteado ao 3.8); a tarifa é a do 3.8.
+  // Migration 0703: tarifa Standard desde 2026-12-01; antes vale a promoção.
+  // Cache de leitura: US$ 0,20/MTok (5% da entrada) conforme a migration.
+  'gemini-4-argon': { input: 4, output: 20, cacheRead: 0.2, cacheWrite5m: 4, cacheWrite1h: 4 },
   'gemini-3.8-flash': { input: 1.5, output: 7.5, cacheRead: 0.15, cacheWrite5m: 1.5, cacheWrite1h: 1.5 },
   'gemini-3.7-flash': { input: 1.5, output: 7.5, cacheRead: 0.15, cacheWrite5m: 1.5, cacheWrite1h: 1.5 },
   'gemini-3.6-flash': { input: 1.5, output: 7.5, cacheRead: 0.15, cacheWrite5m: 1.5, cacheWrite1h: 1.5 },
@@ -161,6 +164,8 @@ export interface TokenUsage {
   outputTokens: number;
   cacheReadTokens: number;
   cacheWriteTokens: number;
+  /** Parcela de cacheWriteTokens gravada com TTL de 1h; ausente usa cacheTtl. */
+  cacheWrite1hTokens?: number;
 }
 
 /**
@@ -183,6 +188,16 @@ const PROMO_GEMINI_FLASH_36_38: Preco = {
   cacheRead: 0.075,
   cacheWrite5m: 0.75,
   cacheWrite1h: 0.75,
+};
+
+// Migration 0703: a promoção termina no instante UTC abaixo.
+const VIRADA_GEMINI_4_ARGON_MS = Date.parse('2026-12-01T00:00:00.000Z');
+const PROMO_GEMINI_4_ARGON: Preco = {
+  input: 2,
+  output: 10,
+  cacheRead: 0.1,
+  cacheWrite5m: 2,
+  cacheWrite1h: 2,
 };
 
 const IDS_GEMINI_FLASH_36_38 = new Set([
@@ -215,6 +230,9 @@ export function precoDoModelo(model: string, em: Date = new Date()): Preco | und
   if (IDS_GEMINI_FLASH_36_38.has(id) && em.getTime() < VIRADA_GEMINI_FLASH_36_38_MS) {
     return PROMO_GEMINI_FLASH_36_38;
   }
+  if (id === 'gemini-4-argon' && em.getTime() < VIRADA_GEMINI_4_ARGON_MS) {
+    return PROMO_GEMINI_4_ARGON;
+  }
   return USD_PER_MTOK[id];
 }
 
@@ -245,15 +263,54 @@ export function costCents(
   if (p === undefined) {
     return null;
   }
-  const cacheWrite = cacheTtl === '5m' ? p.cacheWrite5m : p.cacheWrite1h;
   const noCacheInput = Math.max(0, usage.inputTokens - usage.cacheReadTokens - usage.cacheWriteTokens);
   const usd =
     (noCacheInput * p.input +
       usage.cacheReadTokens * p.cacheRead +
-      usage.cacheWriteTokens * cacheWrite +
+      custoDaGravacao(p, usage, cacheTtl) +
       usage.outputTokens * p.output) /
     1_000_000;
   return usd * 100;
+}
+
+
+/** Divide a gravação por TTL real quando o provedor informa a parcela de 1h. */
+function custoDaGravacao(p: Preco, usage: TokenUsage, cacheTtl: CacheTtl): number {
+  if (usage.cacheWrite1hTokens === undefined) {
+    return usage.cacheWriteTokens * (cacheTtl === '5m' ? p.cacheWrite5m : p.cacheWrite1h);
+  }
+  const umaHora = Math.min(Math.max(0, usage.cacheWrite1hTokens), usage.cacheWriteTokens);
+  return umaHora * p.cacheWrite1h + (usage.cacheWriteTokens - umaHora) * p.cacheWrite5m;
+}
+
+/**
+ * Reconciliação DeskcommCRM v1.89.0: lê os tokens de gravação de cache por TTL
+ * informados pelo provedor em cada passo (Anthropic: cache_creation).
+ * A proporção é aplicada ao total agregado pelo SDK, sem excedê-lo.
+ * Se o provedor não fornece essa divisão, retorna undefined para manter
+ * a política anterior de cacheTtl.
+ */
+export function gravacaoDeUmaHora(
+  usosCrus: ReadonlyArray<unknown>,
+  totalGravado: number,
+): number | undefined {
+  let cincoMin = 0;
+  let umaHora = 0;
+  let viu = false;
+  for (const cru of usosCrus) {
+    const divisao = (cru as { cache_creation?: unknown } | null | undefined)?.cache_creation;
+    if (!divisao || typeof divisao !== 'object') continue;
+    const d = divisao as { ephemeral_5m_input_tokens?: unknown; ephemeral_1h_input_tokens?: unknown };
+    const c = Number(d.ephemeral_5m_input_tokens ?? 0);
+    const u = Number(d.ephemeral_1h_input_tokens ?? 0);
+    if (!Number.isFinite(c) || !Number.isFinite(u)) continue;
+    viu = true;
+    cincoMin += Math.max(0, c);
+    umaHora += Math.max(0, u);
+  }
+  if (!viu) return undefined;
+  if (cincoMin + umaHora === 0) return 0;
+  return Math.round((totalGravado * umaHora) / (cincoMin + umaHora));
 }
 
 /**
@@ -268,13 +325,13 @@ export function costCents(
  * Só entrada e saída: este caminho não recebe token de cache. Quem tem cache
  * chama `costCents` direto (o seam do agente).
  */
-export function costCentsDoGeminiFlashComVirada(
+export function costCentsDoGeminiComVirada(
   model: string,
   usage: { inputTokens: number; outputTokens: number },
   em: Date = new Date(),
 ): number | null {
   const id = chaveDoModelo(model);
-  if (id === undefined || !IDS_GEMINI_FLASH_36_38.has(id)) return null;
+  if (id === undefined || (id !== 'gemini-4-argon' && !IDS_GEMINI_FLASH_36_38.has(id))) return null;
   return costCents(
     model,
     {
@@ -287,3 +344,6 @@ export function costCentsDoGeminiFlashComVirada(
     em,
   );
 }
+
+/** Compatibilidade com o nome anterior à migration 0703. */
+export const costCentsDoGeminiFlashComVirada = costCentsDoGeminiComVirada;

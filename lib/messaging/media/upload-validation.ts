@@ -24,6 +24,17 @@ export function isMediaPathOwnedBy(path: string, orgId: string, conversationId: 
   return resto.split("/").every((s) => s !== "" && s !== "." && s !== "..");
 }
 
+
+/**
+ * Posse de anexo de negócio no bucket internal-media (DeskcommCRM v1.89.0).
+ * A chave precisa estar sob {org}/leads/{lead}/ e não pode conter
+ * segmentos de traversal. A validação da organização/lead da rota e a
+ * política do banco continuam obrigatórias; este helper não as substitui.
+ */
+export function isLeadAttachmentPathOwnedBy(path: string, orgId: string, leadId: string): boolean {
+  return isMediaPathOwnedBy(path, orgId, `leads/${leadId}`);
+}
+
 const DOCUMENT_MIMES = new Set([
   "application/pdf",
   "application/msword",

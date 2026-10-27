@@ -193,9 +193,24 @@ describe("extractPdfText — estratégia `processo-a-parte`", () => {
         "file:///app/node_modules/.pnpm/tsx@4.23.13/node_modules/tsx/dist/loader.mjs",
       ]),
     ).toBe("processo-a-parte");
-    // App Next, vitest, node puro: nada muda.
+    // O worker usa o hook tsx sem caminho absoluto (node --import tsx).
+    expect(estrategiaPadrao(["--import", "tsx"])).toBe("processo-a-parte");
+    expect(estrategiaPadrao(["--import=tsx"])).toBe("processo-a-parte");
+    expect(estrategiaPadrao(["--import", "tsx/esm"])).toBe("processo-a-parte");
+    // App Next, vitest, node puro e módulos de nome parecido: nada muda.
     expect(estrategiaPadrao([])).toBe("em-processo");
     expect(estrategiaPadrao(["--max-old-space-size=256"])).toBe("em-processo");
+    expect(estrategiaPadrao(["--import", "./tsx-config.mjs"])).toBe("em-processo");
+  });
+
+  it("o CMD real de Dockerfile.worker escolhe extração isolada do PDF", async () => {
+    const dockerfile = readFileSync(join(raiz, "Dockerfile.worker"), "utf8");
+    const linha = dockerfile.split("\n").find((item) => /^CMD\s*\[/.test(item));
+    if (!linha) throw new Error("Dockerfile.worker sem CMD em forma exec");
+    const comando = JSON.parse(linha.replace(/^CMD\s*/, "")) as string[];
+    expect(comando[0]).toBe("node");
+    const { estrategiaPadrao } = await import("@/lib/ai/rag/extractors/pdf");
+    expect(estrategiaPadrao(comando.slice(1, -1))).toBe("processo-a-parte");
   });
 
   it("sob o tsx DE VERDADE, o pai extrai sem carregar o pdfjs no próprio heap", () => {

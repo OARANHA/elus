@@ -6,10 +6,10 @@
  * (`lib/agent-engine/edge/llm/pricing.ts`) e às colunas `numeric` de
  * `llm_calls`/`ai_invocations`.
  *
- * Exceção: Gemini 3.6/3.7/3.8 Flash (e o prefixo `provider/`) não usam a
- * linha. Ela já está em 150/750 desde a migration 0649, para a lista mostrar
- * a tarifa de 2027. O gasto sai de `costCentsDoGeminiFlashComVirada`, o mesmo
- * corte de `costCents` (promo até o instante anterior a 2027-01-01T00:00:00Z).
+ * Exceção: Gemini 3.6/3.7/3.8 Flash e Gemini 4 Argon (inclusive `provider/`)
+ * não usam a tarifa futura do catálogo antes da virada. A 0649 guarda 150/750
+ * para 2027; a 0703 guarda 400/2000 para 2026-12-01. O custo segue
+ * `costCentsDoGeminiComVirada`, com o mesmo instante de `costCents`.
  *
  * Arredondava para cima até o centavo inteiro "para errar cobrando a mais".
  * Numa chamada de classificador (~250 tokens de entrada no gpt-5.6-luna, custo
@@ -19,7 +19,7 @@
  * da organização por um número falso.
  */
 
-import { costCentsDoGeminiFlashComVirada } from "@/lib/agent-engine/edge/llm/pricing";
+import { costCentsDoGeminiComVirada } from "@/lib/agent-engine/edge/llm/pricing";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 interface PricingRow {
@@ -127,10 +127,9 @@ async function precoDoCatalogo(
  * Returns cost in **cents** (fracionado, sem arredondar). Zero when pricing missing.
  */
 export async function computeCost(input: ComputeCostInput): Promise<number> {
-  // Estes três Flash têm a tarifa de 2027 no catálogo desde a 0649. O gasto
-  // gravado em llm_calls tem de seguir `costCents` (promo estritamente antes
-  // de 2027-01-01T00:00:00.000Z). Outro modelo continua na linha de ai_pricing.
-  const pelaVirada = costCentsDoGeminiFlashComVirada(
+  // Flash (0649) e Argon (0703) guardam tarifa futura no catálogo.
+  // `costCents` decide o corte UTC por modelo antes de gravar o gasto.
+  const pelaVirada = costCentsDoGeminiComVirada(
     input.model,
     {
       inputTokens: input.promptTokens ?? 0,

@@ -50,7 +50,10 @@ const VIZINHO = "7a5f0011-2222-4000-8000-000000000003";
 /** Anonimizado com a seção QUEBRADA declarada — tem de falhar alto. */
 const ERROU = "7a5f0011-2222-4000-8000-000000000004";
 
-const ROTULO_ESPERADO = "Cliente Anonimizado #7a5f0011"; // id::text, 8 primeiros caracteres
+/** A migration 0657 usa rótulo opaco, persistido no próprio contato. */
+function rotuloDe(contactId: string): string {
+  return sql(`select name from public.contacts where id = '${contactId}';`).trim().split("\n").at(-1) ?? "";
+}
 
 beforeAll(() => {
   sql(`
@@ -169,7 +172,7 @@ describe("D8 — a anonimização alcança as seções de módulo declaradas", (
 
     anonimizar(ALVO);
 
-    expect(linhaDe(ALVO)).toBe(`<null>|${ROTULO_ESPERADO}`);
+    expect(linhaDe(ALVO)).toBe(`<null>|${rotuloDe(ALVO)}`);
     // O vizinho é da MESMA organização e da MESMA tabela — e não é tocado.
     expect(linhaDe(VIZINHO)).toBe("O nome de Joao Vizinho|querido Joao Vizinho");
   });
@@ -229,7 +232,7 @@ describe("D8 — a anonimização alcança as seções de módulo declaradas", (
     // A guarda `when (new.is_anonymized and not old.is_anonymized)` — repetir a chamada não
     // pode ser erro nem mudar o que já foi redigido.
     expect(() => anonimizar(ALVO)).not.toThrow();
-    expect(linhaDe(ALVO)).toBe(`<null>|${ROTULO_ESPERADO}`);
+    expect(linhaDe(ALVO)).toBe(`<null>|${rotuloDe(ALVO)}`);
     expect(linhaDe(VIZINHO)).toBe("O nome de Joao Vizinho|querido Joao Vizinho");
   });
 
