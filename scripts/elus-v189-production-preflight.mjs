@@ -113,12 +113,21 @@ try{
    throw new Error("READONLY_ROLE_REQUIRED");
  const q=await client.query("SELECT version,name FROM supabase_migrations.schema_migrations ORDER BY version");
  const cols=await client.query("SELECT column_name,data_type,udt_name,is_nullable FROM information_schema.columns WHERE table_schema=$1 AND table_name=$2 ORDER BY ordinal_position",["supabase_migrations","schema_migrations"]);
- const required = ["version","name","statements","rollback"];
- for(const field of required){
-   if(!cols.rows.some(c=>c.column_name===field))throw new Error("OFFICIAL_LEDGER_SCHEMA_DRIFT");
+ // The official Supabase ledger stores SQL and rollback as text[].
+ // Column presence alone is insufficient: a changed type invalidates replay assumptions.
+ const requiredTypes = [
+   ["version", ["text", "varchar"], null],
+   ["name", ["text", "varchar"], null],
+   ["statements", ["_text"], "ARRAY"],
+   ["rollback", ["_text"], "ARRAY"],
+ ];
+ for (const [field, acceptedUdt, requiredDataType] of requiredTypes) {
+   const matches = cols.rows.filter(c => c.column_name === field);
+   if (matches.length !== 1 ||
+       !acceptedUdt.includes(matches[0].udt_name) ||
+       (requiredDataType !== null && matches[0].data_type !== requiredDataType))
+     throw new Error("OFFICIAL_LEDGER_SCHEMA_DRIFT");
  }
- if (!cols.rows.some(c=>c.column_name==="version" && ["text","varchar"].includes(c.udt_name)))
-   throw new Error("OFFICIAL_LEDGER_SCHEMA_DRIFT");
  const ledgerShape = cols.rows.map(c=>({name:c.column_name,dataType:c.data_type,udtName:c.udt_name,nullable:c.is_nullable}));
  const versions=q.rows.map(x=>x.version);
  if(JSON.stringify(versions)!==JSON.stringify(EXPECTED))throw new Error("HISTORICAL_LEDGER_MISMATCH");
