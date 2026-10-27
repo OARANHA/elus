@@ -31,11 +31,11 @@ name: e2e
 # O job falha honestamente: a primeira versão usava `continue-on-error: true` no
 # job inteiro e reportou VERDE com o `supabase start` quebrado e zero teste
 # executado. Verde que não distingue "passou" de "nem rodou" é pior que vermelho.
+# ELUS: E2E somente com autorização explícita do proprietário.
+# Nenhum pull_request ou push deve disparar Playwright automaticamente.
+# A execução manual usa o botão "Run workflow" após solicitação do proprietário.
 on:
-  pull_request:
-    branches: [main]
-  push:
-    branches: [main]
+  workflow_dispatch: {}
 
 # O GITHUB_TOKEN deste job serve a `actions/checkout` (clone) e a
 # `actions/setup-node` (manifest de `actions/node-versions`, repo público).
