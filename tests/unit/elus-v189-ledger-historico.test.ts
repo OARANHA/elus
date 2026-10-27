@@ -14,23 +14,25 @@ describe("ELUS v1.89 — pré-voo do ledger v1.85 (sem banco)", () => {
 
   it("recusa substituição silenciosa de nome com a mesma versão", () => {
     const rows = copia();
-    rows[7].name = "outro_nome_com_mesma_versao";
+    rows[7] = { ...rows[7]!, name: "outro_nome_com_mesma_versao" };
     expect(() => conferirLedgerHistorico(rows)).toThrow("HISTORICAL_LEDGER_MISMATCH");
   });
 
   it("recusa troca de versão mesmo com nome preservado", () => {
     const rows = copia();
-    rows[0].version = "20261018200432";
+    rows[0] = { ...rows[0]!, version: "20261018200432" };
     expect(() => conferirLedgerHistorico(rows)).toThrow("HISTORICAL_LEDGER_MISMATCH");
   });
 
   it("recusa reordenação, duplicidade, omissão e entrada adicional", () => {
     const invertida = copia();
-    [invertida[0], invertida[1]] = [invertida[1], invertida[0]];
+    const primeiro = { ...invertida[0]! };
+    invertida[0] = { ...invertida[1]! };
+    invertida[1] = primeiro;
     expect(() => conferirLedgerHistorico(invertida)).toThrow("HISTORICAL_LEDGER_MISMATCH");
 
     const duplicada = copia();
-    duplicada[1] = { ...duplicada[0] };
+    duplicada[1] = { ...duplicada[0]! };
     expect(() => conferirLedgerHistorico(duplicada)).toThrow("HISTORICAL_LEDGER_MISMATCH");
 
     expect(() => conferirLedgerHistorico(copia().slice(1))).toThrow("HISTORICAL_LEDGER_MISMATCH");
@@ -42,7 +44,7 @@ describe("ELUS v1.89 — pré-voo do ledger v1.85 (sem banco)", () => {
     expect(() => conferirLedgerHistorico(null)).toThrow("HISTORICAL_LEDGER_MISMATCH");
     expect(() => conferirLedgerHistorico([])).toThrow("HISTORICAL_LEDGER_MISMATCH");
     const rows = copia();
-    rows[0] = { version: rows[0].version, name: "" };
+    rows[0] = { version: rows[0]!.version, name: "" };
     expect(() => conferirLedgerHistorico(rows)).toThrow("HISTORICAL_LEDGER_MISMATCH");
   });
 });
