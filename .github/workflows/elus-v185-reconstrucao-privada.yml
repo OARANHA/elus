@@ -31,6 +31,7 @@ jobs:
           PGPASSWORD: ${{ secrets.ELUS_UPGRADE_PGPASSWORD }}
           PGDATABASE: ${{ secrets.ELUS_UPGRADE_PGDATABASE }}
           PGSSLMODE: verify-full
+          ELUS_UPGRADE_PG_CA_CERT: ${{ secrets.ELUS_UPGRADE_PG_CA_CERT }}
         run: |
           set -euo pipefail
           [ -n "$PGHOST" ] && [ -n "$PGPORT" ] && [ -n "$PGUSER" ] &&
@@ -43,6 +44,10 @@ jobs:
             echo "::error::Usuário de exportação não corresponde à conta de leitura dedicada"
             exit 1
           }
+          [ -n "${ELUS_UPGRADE_PG_CA_CERT:-}" ] || {
+            echo "::error::Certificado CA privado não configurado"
+            exit 1
+          }
           umask 077
           private_dir="$(mktemp -d /tmp/elus-v185-private.XXXXXXXX)"
           echo "ELUS_PRIVATE_DIR=$private_dir" >> "$GITHUB_ENV"
@@ -53,6 +58,7 @@ jobs:
             connectionTimeoutMillis: 8000,
             query_timeout: 10000,
             application_name: "elus-v185-private-readonly-preflight",
+            ssl: { ca: process.env.ELUS_UPGRADE_PG_CA_CERT, rejectUnauthorized: true },
           });
           const categories = {
             ENETUNREACH: "NETWORK_UNREACHABLE",
