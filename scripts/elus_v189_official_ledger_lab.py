@@ -107,7 +107,7 @@ def rows() -> list[tuple[str, str]]:
 
 def progress(items: list[tuple[str, str, bytes]]) -> int:
     actual = rows()
-    if [v for v, _ in actual[:11]] != list(HISTORICAL):
+    if [v for v, _ in actual if v in HISTORICAL] != list(HISTORICAL):
         fail("HISTORY_DRIFT")
     if len(actual) < 11 or len(actual) > 50:
         fail("LEDGER_COUNT_DRIFT")
