@@ -26,6 +26,20 @@ HISTORICAL = (
     "20261018204955", "20261019204449", "20261021025530",
     "20261021025551", "20261021025613",
 )
+HISTORICAL_NAMES = (
+    "elus_v185_preparar_extensoes_92d37f6",
+    "elus_v185_baseline_92d37f6_p01_of_06",
+    "elus_v185_baseline_92d37f6_p02_of_06",
+    "elus_v185_baseline_92d37f6_p03_of_06",
+    "elus_v185_baseline_92d37f6_p04_of_06",
+    "elus_v185_baseline_92d37f6_p05_of_06",
+    "elus_v185_baseline_92d37f6_p06_of_06",
+    "integracoes_erp_vendaerp_0689",
+    "elus_0690_org_ai_autonomy_protected",
+    "elus_0691_chutes_chat_catalog",
+    "elus_0692_chutes_catalog_sync",
+)
+
 EXTRA = "20261026010000_0765_elus_rotacao_atomica_codigos_recuperacao.sql"
 EXTRA_BLOB = "a05333f5b12b78c334181887f089b39398d9aa50"
 
@@ -107,8 +121,11 @@ def rows() -> list[tuple[str, str]]:
 
 def progress(items: list[tuple[str, str, bytes]]) -> int:
     actual = rows()
-    if [v for v, _ in actual if v in HISTORICAL] != list(HISTORICAL):
+    historical = [(v, n) for v, n in actual if v in HISTORICAL]
+    if [v for v, _ in historical] != list(HISTORICAL):
         fail("HISTORY_DRIFT")
+    if historical != list(zip(HISTORICAL, HISTORICAL_NAMES)):
+        fail("HISTORY_NAME_DRIFT")
     if len(actual) < 11 or len(actual) > 50:
         fail("LEDGER_COUNT_DRIFT")
     desired = [(name[:14], name[15:-4]) for name, _, _ in items]
