@@ -165,7 +165,42 @@ jobs:
             rm -f -- "$error_file"
           done
           echo "Quatro migrations próprias ELUS aplicadas ao clone: PASS" >> "$GITHUB_STEP_SUMMARY"
-          echo "NÃO PROVADO: ledger de 11 registros fiel, 38 migrations upstream v1.89, rollback e paridade de Supabase." >> "$GITHUB_STEP_SUMMARY"
+          # Espelho de METADADOS do ledger no clone, não substitui o
+          # dump integral da tabela supabase_migrations.schema_migrations.
+          # Somente após todas as 11 aplicações SQL terminarem sem erros.
+          if ! docker exec -i "elus-v185-${GITHUB_RUN_ID}" psql -X -q \
+            -v ON_ERROR_STOP=1 -U postgres -d elus_isolado >/dev/null 2>&1 <<'LEDGER_SQL'
+          BEGIN;
+          CREATE SCHEMA IF NOT EXISTS supabase_migrations;
+          CREATE TABLE IF NOT EXISTS supabase_migrations.schema_migrations (
+            version text PRIMARY KEY,
+            name text NOT NULL
+          );
+          INSERT INTO supabase_migrations.schema_migrations(version, name) VALUES
+            ('20261018200431','elus_v185_preparar_extensoes_92d37f6'),
+            ('20261018204508','elus_v185_baseline_92d37f6_p01_of_06'),
+            ('20261018204837','elus_v185_baseline_92d37f6_p02_of_06'),
+            ('20261018204851','elus_v185_baseline_92d37f6_p03_of_06'),
+            ('20261018204924','elus_v185_baseline_92d37f6_p04_of_06'),
+            ('20261018204939','elus_v185_baseline_92d37f6_p05_of_06'),
+            ('20261018204955','elus_v185_baseline_92d37f6_p06_of_06'),
+            ('20261019204449','integracoes_erp_vendaerp_0689'),
+            ('20261021025530','elus_0690_org_ai_autonomy_protected'),
+            ('20261021025551','elus_0691_chutes_chat_catalog'),
+            ('20261021025613','elus_0692_chutes_catalog_sync');
+          DO $
+          BEGIN
+            IF (SELECT count(*) FROM supabase_migrations.schema_migrations) <> 11 THEN
+              RAISE EXCEPTION 'Ledger espelhado não tem 11 entradas';
+            END IF;
+          END $;
+          COMMIT;
+          LEDGER_SQL
+            echo "::error::Espelho isolado dos metadados de 11 versões falhou (SQL omitido)"
+            exit 1
+          fi
+          echo "Espelho de metadados do ledger com 11 versões no clone: PASS (não é paridade integral)." >> "$GITHUB_STEP_SUMMARY"
+          echo "NÃO PROVADO: paridade integral de ledger (incluindo statements), 38 migrations upstream v1.89, rollback e paridade de Supabase." >> "$GITHUB_STEP_SUMMARY"
       - name: Destruir os artefatos privados e o banco temporário
         if: always()
         shell: bash
