@@ -19,6 +19,7 @@ describe("ELUS v189: histórico do ledger oficial no laboratório", () => {
       "items = [('20261022000000_alpha.sql', '', b''), ('20261023000000_beta.sql', '', b'')]",
       "def check(records, expected, desired=items):",
       "    m.rows = lambda: records",
+      "    m.query = lambda _sql: '\\n'.join(v + '|' + m.hashlib.md5(next(item[2] for item in desired if item[0][:14] == v)).hexdigest() for v, _ in records if v not in m.HISTORICAL)",
       "    try:",
       "        result = m.progress(desired)",
       "        actual = str(result)",
