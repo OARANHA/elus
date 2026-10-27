@@ -9,6 +9,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { runInNewContext } from "node:vm";
 import { describe, expect, it } from "vitest";
+import { LEDGER_HISTORICO_V185, conferirLedgerHistorico } from "../../scripts/elus-v189-ledger-historico.mjs";
 
 const root = process.cwd();
 const script = join(root, "scripts/elus-v189-production-preflight.mjs");
@@ -116,12 +117,13 @@ describe("preflight v189: manifesto offline e cercas produtivas", () => {
       "elus_0692_chutes_catalog_sync",
     ];
     expect(expectedNames).toHaveLength(11);
-    for (const name of expectedNames) {
-      expect(source).toContain(`"${name}"`);
-    }
-    expect(source).toContain("row.name!==EXPECTED_NAMES[i]");
-    expect(source).toContain("HISTORICAL_LEDGER_NAME_MISMATCH");
+    expect(LEDGER_HISTORICO_V185.map((row) => row.name)).toEqual(expectedNames);
+    expect(source).toContain("conferirLedgerHistorico(q.rows)");
+    const altered = LEDGER_HISTORICO_V185.map((row) => ({ ...row }));
+    altered[0]!.name = "nome_historico_alterado";
+    expect(() => conferirLedgerHistorico(altered)).toThrow("HISTORICAL_LEDGER_MISMATCH");
   });
+
   it("rejeita cutoff adulterado, troca de grupos e versão incoerente sem acessar banco", () => {
     const original = JSON.parse(readFileSync(
       join(root, "docs/integracao/elus-v189-ledger-replay-matrix.json"), "utf8",
