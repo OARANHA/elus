@@ -56,6 +56,21 @@ describe("preflight v189: manifesto offline e cercas produtivas", () => {
     }
   });
 
+  it("exige role de banco sem privilégios efetivos de escrita", () => {
+    const source = readFileSync(script, "utf8");
+    expect(source).toContain('await client.query("BEGIN READ ONLY")');
+    expect(source).toContain("current_setting('transaction_read_only') = 'on'");
+    for (const guard of [
+      "rolsuper", "rolcreaterole", "rolcreatedb", "rolreplication", "rolbypassrls",
+      "pg_write_all_data", "has_database_privilege", "has_schema_privilege",
+      "has_table_privilege", "'INSERT'", "'UPDATE'", "'DELETE'", "'TRUNCATE'",
+      "roleCheck.rows.length!==1", "READONLY_ROLE_REQUIRED",
+    ]) {
+      expect(source).toContain(guard);
+    }
+    expect(source).toContain("READONLY_ROLE_REQUIRED/.test(e.message)");
+  });
+
   it("bloqueia drift dos nomes associados às 11 versões históricas", () => {
     const source = readFileSync(script, "utf8");
     const expectedNames = [
