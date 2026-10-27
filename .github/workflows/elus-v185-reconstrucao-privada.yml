@@ -214,7 +214,43 @@ jobs:
             exit 1
           fi
           echo "Espelho de metadados do ledger com 11 versões no clone: PASS (não é paridade integral)." >> "$GITHUB_STEP_SUMMARY"
-          echo "NÃO PROVADO: paridade integral de ledger (incluindo statements), 38 migrations upstream v1.89, rollback e paridade de Supabase." >> "$GITHUB_STEP_SUMMARY"
+          # Ensaio exploratório: executar as 38 migrations importadas,
+          # incluindo as 11 anteriores ao corte do ledger. Não é plano de
+          # produção nem autorização para usar db push. Parar no primeiro erro.
+          manifest_file="$ELUS_PRIVATE_DIR/upstream-migrations.txt"
+          node --input-type=module > "$manifest_file" <<'MANIFEST_JS'
+          import { readFileSync } from "node:fs";
+          const source = readFileSync("tests/unit/elus-v189-import-ledger-integrity.test.ts", "utf8");
+          const match = source.match(/const IMPORTADAS: Readonly<Record<string, string>> = \\{([\\s\\S]*?)\\n\\};/);
+          if (!match) throw new Error("Manifesto upstream não encontrado");
+          const names = [...match[1].matchAll(/^  "(\\d{14}_\\d{4}_[^"]+\\.sql)": "[0-9a-f]{40}",?$/gm)].map(x => x[1]);
+          if (names.length !== 38 || new Set(names).size !== 38) throw new Error("Manifesto upstream não contém 38 nomes únicos");
+          for (const name of names.sort()) console.log("supabase/migrations/" + name);
+          MANIFEST_JS
+          [ "$(wc -l < "$manifest_file")" -eq 38 ] || {
+            echo "::error::Manifesto upstream inválido; SQL não executado"
+            exit 1
+          }
+          while IFS= read -r migration; do
+            [ -f "$migration" ] || { echo "::error::Arquivo upstream ausente"; exit 1; }
+            error_file="$ELUS_PRIVATE_DIR/pg-error-private"
+            if ! docker exec -i "elus-v185-${GITHUB_RUN_ID}" psql -X -q \
+              -v ON_ERROR_STOP=1 -v VERBOSITY=sqlstate -U postgres -d elus_isolado \
+              < "$migration" >/dev/null 2>"$error_file"; then
+              sqlstate="UNKNOWN"
+              while IFS= read -r line; do
+                if [[ "$line" =~ ERROR:[[:space:]]*([0-9A-Z]{5}) ]]; then
+                  sqlstate="${BASH_REMATCH[1]}"
+                  break
+                fi
+              done < "$error_file"
+              echo "::error::Replay exploratório upstream bloqueado: $(basename "$migration"); SQLSTATE=$sqlstate (SQL omitido)"
+              exit 1
+            fi
+            rm -f -- "$error_file"
+          done < "$manifest_file"
+          echo "Replay exploratório dos 38 SQL upstream no clone: PASS (não prova compatibilidade produtiva)." >> "$GITHUB_STEP_SUMMARY"
+          echo "NÃO PROVADO: paridade integral de ledger (incluindo statements), rollback, dados sintéticos, segurança das alterações destrutivas e paridade de Supabase." >> "$GITHUB_STEP_SUMMARY"
       - name: Destruir os artefatos privados e o banco temporário
         if: always()
         shell: bash
