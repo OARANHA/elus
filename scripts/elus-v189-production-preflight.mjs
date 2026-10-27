@@ -15,6 +15,19 @@ const EXPECTED = [
   "20261018204955","20261019204449","20261021025530",
   "20261021025551","20261021025613",
 ];
+const EXPECTED_NAMES = [
+  "elus_v185_preparar_extensoes_92d37f6",
+  "elus_v185_baseline_92d37f6_p01_of_06",
+  "elus_v185_baseline_92d37f6_p02_of_06",
+  "elus_v185_baseline_92d37f6_p03_of_06",
+  "elus_v185_baseline_92d37f6_p04_of_06",
+  "elus_v185_baseline_92d37f6_p05_of_06",
+  "elus_v185_baseline_92d37f6_p06_of_06",
+  "integracoes_erp_vendaerp_0689",
+  "elus_0690_org_ai_autonomy_protected",
+  "elus_0691_chutes_chat_catalog",
+  "elus_0692_chutes_catalog_sync",
+];
 const EXTRA = "20261026010000_0765_elus_rotacao_atomica_codigos_recuperacao.sql";
 const matrix = JSON.parse(readFileSync("docs/integracao/elus-v189-ledger-replay-matrix.json", "utf8"));
 if(matrix.status !== "BLOCKED_FOR_REPLAY" || matrix.migrations?.length !== 38 ||
@@ -72,6 +85,7 @@ try{
  const ledgerShape = cols.rows.map(c=>({name:c.column_name,dataType:c.data_type,udtName:c.udt_name,nullable:c.is_nullable}));
  const versions=q.rows.map(x=>x.version);
  if(JSON.stringify(versions)!==JSON.stringify(EXPECTED))throw new Error("HISTORICAL_LEDGER_MISMATCH");
+ if(q.rows.some((row,i)=>row.name!==EXPECTED_NAMES[i]))throw new Error("HISTORICAL_LEDGER_NAME_MISMATCH");
  const schema=await client.query("SELECT count(*)::int AS n FROM pg_tables WHERE schemaname = 'public'");
  if(schema.rows[0].n!==191)throw new Error("SCHEMA_PRECONDITION_CHANGED");
  const newer=await client.query("SELECT count(*)::int AS n FROM supabase_migrations.schema_migrations WHERE version=ANY($1::text[])",[hashes.map(x=>x.version)]);
@@ -84,7 +98,7 @@ try{
  console.log("PRE_CUTOFF_IMPORTS_REQUIRE_REVIEW=11");
  console.log("OFFICIAL_LEDGER_SCHEMA="+JSON.stringify(ledgerShape));
 } catch(e){
- console.error("GATE_RED="+(/HISTORICAL_LEDGER_MISMATCH|SCHEMA_PRECONDITION_CHANGED|MIGRATION_VERSION_COLLISION|OFFICIAL_LEDGER_SCHEMA_DRIFT/.test(e.message)?e.message:"PREFLIGHT_FAILED"));
+ console.error("GATE_RED="+(/HISTORICAL_LEDGER_MISMATCH|HISTORICAL_LEDGER_NAME_MISMATCH|SCHEMA_PRECONDITION_CHANGED|MIGRATION_VERSION_COLLISION|OFFICIAL_LEDGER_SCHEMA_DRIFT/.test(e.message)?e.message:"PREFLIGHT_FAILED"));
  process.exitCode=1;
 } finally{
  await client.query("ROLLBACK").catch(()=>{});
