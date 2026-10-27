@@ -39,7 +39,7 @@ jobs:
             exit 1
           }
           # Falhar fechado se os secrets apontarem acidentalmente à conta administrativa.
-          [ "$PGUSER" = "elus_upgrade_readonly" ] || {
+          [ "$PGUSER" = "elus_upgrade_readonly.tbwcgdmenrcnghogqkqi" ] || {
             echo "::error::Usuário de exportação não corresponde à conta de leitura dedicada"
             exit 1
           }
