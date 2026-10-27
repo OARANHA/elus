@@ -7,6 +7,7 @@ import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "nod
 import { createHash } from "node:crypto";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
+import { runInNewContext } from "node:vm";
 import { describe, expect, it } from "vitest";
 
 const root = process.cwd();
@@ -70,6 +71,37 @@ describe("preflight v189: manifesto offline e cercas produtivas", () => {
       expect(source).toContain(guard);
     }
     expect(source).toContain("READONLY_ROLE_REQUIRED/.test(e.message)");
+  });
+
+  it("rejeita drift dos tipos reais do ledger oficial sem conectar ao banco", () => {
+    const source = readFileSync(script, "utf8");
+    const start = source.indexOf(" const requiredTypes = [");
+    const end = source.indexOf(" const ledgerShape =", start);
+    expect(start).toBeGreaterThan(0);
+    expect(end).toBeGreaterThan(start);
+    // Execute the exact production guard against synthetic catalog rows.
+    const guard = source.slice(start, end);
+    const valid = [
+      { column_name: "version", udt_name: "varchar", data_type: "character varying" },
+      { column_name: "name", udt_name: "text", data_type: "text" },
+      { column_name: "statements", udt_name: "_text", data_type: "ARRAY" },
+      { column_name: "rollback", udt_name: "_text", data_type: "ARRAY" },
+    ];
+    const run = (rows: typeof valid) => runInNewContext(guard, { cols: { rows } }, { timeout: 1000 });
+    expect(() => run(valid)).not.toThrow();
+    const changed = (index: number, patch: Partial<(typeof valid)[number]>) =>
+      valid.map((row, i) => i === index ? { ...row, ...patch } : { ...row });
+    for (const rows of [
+      changed(0, { udt_name: "int8" }),
+      changed(1, { udt_name: "jsonb" }),
+      changed(2, { udt_name: "text" }),
+      changed(3, { udt_name: "_varchar" }),
+      changed(2, { data_type: "USER-DEFINED" }),
+      valid.slice(0, 3),
+      [...valid, { ...valid[0] }],
+    ]) {
+      expect(() => run(rows)).toThrow("OFFICIAL_LEDGER_SCHEMA_DRIFT");
+    }
   });
 
   it("bloqueia drift dos nomes associados às 11 versões históricas", () => {
