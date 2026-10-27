@@ -59,28 +59,33 @@ jobs:
           echo "ELUS_PRIVATE_DIR=$private_dir" >> "$GITHUB_ENV"
           node scripts/exportar-lotes-v185-privado.mjs "$private_dir/lotes"
           node scripts/verificar-lotes-v185.mjs "$private_dir/lotes"
-      - name: Reconstruir somente baseline v1.85 em PostgreSQL efêmero
+      - name: Reconstruir somente baseline v1.85 em PostgreSQL efêmero (PG15 e PG17)
         shell: bash
         run: |
           set -euo pipefail
-          docker run --detach --rm --name "elus-v185-${GITHUB_RUN_ID}" \
-            --env POSTGRES_PASSWORD=ephemeral-only \
-            --env POSTGRES_DB=elus_isolado \
-            pgvector/pgvector:pg17 >/dev/null
-          for attempt in $(seq 1 45); do
-            if docker exec "elus-v185-${GITHUB_RUN_ID}" pg_isready -U postgres -d elus_isolado >/dev/null 2>&1; then break; fi
-            sleep 1
+          # Exportação privada ocorre uma vez; ambos os bancos são descartáveis.
+          # Não imprimir SQL, hashes, identificadores, host nem credenciais.
+          for pg in 15 17; do
+            container="elus-v185-${GITHUB_RUN_ID}-pg${pg}"
+            docker run --detach --rm --name "$container" \
+              --env POSTGRES_PASSWORD=ephemeral-only \
+              --env POSTGRES_DB=elus_isolado \
+              "pgvector/pgvector:pg${pg}" >/dev/null
+            for attempt in $(seq 1 45); do
+              if docker exec "$container" pg_isready -U postgres -d elus_isolado >/dev/null 2>&1; then break; fi
+              sleep 1
+            done
+            docker exec "$container" pg_isready -U postgres -d elus_isolado >/dev/null
+            for version in 20261018200431 20261018204508 20261018204837 20261018204851 20261018204924 20261018204939 20261018204955; do
+              if ! docker exec -i "$container" psql -X -q -v ON_ERROR_STOP=1 -U postgres -d elus_isolado \
+                < "$ELUS_PRIVATE_DIR/lotes/$version.sql" >/dev/null 2>&1; then
+                echo "::error::Reprodução v1.85 bloqueada no PostgreSQL $pg, lote $version (SQL omitido)"
+                exit 1
+              fi
+            done
+            echo "Reprodução isolada dos sete lotes v1.85 em PostgreSQL $pg: PASS" >> "$GITHUB_STEP_SUMMARY"
+            docker rm -f "$container" >/dev/null 2>&1 || true
           done
-          docker exec "elus-v185-${GITHUB_RUN_ID}" pg_isready -U postgres -d elus_isolado >/dev/null
-          for version in 20261018200431 20261018204508 20261018204837 20261018204851 20261018204924 20261018204939 20261018204955; do
-            # Não imprimir consultas SQL nem mensagens internas que possam conter SQL.
-            if ! docker exec -i "elus-v185-${GITHUB_RUN_ID}" psql -X -q -v ON_ERROR_STOP=1 -U postgres -d elus_isolado \
-              < "$ELUS_PRIVATE_DIR/lotes/$version.sql" >/dev/null 2>&1; then
-              echo "::error::Reprodução v1.85 bloqueada no lote $version (detalhes SQL omitidos)"
-              exit 1
-            fi
-          done
-          echo "Reprodução isolada dos sete lotes v1.85: PASS" >> "$GITHUB_STEP_SUMMARY"
           echo "NÃO PROVADO: quatro migrations ELUS, upgrade v1.89, rollback e paridade de Supabase." >> "$GITHUB_STEP_SUMMARY"
       - name: Destruir os artefatos privados e o banco temporário
         if: always()
@@ -89,4 +94,6 @@ jobs:
           if [ -n "${ELUS_PRIVATE_DIR:-}" ]; then
             rm -rf -- "$ELUS_PRIVATE_DIR"
           fi
-          docker rm -f "elus-v185-${GITHUB_RUN_ID}" >/dev/null 2>&1 || true
+          for pg in 15 17; do
+            docker rm -f "elus-v185-${GITHUB_RUN_ID}-pg${pg}" >/dev/null 2>&1 || true
+          done
