@@ -56,7 +56,7 @@ async function main() {
     throw new Error("Destino real dentro do checkout não é permitido");
   }
   const originalUmask = process.umask(0o077);
-  const db = new Client({ connectionTimeoutMillis: 7000, query_timeout: 30000, application_name: "elus-v185-private-ledger-export" });
+  const db = new Client({ connectionTimeoutMillis: 7000, query_timeout: 30000, application_name: "elus-v185-private-ledger-export", ssl: { ca: process.env.ELUS_UPGRADE_PG_CA_CERT, rejectUnauthorized: true } });
   let connected = false;
   const written = [];
   try {
