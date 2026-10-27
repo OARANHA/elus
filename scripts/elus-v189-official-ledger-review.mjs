@@ -21,6 +21,28 @@ if(matrix.status!=="BLOCKED_FOR_REPLAY" || matrix.migrations?.length!==38 || mat
 const named = new Set(matrix.migrations.map(x=>x.file));
 if(named.size!==38 || [...named].some(name=>expected.get(name)===undefined))
   throw new Error("GATE_RED=MATRIX_MANIFEST_DRIFT");
+
+// Independently reconcile the official-ledger snapshot and every row of the
+// review matrix before emitting any per-migration cutoff classification.
+const HISTORICAL_VERSIONS = [
+  "20261018200431","20261018204508","20261018204837",
+  "20261018204851","20261018204924","20261018204939",
+  "20261018204955","20261019204449","20261021025530",
+  "20261021025551","20261021025613",
+];
+const cutoff = HISTORICAL_VERSIONS.at(-1);
+if(matrix.ledger_snapshot?.cutoff!==cutoff ||
+   JSON.stringify(matrix.ledger_snapshot?.versions)!==JSON.stringify(HISTORICAL_VERSIONS))
+  throw new Error("GATE_RED=HISTORICAL_LEDGER_SNAPSHOT_DRIFT");
+const before = matrix.migrations.filter(m=>m.cutoff_group==="AT_OR_BEFORE_LEDGER_CUTOFF");
+const after = matrix.migrations.filter(m=>m.cutoff_group==="AFTER_LEDGER_CUTOFF");
+if(before.length!==11 || after.length!==27 || matrix.migrations.some(m=>
+  m.version!==m.file.slice(0,14) ||
+  m.git_blob_sha1!==expected.get(m.file) ||
+  m.cutoff_group!==(m.version<=cutoff
+    ? "AT_OR_BEFORE_LEDGER_CUTOFF" : "AFTER_LEDGER_CUTOFF") ||
+  m.review_state!=="REQUIRES_MANUAL_REVIEW"))
+  throw new Error("GATE_RED=MATRIX_RECONCILIATION_DRIFT");
 const units=[...expected].sort(([a],[b])=>a.localeCompare(b)).map(([name,blob])=>{
   const bytes=readFileSync(join(root,"supabase/migrations",name));
   const gitBlob=createHash("sha1").update("blob "+bytes.length+"\0").update(bytes).digest("hex");
