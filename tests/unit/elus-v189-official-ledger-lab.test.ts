@@ -17,9 +17,9 @@ describe("ELUS v189: histórico do ledger oficial no laboratório", () => {
       "spec.loader.exec_module(m)",
       "historical = list(zip(m.HISTORICAL, m.HISTORICAL_NAMES))",
       "items = [('20261022000000_alpha.sql', '', b''), ('20261023000000_beta.sql', '', b'')]",
-      "def check(records, expected, desired=items):",
+      "def check(records, expected, desired=items, corrupt=False):",
       "    m.rows = lambda: records",
-      "    m.query = lambda _sql: '\\n'.join(v + '|' + m.hashlib.md5(next(item[2] for item in desired if item[0][:14] == v)).hexdigest() for v, _ in records if v not in m.HISTORICAL)",
+      "    m.query = lambda _sql: '\\n'.join(v + '|' + ('0'*32 if corrupt else m.hashlib.md5(next(item[2] for item in desired if item[0][:14] == v)).hexdigest()) for v, _ in records if v not in m.HISTORICAL)",
       "    try:",
       "        result = m.progress(desired)",
       "        actual = str(result)",
@@ -28,13 +28,17 @@ describe("ELUS v189: histórico do ledger oficial no laboratório", () => {
       "    assert actual == expected, (actual, expected)",
       "check(historical, '0')",
       "check(historical + [('20261022000000', 'alpha')], '1')",
+      "check(historical + [('20261022000000', 'alpha'), ('20261023000000', 'beta')], '2')",
+      "check(historical + [('20261022000000', 'wrong')], 'GATE_RED=UNKNOWN_OFFICIAL_VERSION')",
+      "check(historical + [('20261022000000', 'alpha'), ('20261022000000', 'alpha')], 'GATE_RED=DUPLICATE_VERSION')",
+      "check(historical + [('20261022000000', 'alpha')], 'GATE_RED=OFFICIAL_STATEMENTS_DRIFT', corrupt=True)",
       "bad_name = historical.copy()",
       "bad_name[7] = (bad_name[7][0], 'alterado')",
       "check(bad_name, 'GATE_RED=HISTORY_NAME_DRIFT')",
       "check(historical[:-1], 'GATE_RED=HISTORY_DRIFT')",
       "check(historical + [('20261024000000', 'unknown')], 'GATE_RED=UNKNOWN_OFFICIAL_VERSION')",
       "check(historical + [('20261023000000', 'beta')], 'GATE_RED=NONPREFIX_REPLAY')",
-      "print('OFFICIAL_LEDGER_UNIT_GREEN=6')",
+      "print('OFFICIAL_LEDGER_UNIT_GREEN=10')",
     ].join("\n");
     const output = execFileSync("python3", ["-c", program, script], {
       cwd: process.cwd(),
@@ -42,6 +46,6 @@ describe("ELUS v189: histórico do ledger oficial no laboratório", () => {
       timeout: 15000,
       env: { PATH: process.env.PATH, NODE_ENV: "test", PYTHONDONTWRITEBYTECODE: "1" },
     });
-    expect(output.trim()).toBe("OFFICIAL_LEDGER_UNIT_GREEN=6");
+    expect(output.trim()).toBe("OFFICIAL_LEDGER_UNIT_GREEN=10");
   });
 });
