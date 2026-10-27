@@ -39,7 +39,7 @@ function pinned(name: "IMPORTADAS" | "ELUS_PROPRIAS"): Record<string, string> {
     new RegExp("const " + name + ": Readonly<Record<string, string>> = \\{([\\s\\S]*?)\\n\\};"),
   );
   expect(block, "Pinagem original ausente: " + name).not.toBeNull();
-  const entries = [...block![1].matchAll(/^\s*"([^"]+\.sql)": "([a-f0-9]{40})",?$/gm)];
+  const entries = [...(block?.[1] ?? "").matchAll(/^\s*"([^"]+\.sql)": "([a-f0-9]{40})",?$/gm)];
   return Object.fromEntries(entries.map((m) => [m[1], m[2]]));
 }
 function blob(file: string): string {
