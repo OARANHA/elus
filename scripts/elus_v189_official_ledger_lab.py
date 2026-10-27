@@ -140,6 +140,22 @@ def progress(items: list[tuple[str, str, bytes]]) -> int:
     prefix = {v for v, _ in desired[:len(seen)]}
     if {v for v, _ in seen} != prefix:
         fail("NONPREFIX_REPLAY")
+    # Version/name alone cannot prove SQL execution: compare the exact
+    # statements stored by Supabase with pinned source bytes for each receipt.
+    if seen:
+        hashes = query(
+            "SELECT version || '|' || coalesce(md5(array_to_string(statements,'')), '') "
+            "FROM supabase_migrations.schema_migrations "
+            "WHERE version IN (" + ",".join(sql_literal(v) for v, _ in seen) + ") "
+            "ORDER BY version"
+        )
+        observed = dict(line.split("|", 1) for line in hashes.splitlines() if line)
+        verified = {name[:14]: hashlib.md5(sql).hexdigest()
+                    for name, _, sql in items}
+        if set(observed) != {v for v, _ in seen} or any(
+            observed[v] != verified[v] for v, _ in seen
+        ):
+            fail("OFFICIAL_STATEMENTS_DRIFT")
     return len(seen)
 
 
