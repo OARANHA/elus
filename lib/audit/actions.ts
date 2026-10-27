@@ -632,6 +632,7 @@ export const AUDIT_ACTIONS = [
   // A rodada que AVISOU alguém do próprio compromisso. Mensagem que saiu para o
   // telefone de um cliente é efeito, e efeito audita — mas só a rodada que
   // enviou: a que varreu e não achou ninguém a avisar não é mutação.
+  "agenda.aviso_whatsapp_configurado",
   "agenda.lembrete_enviado",
   // Fechar ou abrir um dia muda quem consegue marcar, e a pergunta que aparece
   // depois é sempre "quem fechou esse dia?". O bloqueio em si pode ser apagado
@@ -1177,6 +1178,9 @@ export const AUDIT_ACTIONS = [
   // `removidas` no metadata) ou dentro do `template.deleted`, que são os atos
   // em que a imagem sai de fato.
   "template.media_added",
+  // Aviso ao dono da organização sobre mudanças na agenda (WhatsApp).
+  "agenda.aviso_whatsapp_enviado",
+  "agenda.aviso_whatsapp_falhou",
 ] as const;
 
 /** Um código de auditoria. Derivado de `AUDIT_ACTIONS` — não redigite a lista. */

@@ -1329,6 +1329,10 @@ export const DICIONARIO: Traducoes = {
   "Não foi possível carregar os tipos de compromisso.": {es:"No se pudieron cargar los tipos de cita."},
   // Agenda: presença confirmada pela equipe e recuperação.
   "Abrir compromisso": { es: "Abrir cita" },
+  // Avisos de prazo das tarefas (migration 0655): ação e orientações também em espanhol.
+  "Abrir tarefa": { es: "Abrir tarea" },
+  "Abra a tarefa e conclua antes do prazo — ou reagende agora, se já dá para ver que não vai caber.": { es: "Abre la tarea y termínala antes del plazo, o reprograma la fecha ahora si ya sabes que no llegarás a tiempo." },
+  "A tarefa venceu sem conclusão. Abra e conclua, ou reagende o prazo se ele não for mais possível.": { es: "La tarea venció sin completarse. Ábrela y termínala, o reprograma el plazo si ya no es posible cumplirlo." },
   "Abra o compromisso e confirme a presença.": { es: "Abre la cita y confirma la asistencia." },
   "Confira o motivo e escolha o próximo passo no compromisso.": { es: "Revisa el motivo y elige el siguiente paso en la cita." },
   "Compromisso": { es: "Cita" },
@@ -13746,6 +13750,8 @@ export const DICIONARIO: Traducoes = {
     { es: "La conversación tocó el tema de reembolsos" },
   "Uma pessoa da equipe escalou um atendimento":
     { es: "Alguien del equipo escaló una atención" },
+  "Um fluxo automático coletou dados e passou a conversa para verificação humana":
+    { es: "Un flujo automático recopiló datos y pasó la conversación a verificación humana" },
   "A mensagem ficou na fila porque o canal está fora do ar":
     { es: "El mensaje quedó en la cola porque el canal está fuera de servicio" },
   "O canal recusou a mensagem de aviso":
@@ -16320,6 +16326,18 @@ export const DICIONARIO: Traducoes = {
   "Entre na sua conta para continuar.": { es: "Entra en tu cuenta para continuar." },
   "Integrações com o Google": { es: "Integraciones con Google" },
   "Informações legais": { es: "Información legal" },
+  // ELUS v1.89.0 — textos do aviso de agendamento (PR #44); mesmo idioma da organização.
+  "Profissional": { es: "Profesional" },
+  "agenda de hoje": { es: "agenda de hoy" },
+  "Nenhum agendamento para hoje.": { es: "No hay citas para hoy." },
+  "Durante a noite (22h às 7h):": { es: "Durante la noche (22 h a 7 h):" },
+  "teste do aviso de agendamento": { es: "prueba del aviso de cita" },
+  "Se esta mensagem chegou, os avisos de agendamento estão configurados e funcionando.": { es: "Si recibiste este mensaje, los avisos de citas están configurados y funcionando." },
+  "Quando um horário for marcado, remarcado ou cancelado, chega aqui o primeiro nome do cliente, o serviço, o dia e a hora, quem atende e de onde veio. Às 7h chega o resumo do dia.": { es: "Cuando se programe, reprograme o cancele una cita, recibirás aquí el nombre del cliente, el servicio, el día y la hora, quién atiende y de dónde vino. A las 7 h llegará el resumen del día." },
+  "novo agendamento": { es: "nueva cita" },
+  "agendamento remarcado": { es: "cita reprogramada" },
+  "agendamento cancelado": { es: "cita cancelada" },
+
 };
 
 /**

@@ -7,6 +7,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { audit, isServiceRoleConfigured } from "@/lib/audit";
 import { generateRecoveryCodes, hashRecoveryCode } from "@/lib/auth/recovery-codes";
+import { sessionAal } from "@/lib/auth/server";
 
 export type RegenerateRecoveryCodesResult =
   | { ok: true; recovery_codes: string[] }
@@ -33,36 +34,32 @@ export async function regenerateRecoveryCodes(): Promise<RegenerateRecoveryCodes
   const hasFactor = factors?.totp?.some((f) => f.status === "verified");
   if (!hasFactor) return { ok: false, error: "mfa_not_enrolled" };
 
-  const codes = generateRecoveryCodes();
-  const rows = codes.map((c) => ({ user_id: user.id, code_hash: hashRecoveryCode(c) }));
+  // Regenerar códigos permite remover o único caminho de recuperação.
+  // Tal como desativar MFA, exige TOTP comprovado NESTA sessão (aal2).
+  // Falha de leitura/nível desconhecido recusa, nunca degrada para aal1.
+  if ((await sessionAal()) !== "aal2") {
+    return { ok: false, error: "mfa_session_verification_required" };
+  }
 
-  // Delete + insert. Use admin client when available (RLS for delete may be
-  // tighter than insert). Fall back to user-scoped.
-  let delErr: unknown = null;
-  let insErr: unknown = null;
-  if (isServiceRoleConfigured()) {
-    const admin = createAdminClient();
-    const d = await admin.from("user_recovery_codes").delete().eq("user_id", user.id);
-    delErr = d.error;
-    if (!delErr) {
-      const ins = await admin.from("user_recovery_codes").insert(rows);
-      insErr = ins.error;
-    }
-  } else {
-    const d = await supabase.from("user_recovery_codes").delete().eq("user_id", user.id);
-    delErr = d.error;
-    if (!delErr) {
-      const ins = await supabase.from("user_recovery_codes").insert(rows);
-      insErr = ins.error;
-    }
-  }
-  if (delErr) {
-    const msg = (delErr as { message?: string }).message ?? "delete_failed";
-    return { ok: false, error: msg };
-  }
-  if (insErr) {
-    const msg = (insErr as { message?: string }).message ?? "insert_failed";
-    return { ok: false, error: msg };
+  // A migration 0755 revoga todos os privilégios do cliente autenticado.
+  // Não apagar códigos existentes se o serviço necessário não estiver pronto.
+  if (!isServiceRoleConfigured()) return { ok: false, error: "service_unavailable" };
+  const admin = createAdminClient();
+
+  const codes = generateRecoveryCodes();
+  // A RPC aceita hashes SHA256 em hexadecimal, não códigos em texto claro.
+  const hashes = codes.map((code) => hashRecoveryCode(code).toString("hex"));
+
+  // A migration ELUS 0765 executa DELETE e INSERT na MESMA transação do
+  // Postgres, com advisory lock por usuário. Se a função ainda não existir,
+  // o PostgREST falha fechado e nenhum código antigo é removido.
+  const { data: inseridos, error: rotateErr } = await admin.rpc(
+    "fn_elus_rotacionar_codigos_recuperacao",
+    { p_user_id: user.id, p_hashes_hex: hashes },
+  );
+  if (rotateErr || inseridos !== codes.length) {
+    console.error("[regenerateRecoveryCodes] atomic recovery rotation failed");
+    return { ok: false, error: "rotation_failed" };
   }
 
   await audit({

@@ -133,6 +133,9 @@ const USD_PER_MTOK: Record<string, Preco> = {
   // até o instante anterior a VIRADA_GEMINI_FLASH_36_38_MS — precoDoModelo troca.
   // Gravação = entrada, como o resto do Google: o implícito não cobra gravação.
   // O 3.7 saiu da página de preços (depreciado, roteado ao 3.8); a tarifa é a do 3.8.
+  // Migration 0703: tarifa Standard desde 2026-12-01; antes vale a promoção.
+  // Cache de leitura: US$ 0,20/MTok (5% da entrada) conforme a migration.
+  'gemini-4-argon': { input: 4, output: 20, cacheRead: 0.2, cacheWrite5m: 4, cacheWrite1h: 4 },
   'gemini-3.8-flash': { input: 1.5, output: 7.5, cacheRead: 0.15, cacheWrite5m: 1.5, cacheWrite1h: 1.5 },
   'gemini-3.7-flash': { input: 1.5, output: 7.5, cacheRead: 0.15, cacheWrite5m: 1.5, cacheWrite1h: 1.5 },
   'gemini-3.6-flash': { input: 1.5, output: 7.5, cacheRead: 0.15, cacheWrite5m: 1.5, cacheWrite1h: 1.5 },
@@ -187,6 +190,16 @@ const PROMO_GEMINI_FLASH_36_38: Preco = {
   cacheWrite1h: 0.75,
 };
 
+// Migration 0703: a promoção termina no instante UTC abaixo.
+const VIRADA_GEMINI_4_ARGON_MS = Date.parse('2026-12-01T00:00:00.000Z');
+const PROMO_GEMINI_4_ARGON: Preco = {
+  input: 2,
+  output: 10,
+  cacheRead: 0.1,
+  cacheWrite5m: 2,
+  cacheWrite1h: 2,
+};
+
 const IDS_GEMINI_FLASH_36_38 = new Set([
   'gemini-3.8-flash',
   'gemini-3.7-flash',
@@ -216,6 +229,9 @@ export function precoDoModelo(model: string, em: Date = new Date()): Preco | und
   if (id === undefined) return undefined;
   if (IDS_GEMINI_FLASH_36_38.has(id) && em.getTime() < VIRADA_GEMINI_FLASH_36_38_MS) {
     return PROMO_GEMINI_FLASH_36_38;
+  }
+  if (id === 'gemini-4-argon' && em.getTime() < VIRADA_GEMINI_4_ARGON_MS) {
+    return PROMO_GEMINI_4_ARGON;
   }
   return USD_PER_MTOK[id];
 }
@@ -309,13 +325,13 @@ export function gravacaoDeUmaHora(
  * Só entrada e saída: este caminho não recebe token de cache. Quem tem cache
  * chama `costCents` direto (o seam do agente).
  */
-export function costCentsDoGeminiFlashComVirada(
+export function costCentsDoGeminiComVirada(
   model: string,
   usage: { inputTokens: number; outputTokens: number },
   em: Date = new Date(),
 ): number | null {
   const id = chaveDoModelo(model);
-  if (id === undefined || !IDS_GEMINI_FLASH_36_38.has(id)) return null;
+  if (id === undefined || (id !== 'gemini-4-argon' && !IDS_GEMINI_FLASH_36_38.has(id))) return null;
   return costCents(
     model,
     {
@@ -328,3 +344,6 @@ export function costCentsDoGeminiFlashComVirada(
     em,
   );
 }
+
+/** Compatibilidade com o nome anterior à migration 0703. */
+export const costCentsDoGeminiFlashComVirada = costCentsDoGeminiComVirada;
