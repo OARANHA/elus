@@ -98,7 +98,7 @@ describe("preflight v189: manifesto offline e cercas produtivas", () => {
       changed(3, { udt_name: "_varchar" }),
       changed(2, { data_type: "USER-DEFINED" }),
       valid.slice(0, 3),
-      [...valid, { ...valid[0] }],
+      [...valid, { ...valid[0]! }],
     ]) {
       expect(() => run(rows)).toThrow("OFFICIAL_LEDGER_SCHEMA_DRIFT");
     }
