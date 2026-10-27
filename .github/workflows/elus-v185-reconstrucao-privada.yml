@@ -46,6 +46,43 @@ jobs:
           umask 077
           private_dir="$(mktemp -d /tmp/elus-v185-private.XXXXXXXX)"
           echo "ELUS_PRIVATE_DIR=$private_dir" >> "$GITHUB_ENV"
+          # Diagnóstico estritamente classificado: jamais imprimir URL, host, senha ou SQL.
+          node --input-type=module <<'NODE'
+          import { Client } from "pg";
+          const client = new Client({
+            connectionTimeoutMillis: 8000,
+            query_timeout: 10000,
+            application_name: "elus-v185-private-readonly-preflight",
+          });
+          const categories = {
+            ENETUNREACH: "NETWORK_UNREACHABLE",
+            EHOSTUNREACH: "NETWORK_UNREACHABLE",
+            ETIMEDOUT: "NETWORK_TIMEOUT",
+            ECONNREFUSED: "NETWORK_REFUSED",
+            ENOTFOUND: "DNS_UNAVAILABLE",
+            EAI_AGAIN: "DNS_UNAVAILABLE",
+            "28P01": "AUTH_FAILED",
+            "28000": "AUTH_FAILED",
+            "42501": "READ_PERMISSION_DENIED",
+            ERR_TLS_CERT_ALTNAME_INVALID: "TLS_CERTIFICATE_INVALID",
+            SELF_SIGNED_CERT_IN_CHAIN: "TLS_CERTIFICATE_INVALID",
+            UNABLE_TO_VERIFY_LEAF_SIGNATURE: "TLS_CERTIFICATE_INVALID",
+          };
+          try {
+            await client.connect();
+            await client.query("BEGIN READ ONLY");
+            await client.query("SELECT version FROM supabase_migrations.schema_migrations LIMIT 1");
+            await client.query("ROLLBACK");
+            console.log("PREFLIGHT_READONLY=PASS");
+          } catch (error) {
+            const code = typeof error?.code === "string" ? error.code : "";
+            const category = categories[code] ?? "CONNECTION_OR_QUERY_FAILED";
+            console.error("::error::PREFLIGHT_READONLY=" + category + " (sem detalhes confidenciais)");
+            process.exitCode = 1;
+          } finally {
+            await client.end().catch(() => {});
+          }
+          NODE
           node scripts/exportar-lotes-v185-privado.mjs "$private_dir/lotes"
           node scripts/verificar-lotes-v185.mjs "$private_dir/lotes"
       - name: Reconstruir somente baseline v1.85 em PostgreSQL efêmero
