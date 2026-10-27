@@ -16,6 +16,15 @@ const EXPECTED = [
   "20261021025551","20261021025613",
 ];
 const EXTRA = "20261026010000_0765_elus_rotacao_atomica_codigos_recuperacao.sql";
+const matrix = JSON.parse(readFileSync("docs/integracao/elus-v189-ledger-replay-matrix.json", "utf8"));
+if(matrix.status !== "BLOCKED_FOR_REPLAY" || matrix.migrations?.length !== 38 ||
+   matrix.ledger_snapshot?.versions?.join("|") !== EXPECTED.join("|"))
+  throw new Error("REPLAY_MATRIX_MISMATCH");
+const atOrBefore = matrix.migrations.filter(m => m.cutoff_group === "AT_OR_BEFORE_LEDGER_CUTOFF");
+const after = matrix.migrations.filter(m => m.cutoff_group === "AFTER_LEDGER_CUTOFF");
+if(atOrBefore.length !== 11 || after.length !== 27 ||
+   matrix.migrations.some(m => m.review_state !== "REQUIRES_MANUAL_REVIEW"))
+  throw new Error("REPLAY_REVIEW_REQUIRED");
 const PREFIX = "supabase/migrations/";
 const registry = readFileSync("tests/unit/elus-v189-import-ledger-integrity.test.ts","utf8");
 const section = registry.split("const IMPORTADAS:",2)[1]?.split("const ELUS_PROPRIAS:",1)[0];
@@ -31,16 +40,22 @@ const hashes=files.map(([name,expected])=>{
   return {version:name.slice(0,14),name,sha256:createHash("sha256").update(contents).digest("hex")};
 });
 if(new Set(hashes.map(x=>x.version)).size!==39)throw new Error("DUPLICATE_MIGRATION_VERSION");
+const mapped = new Map(matrix.migrations.map(m => [m.file, m.git_blob_sha1]));
+if (mapped.size !== 38 || files.slice(0, -1).some(([name,blob]) => mapped.get(name)!==blob))
+  throw new Error("REPLAY_MATRIX_BLOB_MISMATCH");
+const reconciliation = { historicalEntries: EXPECTED.length, beforeOrAtCutoff: 11,
+  afterCutoff: 27, additional: 1, replayAllowed: false };
 if(process.argv[2]==="manifest"){
-  console.log(JSON.stringify({mode:"read-only",count:39,manifest:hashes},null,2));
+  console.log(JSON.stringify({mode:"read-only",count:39,reconciliation,manifest:hashes},null,2));
   process.exit(0);
 }
 if(process.argv[2]!=="preflight")throw new Error("USAGE_manifest_or_preflight");
 if(!process.env.ELUS_V189_PREFLIGHT_READONLY_URL)throw new Error("READONLY_URL_REQUIRED");
+if(!process.env.ELUS_V189_PG_CA_FILE)throw new Error("EXPLICIT_CA_REQUIRED");
 if(process.env.ELUS_V189_PREFLIGHT_ACK!=="inspect-only")throw new Error("READONLY_ACK_REQUIRED");
 const client=new pg.Client({
  connectionString:process.env.ELUS_V189_PREFLIGHT_READONLY_URL,
- ssl:{rejectUnauthorized:true,ca:readFileSync(process.env.ELUS_V189_PG_CA_FILE || "/root/.postgresql/root.crt","utf8")},
+ ssl:{rejectUnauthorized:true,ca:readFileSync(process.env.ELUS_V189_PG_CA_FILE,"utf8")},
  connectionTimeoutMillis:8000,query_timeout:10000,
 });
 try{
@@ -48,10 +63,12 @@ try{
  await client.query("BEGIN READ ONLY");
  const q=await client.query("SELECT version,name FROM supabase_migrations.schema_migrations ORDER BY version");
  const cols=await client.query("SELECT column_name,data_type,udt_name,is_nullable FROM information_schema.columns WHERE table_schema=$1 AND table_name=$2 ORDER BY ordinal_position",["supabase_migrations","schema_migrations"]);
- const required = new Map([["version","text"],["name","text"],["statements","_text"],["rollback","_text"]]);
- for(const [field,type] of required){
-   if(!cols.rows.some(c=>c.column_name===field && (c.data_type===type || c.udt_name===type)))throw new Error("OFFICIAL_LEDGER_SCHEMA_DRIFT");
+ const required = ["version","name","statements","rollback"];
+ for(const field of required){
+   if(!cols.rows.some(c=>c.column_name===field))throw new Error("OFFICIAL_LEDGER_SCHEMA_DRIFT");
  }
+ if (!cols.rows.some(c=>c.column_name==="version" && ["text","varchar"].includes(c.udt_name)))
+   throw new Error("OFFICIAL_LEDGER_SCHEMA_DRIFT");
  const ledgerShape = cols.rows.map(c=>({name:c.column_name,dataType:c.data_type,udtName:c.udt_name,nullable:c.is_nullable}));
  const versions=q.rows.map(x=>x.version);
  if(JSON.stringify(versions)!==JSON.stringify(EXPECTED))throw new Error("HISTORICAL_LEDGER_MISMATCH");
@@ -63,6 +80,8 @@ try{
  console.log("HISTORICAL_LEDGER=11");
  console.log("PUBLIC_TABLES=191");
  console.log("MANIFEST=39");
+ console.log("REPLAY_ALLOWED=NO");
+ console.log("PRE_CUTOFF_IMPORTS_REQUIRE_REVIEW=11");
  console.log("OFFICIAL_LEDGER_SCHEMA="+JSON.stringify(ledgerShape));
 } catch(e){
  console.error("GATE_RED="+(/HISTORICAL_LEDGER_MISMATCH|SCHEMA_PRECONDITION_CHANGED|MIGRATION_VERSION_COLLISION|OFFICIAL_LEDGER_SCHEMA_DRIFT/.test(e.message)?e.message:"PREFLIGHT_FAILED"));
