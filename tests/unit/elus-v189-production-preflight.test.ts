@@ -55,4 +55,23 @@ describe("preflight v189: manifesto offline e cercas produtivas", () => {
       })).toThrow();
     }
   });
+
+  it("bloqueia drift dos nomes associados às 11 versões históricas", () => {
+    const source = readFileSync(script, "utf8");
+    const expectedNames = [
+      "elus_v185_preparar_extensoes_92d37f6",
+      ...Array.from({ length: 6 }, (_, i) =>
+        `elus_v185_baseline_92d37f6_p0${i + 1}_of_06`),
+      "integracoes_erp_vendaerp_0689",
+      "elus_0690_org_ai_autonomy_protected",
+      "elus_0691_chutes_chat_catalog",
+      "elus_0692_chutes_catalog_sync",
+    ];
+    expect(expectedNames).toHaveLength(11);
+    for (const name of expectedNames) {
+      expect(source).toContain(`"${name}"`);
+    }
+    expect(source).toContain("row.name!==EXPECTED_NAMES[i]");
+    expect(source).toContain("HISTORICAL_LEDGER_NAME_MISMATCH");
+  });
 });
