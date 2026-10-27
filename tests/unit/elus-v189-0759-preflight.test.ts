@@ -75,7 +75,7 @@ describe("ELUS v1.89 — auditoria read-only da migration 0759", () => {
     const script = resolve(process.cwd(), "scripts/elus-v189-0759-preflight.mjs");
     const result = spawnSync(process.execPath, [script], {
       cwd: process.cwd(),
-      env: { PATH: process.env.PATH ?? "" },
+      env: { PATH: process.env.PATH ?? "", NODE_ENV: "test" },
       encoding: "utf8",
       timeout: 4000,
     });
