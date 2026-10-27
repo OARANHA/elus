@@ -26,7 +26,7 @@ describe("ledger v189: revisão offline, nunca executor", () => {
     for(const command of ["apply","run","commit","repair","preflight"]){
       expect(()=>execFileSync(process.execPath,[script,command],{
         cwd:process.cwd(),encoding:"utf8",timeout:15000,
-        env:{PATH:process.env.PATH},stdio:["ignore","pipe","pipe"],
+        env:{PATH:process.env.PATH,NODE_ENV:"test"},stdio:["ignore","pipe","pipe"],
       })).toThrow();
     }
   });
