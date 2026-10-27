@@ -7,7 +7,6 @@
 import { readFileSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { resolve } from "node:path";
-import { execFileSync } from "node:child_process";
 import pg from "pg";
 
 const EXPECTED = [
