@@ -38,7 +38,7 @@ if(matrix.status !== "BLOCKED_FOR_REPLAY" || matrix.migrations?.length !== 38 ||
 const cutoff = EXPECTED.at(-1);
 if (matrix.ledger_snapshot?.cutoff !== cutoff ||
     matrix.migrations.some(m =>
-      !/^\\d{14}_[^/]+\\.sql$/.test(m.file) ||
+      !/^\d{14}_[^/]+\.sql$/.test(m.file) ||
       m.version !== m.file.slice(0, 14) ||
       m.cutoff_group !== (m.version <= cutoff
         ? "AT_OR_BEFORE_LEDGER_CUTOFF" : "AFTER_LEDGER_CUTOFF")))
