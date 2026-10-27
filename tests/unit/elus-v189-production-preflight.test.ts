@@ -23,6 +23,13 @@ describe("preflight v189: manifesto offline e cercas produtivas", () => {
     const result = JSON.parse(stdout);
     expect(result.mode).toBe("read-only");
     expect(result.count).toBe(39);
+    expect(result.reconciliation).toEqual({
+      historicalEntries: 11,
+      beforeOrAtCutoff: 11,
+      afterCutoff: 27,
+      additional: 1,
+      replayAllowed: false,
+    });
     expect(result.manifest).toHaveLength(39);
     const names = result.manifest.map((m: { name: string }) => m.name);
     const versions = result.manifest.map((m: { version: string }) => m.version);
