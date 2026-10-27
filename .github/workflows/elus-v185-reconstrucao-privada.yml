@@ -221,9 +221,13 @@ jobs:
           node --input-type=module > "$manifest_file" <<'MANIFEST_JS'
           import { readFileSync } from "node:fs";
           const source = readFileSync("tests/unit/elus-v189-import-ledger-integrity.test.ts", "utf8");
-          const match = source.match(/const IMPORTADAS: Readonly<Record<string, string>> = \\{([\\s\\S]*?)\\n\\};/);
-          if (!match) throw new Error("Manifesto upstream não encontrado");
-          const names = [...match[1].matchAll(/^  "(\\d{14}_\\d{4}_[^"]+\\.sql)": "[0-9a-f]{40}",?$/gm)].map(x => x[1]);
+          const start = source.indexOf("const IMPORTADAS: Readonly<Record<string, string>> = {");
+          const end = source.indexOf("const ELUS_PROPRIAS:", start);
+          if (start < 0 || end <= start) throw new Error("Manifesto upstream não encontrado");
+          const names = source.slice(start, end).split("\n")
+            .map(line => line.trim())
+            .filter(line => line.startsWith('"') && line.endsWith('",'))
+            .map(line => line.split('"')[1]);
           if (names.length !== 38 || new Set(names).size !== 38) throw new Error("Manifesto upstream não contém 38 nomes únicos");
           for (const name of names.sort()) console.log("supabase/migrations/" + name);
           MANIFEST_JS
