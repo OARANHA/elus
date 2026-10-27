@@ -33,6 +33,16 @@ const matrix = JSON.parse(readFileSync("docs/integracao/elus-v189-ledger-replay-
 if(matrix.status !== "BLOCKED_FOR_REPLAY" || matrix.migrations?.length !== 38 ||
    matrix.ledger_snapshot?.versions?.join("|") !== EXPECTED.join("|"))
   throw new Error("REPLAY_MATRIX_MISMATCH");
+// Counts alone are insufficient: swapping cutoff groups can preserve 11/27 while
+// changing which migrations require pre-cutoff reconciliation.
+const cutoff = EXPECTED.at(-1);
+if (matrix.ledger_snapshot?.cutoff !== cutoff ||
+    matrix.migrations.some(m =>
+      !/^\\d{14}_[^/]+\\.sql$/.test(m.file) ||
+      m.version !== m.file.slice(0, 14) ||
+      m.cutoff_group !== (m.version <= cutoff
+        ? "AT_OR_BEFORE_LEDGER_CUTOFF" : "AFTER_LEDGER_CUTOFF")))
+  throw new Error("REPLAY_CUTOFF_DRIFT");
 const atOrBefore = matrix.migrations.filter(m => m.cutoff_group === "AT_OR_BEFORE_LEDGER_CUTOFF");
 const after = matrix.migrations.filter(m => m.cutoff_group === "AFTER_LEDGER_CUTOFF");
 if(atOrBefore.length !== 11 || after.length !== 27 ||
