@@ -74,6 +74,33 @@ const client=new pg.Client({
 try{
  await client.connect();
  await client.query("BEGIN READ ONLY");
+ // Transaction READ ONLY is not a substitute for an actually restricted login.
+ // Reject elevated roles and any effective DDL/DML privileges before inspecting data.
+ const roleCheck=await client.query(`
+   SELECT current_setting('transaction_read_only') = 'on' AS read_only,
+     (r.rolsuper OR r.rolcreaterole OR r.rolcreatedb OR r.rolreplication OR r.rolbypassrls) AS elevated,
+     pg_has_role(current_user,'pg_write_all_data','MEMBER') AS write_member,
+     has_database_privilege(current_user,current_database(),'CREATE') AS db_create,
+     EXISTS (
+       SELECT 1 FROM pg_namespace n
+       WHERE n.nspname NOT LIKE 'pg_%' AND n.nspname <> 'information_schema'
+         AND has_schema_privilege(current_user,n.oid,'CREATE')
+     ) AS schema_create,
+     EXISTS (
+       SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
+       WHERE n.nspname NOT LIKE 'pg_%' AND n.nspname <> 'information_schema'
+         AND c.relkind IN ('r','p','v','m','f')
+         AND (has_table_privilege(current_user,c.oid,'INSERT')
+           OR has_table_privilege(current_user,c.oid,'UPDATE')
+           OR has_table_privilege(current_user,c.oid,'DELETE')
+           OR has_table_privilege(current_user,c.oid,'TRUNCATE'))
+     ) AS table_write
+   FROM pg_roles r WHERE r.rolname=current_user
+ `);
+ const role=roleCheck.rows[0];
+ if(roleCheck.rows.length!==1 || !role.read_only || role.elevated ||
+    role.write_member || role.db_create || role.schema_create || role.table_write)
+   throw new Error("READONLY_ROLE_REQUIRED");
  const q=await client.query("SELECT version,name FROM supabase_migrations.schema_migrations ORDER BY version");
  const cols=await client.query("SELECT column_name,data_type,udt_name,is_nullable FROM information_schema.columns WHERE table_schema=$1 AND table_name=$2 ORDER BY ordinal_position",["supabase_migrations","schema_migrations"]);
  const required = ["version","name","statements","rollback"];
@@ -98,7 +125,7 @@ try{
  console.log("PRE_CUTOFF_IMPORTS_REQUIRE_REVIEW=11");
  console.log("OFFICIAL_LEDGER_SCHEMA="+JSON.stringify(ledgerShape));
 } catch(e){
- console.error("GATE_RED="+(/HISTORICAL_LEDGER_MISMATCH|HISTORICAL_LEDGER_NAME_MISMATCH|SCHEMA_PRECONDITION_CHANGED|MIGRATION_VERSION_COLLISION|OFFICIAL_LEDGER_SCHEMA_DRIFT/.test(e.message)?e.message:"PREFLIGHT_FAILED"));
+ console.error("GATE_RED="+(/HISTORICAL_LEDGER_MISMATCH|HISTORICAL_LEDGER_NAME_MISMATCH|SCHEMA_PRECONDITION_CHANGED|MIGRATION_VERSION_COLLISION|OFFICIAL_LEDGER_SCHEMA_DRIFT|READONLY_ROLE_REQUIRED/.test(e.message)?e.message:"PREFLIGHT_FAILED"));
  process.exitCode=1;
 } finally{
  await client.query("ROLLBACK").catch(()=>{});
