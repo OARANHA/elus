@@ -2,7 +2,8 @@ name: ELUS v1.85 - reconstrução privada isolada
 
 # Manual e protegido: exige secrets de uma conta PostgreSQL SOMENTE LEITURA
 # e acesso à tabela supabase_migrations.schema_migrations do ELUS.
-# Não reproduz automaticamente as quatro migrations ELUS nem o upgrade v1.89.
+# Reproduz os sete lotes privados e tenta aplicar as quatro migrations ELUS;
+# ainda NÃO constitui upgrade v1.89 nem replica o ledger histórico.
 on:
   workflow_dispatch:
 
@@ -140,7 +141,31 @@ jobs:
             rm -f -- "$error_file"
           done
           echo "Reprodução isolada dos sete lotes v1.85: PASS" >> "$GITHUB_STEP_SUMMARY"
-          echo "NÃO PROVADO: quatro migrations ELUS, upgrade v1.89, rollback e paridade de Supabase." >> "$GITHUB_STEP_SUMMARY"
+          # Segundo estágio: migrations próprias ELUS na ordem do ledger real.
+          # Não altera o Supabase real; só o container descartável deste job.
+          for migration in \
+            supabase/migrations/20261019120000_0689_integracoes_erp_vendaerp.sql \
+            supabase/migrations/20261020120000_0690_org_ai_autonomy_protected.sql \
+            supabase/migrations/20261020120001_0691_chutes_chat_catalog.sql \
+            supabase/migrations/20261020230000_0692_chutes_catalog_sync.sql; do
+            error_file="$ELUS_PRIVATE_DIR/pg-error-private"
+            if ! docker exec -i "elus-v185-${GITHUB_RUN_ID}" psql -X -q \
+              -v ON_ERROR_STOP=1 -v VERBOSITY=sqlstate -U postgres -d elus_isolado \
+              < "$migration" >/dev/null 2>"$error_file"; then
+              sqlstate="UNKNOWN"
+              while IFS= read -r line; do
+                if [[ "$line" =~ ERROR:[[:space:]]*([0-9A-Z]{5}) ]]; then
+                  sqlstate="${BASH_REMATCH[1]}"
+                  break
+                fi
+              done < "$error_file"
+              echo "::error::Migration ELUS falhou: $(basename "$migration"); SQLSTATE=$sqlstate (SQL omitido)"
+              exit 1
+            fi
+            rm -f -- "$error_file"
+          done
+          echo "Quatro migrations próprias ELUS aplicadas ao clone: PASS" >> "$GITHUB_STEP_SUMMARY"
+          echo "NÃO PROVADO: ledger de 11 registros fiel, 38 migrations upstream v1.89, rollback e paridade de Supabase." >> "$GITHUB_STEP_SUMMARY"
       - name: Destruir os artefatos privados e o banco temporário
         if: always()
         shell: bash
