@@ -85,7 +85,7 @@ def manifest() -> list[tuple[str, str, bytes]]:
     source = (REPO / "tests/unit/elus-v189-import-ledger-integrity.test.ts").read_text()
     imported = source.split("const IMPORTADAS:", 1)[1].split("const ELUS_PROPRIAS:", 1)[0]
     pairs = re.findall(r'"(\d{14}_[^"]+\.sql)":\s*"([a-f0-9]{40})"', imported)
-    if len(pairs) != 38:
+    if len(pairs) != 38 or len({name for name, _ in pairs}) != 38:
         fail("MANIFEST_COUNT")
     pairs.append((EXTRA, EXTRA_BLOB))
     result = []
@@ -157,6 +157,11 @@ def main() -> None:
             fail("ACK_REQUIRED")
         clone_if_absent()
     done = progress(items)
+    if done == 0:
+        # Existing schema without official receipts must never be replayed.
+        tables = query("SELECT count(*) FROM pg_tables WHERE schemaname='public';")
+        if tables != "191":
+            fail("INITIAL_SCHEMA_NOT_V185")
     if sys.argv[1] == "verify":
         print("OFFICIAL_LEDGER_VERIFIED=" + str(done) + "/39")
         return
