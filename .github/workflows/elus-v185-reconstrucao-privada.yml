@@ -188,12 +188,12 @@ jobs:
             ('20261021025530','elus_0690_org_ai_autonomy_protected'),
             ('20261021025551','elus_0691_chutes_chat_catalog'),
             ('20261021025613','elus_0692_chutes_catalog_sync');
-          DO $
+          DO $ledger$
           BEGIN
             IF (SELECT count(*) FROM supabase_migrations.schema_migrations) <> 11 THEN
               RAISE EXCEPTION 'Ledger espelhado não tem 11 entradas';
             END IF;
-          END $;
+          END $ledger$;
           COMMIT;
           LEDGER_SQL
           then
