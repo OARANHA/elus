@@ -196,6 +196,7 @@ jobs:
           END $;
           COMMIT;
           LEDGER_SQL
+          then
             echo "::error::Espelho isolado dos metadados de 11 versões falhou (SQL omitido)"
             exit 1
           fi
