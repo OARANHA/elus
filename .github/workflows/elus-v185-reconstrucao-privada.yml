@@ -115,11 +115,24 @@ jobs:
             inside { print }
             END { if (!inside || !end) exit 1 }
           ' scripts/test-db.sh > "$bootstrap_file"
+          bootstrap_error_file="$ELUS_PRIVATE_DIR/bootstrap-stderr-private"
           if ! docker exec -i "elus-v185-${GITHUB_RUN_ID}" psql -X -q \
-            -v ON_ERROR_STOP=1 -U postgres -d elus_isolado < "$bootstrap_file" >/dev/null 2>&1; then
-            echo "::error::Bootstrap do Supabase no banco temporário falhou (detalhes omitidos)"
+            -v ON_ERROR_STOP=1 -v VERBOSITY=sqlstate -U postgres -d elus_isolado \
+            < "$bootstrap_file" >/dev/null 2>"$bootstrap_error_file"; then
+            bootstrap_code="UNKNOWN"
+            while IFS= read -r line; do
+              if [[ "$line" =~ ERROR:[[:space:]]*([0-9A-Z]{5}) ]]; then
+                bootstrap_code="${BASH_REMATCH[1]}"
+                break
+              fi
+              if [[ "$line" == *"could not connect to server"* || "$line" == *"connection to server"* ]]; then
+                bootstrap_code="CONNECT_FAILED"
+              fi
+            done < "$bootstrap_error_file"
+            echo "::error::Bootstrap Supabase temporário falhou; DIAGNOSTICO=$bootstrap_code (detalhes SQL omitidos)"
             exit 1
           fi
+          rm -f -- "$bootstrap_error_file"
           rm -f -- "$bootstrap_file"
           for version in 20261018200431 20261018204508 20261018204837 20261018204851 20261018204924 20261018204939 20261018204955; do
             # O SQL original e stderr ficam privados. VERBOSITY=sqlstate só
