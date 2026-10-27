@@ -104,6 +104,22 @@ jobs:
             sleep 1
           done
           docker exec "elus-v185-${GITHUB_RUN_ID}" pg_isready -U postgres -d elus_isolado >/dev/null
+          # Reutilizar o bootstrap Supabase que já sustenta scripts/test-db.sh.
+          # Nunca adaptar nem editar os sete lotes SQL históricos.
+          bootstrap_file="$ELUS_PRIVATE_DIR/pg-bootstrap.sql"
+          awk '
+            /^# Criamos os stubs mínimos AQUI/ { anchor=1; next }
+            anchor && /^psql_install <<.SQL.$/ { inside=1; next }
+            inside && /^SQL$/ { end=1; exit }
+            inside { print }
+            END { if (!inside || !end) exit 1 }
+          ' scripts/test-db.sh > "$bootstrap_file"
+          if ! docker exec -i "elus-v185-${GITHUB_RUN_ID}" psql -X -q \
+            -v ON_ERROR_STOP=1 -U postgres -d elus_isolado < "$bootstrap_file" >/dev/null 2>&1; then
+            echo "::error::Bootstrap do Supabase no banco temporário falhou (detalhes omitidos)"
+            exit 1
+          fi
+          rm -f -- "$bootstrap_file"
           for version in 20261018200431 20261018204508 20261018204837 20261018204851 20261018204924 20261018204939 20261018204955; do
             # O SQL original e stderr ficam privados. VERBOSITY=sqlstate só
             # emite o código PostgreSQL (sem mensagens, objetos ou queries).
