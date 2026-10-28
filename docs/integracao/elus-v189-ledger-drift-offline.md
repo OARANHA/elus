@@ -16,8 +16,10 @@ Não forneça credenciais, SQL de migrations, `statements`, `rollback`, códigos
 ## Interpretação
 
 - `EXPECTED_SET_RECORDED_UNVERIFIED` significa apenas que as **50 versões esperadas constam** na entrada, sem duplicatas nem desconhecidas. **Não** significa que os 39 SQLs foram executados, que a migration `0759` foi autorizada ou que a função MFA da `0765` existe.
+- `DEPENDENCY_RECEIPT_GAPS` identifica um recibo de migration dependente registrado sem o recibo de sua predecessora, conforme as sete arestas de dependência documentadas na matriz. É evidência de inconsistência de recibos, **não** prova de que SQL foi ou não executado.
 - `NONPREFIX_IMPORT_RECEIPTS` significa que as versões importadas registradas não formam um prefixo na ordem de timestamps da matriz; requer reconciliação manual, não replay automático.
 - `PARTIAL_OR_UNKNOWN_RECEIPTS` significa que faltam ou sobram versões, ou há duplicatas; os detalhes ficam em `differences`.
+- `preCutoffImportsPresent` e `postCutoffImportsPresent` discriminam os recibos importados anteriores/iguais ao cutoff histórico (11 esperados) e posteriores (27 esperados); não comprovam aplicação nem ordenação de DDL.
 - `publicTablesReported` é um número declarado pela entrada e **não** comprova schema, ACL, RLS, integridade ou paridade do baseline.
 
 A decisão é **sempre `NO_GO`**, inclusive com 50 recibos e 208 tabelas. Permanecem necessários atestado read-only dos objetos (especialmente a função `fn_elus_rotacionar_codigos_recuperacao` da `0765`), revisão de permissões, restauração e replay isolados em PostgreSQL 15/17 e autorização específica para o impacto destrutivo da `0759`. VendaERP permanece somente leitura; não modificar ISIS/DANFE, Chutes, login, governança ou deploy.
