@@ -14,6 +14,10 @@ const ROOT = join(dirname(FILE), "..");
 const EXTRA_0765 = "20261026010000";
 const VERSION = /^\d{14}$/;
 const MAX_SNAPSHOT_BYTES = 64 * 1024;
+const REQUIRED_DEPENDENCY_EDGES = [
+  "0716->0717", "0717->0753", "0687->0753", "0763->0706",
+  "0684->0760", "0747->0757", "0755->0759",
+];
 
 // Limite antes do JSON.parse: o teto de 500 versões sozinho não limita stdin.
 function readSanitizedSnapshot() {
@@ -51,8 +55,10 @@ export function reconcileLedgerSnapshot(snapshot, matrix) {
       byLogical.size !== 38 || preCutoff.length !== 11 || postCutoff.length !== 27 ||
       matrix.migrations.some((m) => m.cutoff_group !== (m.version <= matrix.ledger_snapshot.cutoff
         ? "AT_OR_BEFORE_LEDGER_CUTOFF" : "AFTER_LEDGER_CUTOFF")) ||
-      !Array.isArray(dependencies) || dependencies.length !== 7 ||
-      new Set(dependencies.map((e) => `${e.before}->${e.after}`)).size !== 7 ||
+      !Array.isArray(dependencies) || dependencies.length !== REQUIRED_DEPENDENCY_EDGES.length ||
+      new Set(dependencies.map((e) => `${e.before}->${e.after}`)).size !== REQUIRED_DEPENDENCY_EDGES.length ||
+      REQUIRED_DEPENDENCY_EDGES.some((edge) =>
+        !dependencies.some((e) => `${e.before}->${e.after}` === edge)) ||
       dependencies.some((e) => !byLogical.has(e.before) || !byLogical.has(e.after) ||
         byLogical.get(e.before).version >= byLogical.get(e.after).version) ||
       !destructive[0].risk_flags?.includes("destructive_delete") ||
