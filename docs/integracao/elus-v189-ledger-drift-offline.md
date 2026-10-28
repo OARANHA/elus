@@ -15,6 +15,8 @@ O stdin é limitado a **64 KiB** antes do parse do JSON (`GATE_RED=SNAPSHOT_TOO_
 
 Antes de emitir qualquer resultado, o comando também lê localmente os **quatro arquivos SQL próprios do ELUS** e calcula seus hashes Git blob SHA-1, comparando-os com os valores fixados na matriz e no código. Arquivo ausente ou conteúdo alterado bloqueia a auditoria com `GATE_RED=PROTECTED_ELUS_BLOB_DRIFT`; a verificação não modifica arquivos. Isso atesta somente integridade local desses quatro arquivos, não o estado do banco nem a integridade de todos os módulos do ELUS.
 
+O auditor também verifica a existência e o **Git blob SHA-1 dos 38 arquivos SQL importados** contra os hashes da matriz local. Arquivo ausente, conteúdo divergente, hash inválido ou caminho fora do padrão esperado bloqueia a auditoria com `GATE_RED=IMPORTED_SQL_BLOB_DRIFT`. A comparação dos 38 hashes foi conferida no GitHub em 28/10/2026 antes desta alteração; o gate agora a repete em cada execução offline. **Limite:** os hashes dos imports são referenciados pela própria matriz, não por uma âncora externa imutável; portanto não atestam autenticidade do upstream, aplicação no banco ou autorização para replay.
+
 Não forneça credenciais, SQL de migrations, `statements`, `rollback`, códigos MFA, hashes, dados de usuários ou conteúdo de tabelas. A coleta da lista de versões, se necessária, exige autorização e credencial **somente leitura**, separadamente desta ferramenta.
 
 ## Interpretação
