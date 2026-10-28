@@ -157,13 +157,13 @@ describe("ELUS v1.89 — comparação offline de recibos não comprova DDL", () 
       '    process.stdout.write("PROTECTED_ELUS_BLOB_DRIFT\\n");',
       '  }',
       '}',
-    ].join("\\n");
+    ].join("\n");
     const result = spawnSync(process.execPath, ["--input-type=module", "--eval", probe], {
       cwd: root, encoding: "utf8", timeout: 15000,
       env: { PATH: process.env.PATH, NODE_ENV: "test" },
     });
     expect(result.status).toBe(0);
-    expect(result.stdout).toBe("PROTECTED_ELUS_BLOB_DRIFT\\nPROTECTED_ELUS_BLOB_DRIFT\\n");
+    expect(result.stdout).toBe("PROTECTED_ELUS_BLOB_DRIFT\nPROTECTED_ELUS_BLOB_DRIFT\n");
     expect(result.stderr).toBe("");
   });
 
