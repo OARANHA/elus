@@ -123,13 +123,13 @@ describe("ELUS v1.89 — comparação offline de recibos não comprova DDL", () 
       '  try { reconcileLedgerSnapshot({ versions: [] }, changed); process.stdout.write("UNSAFE"); process.exitCode = 1; }',
       '  catch (error) { if (error.message !== "MATRIX_CONTRACT_DRIFT") throw error; process.stdout.write("MATRIX_CONTRACT_DRIFT\\n"); }',
       '}',
-    ].join("\\n");
+    ].join("\n");
     const result = spawnSync(process.execPath, ["--input-type=module", "--eval", probe], {
       cwd: root, encoding: "utf8", timeout: 15000,
       env: { PATH: process.env.PATH, NODE_ENV: "test" },
     });
     expect(result.status).toBe(0);
-    expect(result.stdout).toBe("MATRIX_CONTRACT_DRIFT\\nMATRIX_CONTRACT_DRIFT\\n");
+    expect(result.stdout).toBe("MATRIX_CONTRACT_DRIFT\nMATRIX_CONTRACT_DRIFT\n");
     expect(result.stderr).toBe("");
   });
 
