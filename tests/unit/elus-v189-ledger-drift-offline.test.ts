@@ -208,6 +208,41 @@ describe("ELUS v1.89 — comparação offline de recibos não comprova DDL", () 
     expect(apply.stderr).toContain("GATE_RED=INSPECT_ONLY");
   });
 
+  it("verifica os 38 SQLs importados e falha fechado com arquivo, hash ou caminho alterado", () => {
+    const probe = [
+      'import { verifyImportedMigrationBlobs } from ' + JSON.stringify(pathToFileURL(script).href) + ';',
+      'import { readFileSync } from "node:fs";',
+      'import { join } from "node:path";',
+      'const root = ' + JSON.stringify(root) + ';',
+      'const matrix = JSON.parse(readFileSync(' +
+        JSON.stringify(join(root, "docs/integracao/elus-v189-ledger-replay-matrix.json")) + ', "utf8"));',
+      'const readOriginal = (file) => readFileSync(join(root, "supabase/migrations", file));',
+      'verifyImportedMigrationBlobs(matrix);',
+      'for (const mode of ["changed", "missing", "sha", "path"]) {',
+      '  const altered = structuredClone(matrix);',
+      '  if (mode === "sha") altered.migrations[0].git_blob_sha1 = "0".repeat(40);',
+      '  if (mode === "path") altered.migrations[0].file = "../escape.sql";',
+      '  const reader = (file) => {',
+      '    if (file === matrix.migrations[0].file && mode === "missing") throw new Error("ENOENT");',
+      '    if (file === matrix.migrations[0].file && mode === "changed") return Buffer.from("altered");',
+      '    return readOriginal(file);',
+      '  };',
+      '  try { verifyImportedMigrationBlobs(altered, reader); process.stdout.write("UNSAFE"); process.exitCode = 1; }',
+      '  catch (error) {',
+      '    if (error.message !== "IMPORTED_SQL_BLOB_DRIFT") throw error;',
+      '    process.stdout.write("BLOCKED\\n");',
+      '  }',
+      '}',
+    ].join("\n");
+    const result = spawnSync(process.execPath, ["--input-type=module", "--eval", probe], {
+      cwd: root, encoding: "utf8", timeout: 15000,
+      env: { PATH: process.env.PATH, NODE_ENV: "test" },
+    });
+    expect(result.status).toBe(0);
+    expect(result.stdout).toBe("BLOCKED\n".repeat(4));
+    expect(result.stderr).toBe("");
+  });
+
   it("não contém cliente de banco, conexão de rede ou escrita de migrations", () => {
     const source = readFileSync(script, "utf8");
     expect(source).not.toMatch(/from ["']pg["']|new pg\.Client|fetch\(|https?:\/\/|execFile|spawnSync/);
