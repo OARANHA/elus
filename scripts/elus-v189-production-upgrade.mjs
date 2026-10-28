@@ -112,7 +112,21 @@ async function main(){
            COALESCE(has_function_privilege('anon',p.oid,'EXECUTE'),false) AS anon_execute,
            COALESCE(has_function_privilege('authenticated',p.oid,'EXECUTE'),false) AS authenticated_execute,
            COALESCE((SELECT relrowsecurity FROM pg_class
-                     WHERE oid=to_regclass('public.user_recovery_codes')),false) AS recovery_codes_rls
+                     WHERE oid=to_regclass('public.user_recovery_codes')),false) AS recovery_codes_rls,
+           COALESCE((SELECT bool_and(
+                      NOT has_table_privilege(roles.role,t.oid,'SELECT') AND
+                      NOT has_table_privilege(roles.role,t.oid,'INSERT') AND
+                      NOT has_table_privilege(roles.role,t.oid,'UPDATE') AND
+                      NOT has_table_privilege(roles.role,t.oid,'DELETE'))
+                     FROM (VALUES ('anon'),('authenticated')) AS roles(role)
+                     CROSS JOIN (SELECT to_regclass('public.user_recovery_codes') AS oid) AS t
+                    ),false) AS recovery_codes_client_dml_denied,
+           EXISTS(SELECT 1 FROM pg_policy pol
+                  WHERE pol.polrelid=to_regclass('public.user_recovery_codes')
+                    AND pol.polcmd='r'
+                    AND pol.polname='user_recovery_codes_ninguem_le'
+                    AND pg_get_expr(pol.polqual,pol.polrelid)='false'
+                 ) AS recovery_codes_deny_select_policy
     FROM (SELECT to_regprocedure('public.fn_elus_rotacionar_codigos_recuperacao(uuid,text[])') AS oid) AS expected
     LEFT JOIN pg_proc p ON p.oid=expected.oid
   `)).rows[0];
@@ -122,13 +136,17 @@ async function main(){
    need(rpc.security_definer===true&&rpc.service_execute===true&&
         rpc.anon_execute===false&&rpc.authenticated_execute===false,'RPC_0765_ACL_DRIFT');
    need(rpc.recovery_codes_rls===true,'RECOVERY_CODES_RLS_DRIFT');
+   need(rpc.recovery_codes_client_dml_denied===true,'RECOVERY_CODES_CLIENT_DML_GRANT_DRIFT');
+   need(rpc.recovery_codes_deny_select_policy===true,'RECOVERY_CODES_DENY_SELECT_POLICY_DRIFT');
   }
   if(mode!=='apply'){
    console.log(JSON.stringify({mode:'read-only',ledgerHistorical:11,...state,legacyMfaCodes:legacy,
     recoveryRotationRpcPresent:rpc.present,recoveryRotationSecurityDefiner:rpc.security_definer,
     recoveryRotationServiceExecute:rpc.service_execute,recoveryRotationAnonExecute:rpc.anon_execute,
     recoveryRotationAuthenticatedExecute:rpc.authenticated_execute,
-    recoveryCodesRls:rpc.recovery_codes_rls,manifest:39}));
+    recoveryCodesRls:rpc.recovery_codes_rls,
+    recoveryCodesClientDmlDenied:rpc.recovery_codes_client_dml_denied,
+    recoveryCodesDenySelectPolicy:rpc.recovery_codes_deny_select_policy,manifest:39}));
    return;
   }
   need(legacy===0,'MFA_LEGACY_ROWS_REQUIRE_SEPARATE_APPROVAL');
