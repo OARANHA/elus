@@ -81,6 +81,14 @@ async function main(){
   console.log(JSON.stringify({mode:'offline',count:39,files:items.map(({file,sha256})=>({file,sha256}))}));
   return;
  }
+ // FAIL-CLOSED: o executor da main não comprova restauração do backup
+ // nem exige aprovação independente para o DELETE da migration 0759.
+ // Um SHA-256 bem formado e um ACK não substituem essas evidências.
+ // Desbloqueio exige PR separada, restauração/replay em PG 15/17 descartável,
+ // revisão de ACL/RLS e autorização específica. Bloquear antes de conectar.
+ if(mode==='apply'){
+  throw Error('PRODUCTION_APPLY_BLOCKED_PENDING_RESTORE_AND_0759_APPROVAL');
+ }
  sourceGuard();
  if(mode==='apply'){
   need(process.env.ELUS_V189_PROD_ACK==='I_AUTHORIZE_ELUS_V189_PRODUCTION_LEDGER_39','ADMIN_APPROVAL_REQUIRED');
