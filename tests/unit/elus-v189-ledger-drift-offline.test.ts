@@ -74,6 +74,19 @@ describe("ELUS v1.89 — comparação offline de recibos não comprova DDL", () 
     expect(result.data.signals.sqlExecutionProven).toBe(false);
   });
 
+  it("expõe dependência registrada sem recibo antecedente e separa imports pré/pós-cutoff", () => {
+    const required = matrix.migrations.find((m) => m.logical_number === "0755")!.version;
+    const result = inspect({ versions: all.filter((v) => v !== required), publicTables: 208 });
+    expect(result.status).toBe(0);
+    expect(result.data.decision).toBe("NO_GO");
+    expect(result.data.receiptPattern).toBe("DEPENDENCY_RECEIPT_GAPS");
+    expect(result.data.differences.dependencyReceiptGaps).toContainEqual({ before: "0755", after: "0759" });
+    expect(result.data.counts.preCutoffImportsPresent).toBe(11);
+    expect(result.data.counts.postCutoffImportsPresent).toBe(26);
+    expect(result.data.signals.receipt0759Recorded).toBe(true);
+    expect(result.data.signals.destructive0759Approved).toBe(false);
+  });
+
   it("recusa volume excessivo e contagens que não são inteiros seguros", () => {
     for (const input of [
       { versions: Array(501).fill(all[0]) },
