@@ -133,6 +133,40 @@ describe("ELUS v1.89 — comparação offline de recibos não comprova DDL", () 
     expect(result.stderr).toBe("");
   });
 
+  it("verifica os quatro blobs SQL reais e recusa adulteração ou ausência sem alterar arquivos", () => {
+    const probe = [
+      `import { verifyProtectedElusMigrationBlobs } from ${JSON.stringify(pathToFileURL(script).href)};`,
+      'import { readFileSync } from "node:fs";',
+      'import { join } from "node:path";',
+      `const root = ${JSON.stringify(root)};`,
+      `const matrix = JSON.parse(readFileSync(${JSON.stringify(join(root, "docs/integracao/elus-v189-ledger-replay-matrix.json"))}, "utf8"));`,
+      'const readOriginal = (file) => readFileSync(join(root, "supabase/migrations", file));',
+      'verifyProtectedElusMigrationBlobs(matrix);',
+      'for (const mode of ["altered", "missing"]) {',
+      '  try {',
+      '    verifyProtectedElusMigrationBlobs(matrix, (file) => {',
+      '      if (file.includes("_0689_")) {',
+      '        if (mode === "missing") throw new Error("ENOENT");',
+      '        return Buffer.from("conteudo alterado");',
+      '      }',
+      '      return readOriginal(file);',
+      '    });',
+      '    process.stdout.write("UNSAFE"); process.exitCode = 1;',
+      '  } catch (error) {',
+      '    if (error.message !== "PROTECTED_ELUS_BLOB_DRIFT") throw error;',
+      '    process.stdout.write("PROTECTED_ELUS_BLOB_DRIFT\\n");',
+      '  }',
+      '}',
+    ].join("\\n");
+    const result = spawnSync(process.execPath, ["--input-type=module", "--eval", probe], {
+      cwd: root, encoding: "utf8", timeout: 15000,
+      env: { PATH: process.env.PATH, NODE_ENV: "test" },
+    });
+    expect(result.status).toBe(0);
+    expect(result.stdout).toBe("PROTECTED_ELUS_BLOB_DRIFT\\nPROTECTED_ELUS_BLOB_DRIFT\\n");
+    expect(result.stderr).toBe("");
+  });
+
   it("recusa volume excessivo e contagens que não são inteiros seguros", () => {
     for (const input of [
       { versions: Array(501).fill(all[0]) },
