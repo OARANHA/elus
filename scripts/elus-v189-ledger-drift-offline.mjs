@@ -19,6 +19,22 @@ const REQUIRED_DEPENDENCY_EDGES = [
   "0684->0760", "0747->0757", "0755->0759",
 ];
 
+// Colisões e migrations próprias não podem ser reclassificadas por uma matriz editada.
+const REQUIRED_COLLISION_RENAMES = {
+  "supabase/migrations/20261020000006_0689_aviso_da_central_com_destinatario.sql":
+    "supabase/migrations/20261020000006_0762_aviso_da_central_com_destinatario.sql",
+  "supabase/migrations/20261020120000_0691_banco_externo_db_type_e_aviso.sql":
+    "supabase/migrations/20261020120002_0763_banco_externo_db_type_e_aviso.sql",
+  "supabase/migrations/20261020130000_0692_rodizio_na_acao_atribuir.sql":
+    "supabase/migrations/20261020130000_0764_rodizio_na_acao_atribuir.sql",
+};
+const REQUIRED_PROTECTED_ELUS_MIGRATIONS = {
+  "20261019120000_0689_integracoes_erp_vendaerp.sql": "e46f99c1cbbda48b952ac9fa9273f5a181c03bbd",
+  "20261020120000_0690_org_ai_autonomy_protected.sql": "4ad880adf0a8e294e20a1b50dae1fb9dbed1db65",
+  "20261020120001_0691_chutes_chat_catalog.sql": "f9a74e1505c550196643bacae86ff016dbafca2b",
+  "20261020230000_0692_chutes_catalog_sync.sql": "20a38af9bd51e7f3d37d9601d9392613a2700f68",
+};
+
 // Limite antes do JSON.parse: o teto de 500 versões sozinho não limita stdin.
 function readSanitizedSnapshot() {
   const chunks = [];
@@ -57,6 +73,18 @@ export function reconcileLedgerSnapshot(snapshot, matrix) {
         ? "AT_OR_BEFORE_LEDGER_CUTOFF" : "AFTER_LEDGER_CUTOFF")) ||
       !Array.isArray(dependencies) || dependencies.length !== REQUIRED_DEPENDENCY_EDGES.length ||
       new Set(dependencies.map((e) => `${e.before}->${e.after}`)).size !== REQUIRED_DEPENDENCY_EDGES.length ||
+      !matrix.collision_renames ||
+      typeof matrix.collision_renames !== "object" ||
+      Array.isArray(matrix.collision_renames) ||
+      Object.keys(matrix.collision_renames).length !== 3 ||
+      Object.entries(REQUIRED_COLLISION_RENAMES).some(([from, to]) =>
+        matrix.collision_renames[from] !== to ||
+        !matrix.migrations.some((m) => `supabase/migrations/${m.file}` === to)) ||
+      !Array.isArray(matrix.protected_elus_migrations) ||
+      matrix.protected_elus_migrations.length !== 4 ||
+      new Set(matrix.protected_elus_migrations.map((m) => m.file)).size !== 4 ||
+      matrix.protected_elus_migrations.some((m) =>
+        REQUIRED_PROTECTED_ELUS_MIGRATIONS[m.file] !== m.git_blob_sha1) ||
       REQUIRED_DEPENDENCY_EDGES.some((edge) =>
         !dependencies.some((e) => `${e.before}->${e.after}` === edge)) ||
       dependencies.some((e) => !byLogical.has(e.before) || !byLogical.has(e.after) ||
