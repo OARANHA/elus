@@ -27,6 +27,30 @@ function inspect(input: unknown, mode = "inspect") {
 }
 
 describe("ELUS v1.89 — comparação offline de recibos não comprova DDL", () => {
+  it("impede mudar matriz e hashes SQL em conjunto sem atualizar a âncora aprovada", () => {
+    const probe = [
+      'import { verifyMatrixSourceBlob } from ' + JSON.stringify(pathToFileURL(script).href) + ';',
+      'import { readFileSync } from "node:fs";',
+      'const original = readFileSync(' +
+        JSON.stringify(join(root, "docs/integracao/elus-v189-ledger-replay-matrix.json")) + ');',
+      'verifyMatrixSourceBlob(original);',
+      'for (const candidate of [Buffer.concat([original, Buffer.from(" ")]), Buffer.alloc(0)]) {',
+      '  try { verifyMatrixSourceBlob(candidate); process.stdout.write("UNSAFE"); process.exitCode = 1; }',
+      '  catch (error) {',
+      '    if (error.message !== "MATRIX_SOURCE_BLOB_DRIFT") throw error;',
+      '    process.stdout.write("BLOCKED\\n");',
+      '  }',
+      '}',
+    ].join("\n");
+    const result = spawnSync(process.execPath, ["--input-type=module", "--eval", probe], {
+      cwd: root, encoding: "utf8", timeout: 15000,
+      env: { PATH: process.env.PATH, NODE_ENV: "test" },
+    });
+    expect(result.status).toBe(0);
+    expect(result.stdout).toBe("BLOCKED\nBLOCKED\n");
+    expect(result.stderr).toBe("");
+  });
+
   it("classifica as 11 versões históricas sem confundir imports ausentes com executados", () => {
     const result = inspect({ versions: historical, publicTables: 191 });
     expect(result.status).toBe(0);
