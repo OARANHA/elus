@@ -9,6 +9,8 @@ import pg from "pg";
 import { conferirLedgerHistorico, LEDGER_HISTORICO_V185 } from "./elus-v189-ledger-historico.mjs";
 import {
   LEDGER_METADATA_SQL,
+  LEDGER_READONLY_ROLE_SQL,
+  conferirRoleSomenteLeitura,
   fingerprintLedgerMetadados,
   conferirFingerprintLedgerMetadados,
 } from "./elus-v189-ledger-metadata.mjs";
@@ -49,6 +51,9 @@ async function main() {
     if (transaction.rows[0]?.transaction_read_only !== "on") {
       throw new Error("READONLY_TRANSACTION_REQUIRED");
     }
+    // BEGIN READ ONLY does not constrain the login role outside this transaction.
+    const roleCheck = await client.query(LEDGER_READONLY_ROLE_SQL);
+    conferirRoleSomenteLeitura(roleCheck.rows);
     const columns = await client.query(
       "SELECT column_name,udt_name FROM information_schema.columns WHERE table_schema=$1 AND table_name=$2",
       ["supabase_migrations", "schema_migrations"],
@@ -82,7 +87,7 @@ main().catch((error) => {
   const known = new Set([
     "USAGE_INSPECT_OR_VERIFY", "READONLY_GATE_REQUIRED",
     "LEDGER_METADATA_APPROVAL_REQUIRED", "REPLAY_MATRIX_MISMATCH",
-    "READONLY_TRANSACTION_REQUIRED", "OFFICIAL_LEDGER_SCHEMA_DRIFT",
+    "READONLY_TRANSACTION_REQUIRED", "READONLY_ROLE_REQUIRED", "OFFICIAL_LEDGER_SCHEMA_DRIFT",
     "LEDGER_METADATA_SHAPE_MISMATCH", "LEDGER_METADATA_MISMATCH",
     "HISTORICAL_LEDGER_MISMATCH",
   ]);
