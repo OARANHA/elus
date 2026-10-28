@@ -1,6 +1,7 @@
 import { spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { pathToFileURL } from "node:url";
 import { describe, expect, it } from "vitest";
 
 const root = process.cwd();
@@ -85,6 +86,27 @@ describe("ELUS v1.89 — comparação offline de recibos não comprova DDL", () 
     expect(result.data.counts.postCutoffImportsPresent).toBe(26);
     expect(result.data.signals.receipt0759Recorded).toBe(true);
     expect(result.data.signals.destructive0759Approved).toBe(false);
+  });
+
+  it("falha fechado quando uma dependência crítica da matriz é substituída", () => {
+    // 0755 -> 0760 respeita a ordem cronológica, mas não é a aresta aprovada 0755 -> 0759.
+    const probe = [
+      `import { reconcileLedgerSnapshot } from ${JSON.stringify(pathToFileURL(script).href)};`,
+      'import { readFileSync } from "node:fs";',
+      `const matrix = JSON.parse(readFileSync(${JSON.stringify(join(root, "docs/integracao/elus-v189-ledger-replay-matrix.json"))}, "utf8"));`,
+      'matrix.known_dependency_edges = matrix.known_dependency_edges.map((edge) =>',
+      '  edge.before === "0755" && edge.after === "0759"',
+      '    ? { before: "0755", after: "0760" } : edge);',
+      'try { reconcileLedgerSnapshot({ versions: [] }, matrix); process.stdout.write("UNSAFE"); process.exitCode = 1; }',
+      'catch (error) { if (error.message !== "MATRIX_CONTRACT_DRIFT") throw error; process.stdout.write("MATRIX_CONTRACT_DRIFT"); }',
+    ].join("\\n");
+    const result = spawnSync(process.execPath, ["--input-type=module", "--eval", probe], {
+      cwd: root, encoding: "utf8", timeout: 15000,
+      env: { PATH: process.env.PATH, NODE_ENV: "test" },
+    });
+    expect(result.status).toBe(0);
+    expect(result.stdout).toBe("MATRIX_CONTRACT_DRIFT");
+    expect(result.stderr).toBe("");
   });
 
   it("recusa volume excessivo e contagens que não são inteiros seguros", () => {
