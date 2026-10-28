@@ -109,6 +109,30 @@ describe("ELUS v1.89 — comparação offline de recibos não comprova DDL", () 
     expect(result.stderr).toBe("");
   });
 
+  it("recusa alterações nas três colisões e nos quatro blobs ELUS protegidos", () => {
+    const probe = [
+      `import { reconcileLedgerSnapshot } from ${JSON.stringify(pathToFileURL(script).href)};`,
+      'import { readFileSync } from "node:fs";',
+      `const matrix = JSON.parse(readFileSync(${JSON.stringify(join(root, "docs/integracao/elus-v189-ledger-replay-matrix.json"))}, "utf8"));`,
+      'const changes = [',
+      '  (m) => { const key = Object.keys(m.collision_renames)[0]; m.collision_renames[key] = "supabase/migrations/unsafe.sql"; },',
+      '  (m) => { m.protected_elus_migrations[0].git_blob_sha1 = "0".repeat(40); },',
+      '];',
+      'for (const change of changes) {',
+      '  const changed = structuredClone(matrix); change(changed);',
+      '  try { reconcileLedgerSnapshot({ versions: [] }, changed); process.stdout.write("UNSAFE"); process.exitCode = 1; }',
+      '  catch (error) { if (error.message !== "MATRIX_CONTRACT_DRIFT") throw error; process.stdout.write("MATRIX_CONTRACT_DRIFT\\n"); }',
+      '}',
+    ].join("\\n");
+    const result = spawnSync(process.execPath, ["--input-type=module", "--eval", probe], {
+      cwd: root, encoding: "utf8", timeout: 15000,
+      env: { PATH: process.env.PATH, NODE_ENV: "test" },
+    });
+    expect(result.status).toBe(0);
+    expect(result.stdout).toBe("MATRIX_CONTRACT_DRIFT\\nMATRIX_CONTRACT_DRIFT\\n");
+    expect(result.stderr).toBe("");
+  });
+
   it("recusa volume excessivo e contagens que não são inteiros seguros", () => {
     for (const input of [
       { versions: Array(501).fill(all[0]) },
