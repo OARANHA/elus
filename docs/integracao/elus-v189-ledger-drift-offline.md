@@ -13,6 +13,8 @@ printf '%s\n' '{"versions":["20261018200431"],"publicTables":191}' \
 
 O stdin é limitado a **64 KiB** antes do parse do JSON (`GATE_RED=SNAPSHOT_TOO_LARGE` se excedido). O limite de 500 versões e a lista restrita de campos continuam aplicados após o parse.
 
+Antes de emitir qualquer resultado, o comando também lê localmente os **quatro arquivos SQL próprios do ELUS** e calcula seus hashes Git blob SHA-1, comparando-os com os valores fixados na matriz e no código. Arquivo ausente ou conteúdo alterado bloqueia a auditoria com `GATE_RED=PROTECTED_ELUS_BLOB_DRIFT`; a verificação não modifica arquivos. Isso atesta somente integridade local desses quatro arquivos, não o estado do banco nem a integridade de todos os módulos do ELUS.
+
 Não forneça credenciais, SQL de migrations, `statements`, `rollback`, códigos MFA, hashes, dados de usuários ou conteúdo de tabelas. A coleta da lista de versões, se necessária, exige autorização e credencial **somente leitura**, separadamente desta ferramenta.
 
 ## Interpretação
