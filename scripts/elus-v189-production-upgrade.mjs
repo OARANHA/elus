@@ -108,7 +108,7 @@ async function main(){
   const rpc=(await c.query(`
     SELECT p.oid IS NOT NULL AS present,
            COALESCE(p.prosecdef,false) AS security_definer,
-           COALESCE(p.proconfig @> ARRAY['search_path=']::text[],false) AS pinned_empty_search_path,
+           COALESCE(p.proconfig @> ARRAY['search_path=""']::text[],false) AS pinned_empty_search_path,
            COALESCE(p.proacl IS NOT NULL AND NOT EXISTS (
              SELECT 1 FROM pg_catalog.aclexplode(p.proacl) AS acl
              WHERE acl.grantee=0 AND acl.privilege_type='EXECUTE'
