@@ -24,10 +24,21 @@ export function reconcileLedgerSnapshot(snapshot, matrix) {
   const imported = matrix.migrations.map((m) => m.version);
   const destructive = matrix.migrations.filter((m) => m.logical_number === "0759");
   const allExpected = [...historical, ...imported, EXTRA_0765];
+  const byLogical = new Map(matrix.migrations.map((m) => [m.logical_number, m]));
+  const preCutoff = matrix.migrations.filter((m) => m.version <= matrix.ledger_snapshot.cutoff);
+  const postCutoff = matrix.migrations.filter((m) => m.version > matrix.ledger_snapshot.cutoff);
+  const dependencies = matrix.known_dependency_edges;
   if (allExpected.some((v) => typeof v !== "string" || !VERSION.test(v)) ||
       new Set(allExpected).size !== 50 ||
       matrix.ledger_snapshot.cutoff !== historical.at(-1) ||
       destructive.length !== 1 ||
+      byLogical.size !== 38 || preCutoff.length !== 11 || postCutoff.length !== 27 ||
+      matrix.migrations.some((m) => m.cutoff_group !== (m.version <= matrix.ledger_snapshot.cutoff
+        ? "AT_OR_BEFORE_LEDGER_CUTOFF" : "AFTER_LEDGER_CUTOFF")) ||
+      !Array.isArray(dependencies) || dependencies.length !== 7 ||
+      new Set(dependencies.map((e) => `${e.before}->${e.after}`)).size !== 7 ||
+      dependencies.some((e) => !byLogical.has(e.before) || !byLogical.has(e.after) ||
+        byLogical.get(e.before).version >= byLogical.get(e.after).version) ||
       !destructive[0].risk_flags?.includes("destructive_delete") ||
       matrix.migrations.some((m) => m.version !== m.file?.slice(0, 14) ||
         m.review_state !== "REQUIRES_MANUAL_REVIEW")) {
@@ -50,6 +61,10 @@ export function reconcileLedgerSnapshot(snapshot, matrix) {
   const knownImports = imported.filter((v) => observed.has(v)).sort();
   const sortedImports = [...imported].sort();
   const importPrefix = knownImports.every((v, i) => v === sortedImports[i]);
+  const dependencyReceiptGaps = dependencies
+    .filter(({ before, after }) => observed.has(byLogical.get(after).version) &&
+      !observed.has(byLogical.get(before).version))
+    .map(({ before, after }) => ({ before, after }));
   const missingHistorical = missing(historical);
   const missingImports = missing(imported);
   const missingAdditional = missing([EXTRA_0765]);
@@ -66,17 +81,21 @@ export function reconcileLedgerSnapshot(snapshot, matrix) {
       observedUnique: observed.size,
       historicalPresent: historical.length - missingHistorical.length,
       importedPresent: imported.length - missingImports.length,
+      preCutoffImportsPresent: preCutoff.filter((m) => observed.has(m.version)).length,
+      postCutoffImportsPresent: postCutoff.filter((m) => observed.has(m.version)).length,
       additional0765Present: missingAdditional.length === 0,
       publicTablesReported: snapshot.publicTables ?? null,
     },
     receiptPattern: exactReceiptSet ? "EXPECTED_SET_RECORDED_UNVERIFIED" :
-      !importPrefix ? "NONPREFIX_IMPORT_RECEIPTS" : "PARTIAL_OR_UNKNOWN_RECEIPTS",
+      dependencyReceiptGaps.length > 0 ? "DEPENDENCY_RECEIPT_GAPS" :
+        !importPrefix ? "NONPREFIX_IMPORT_RECEIPTS" : "PARTIAL_OR_UNKNOWN_RECEIPTS",
     differences: {
       historicalMissing: missingHistorical,
       importedMissing: missingImports,
       additionalMissing: missingAdditional,
       unexpected: unknown,
       duplicateVersions: duplicates,
+      dependencyReceiptGaps,
     },
     signals: {
       receipt0759Recorded: observed.has(destructive[0].version),
