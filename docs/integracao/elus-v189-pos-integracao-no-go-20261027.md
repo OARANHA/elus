@@ -117,3 +117,15 @@ Referências: [gate do banco real](elus-v189-banco-real-e-gates-20261025.md), [p
 - O [CI da PR #59, HEAD `1b6da67a`](https://github.com/OARANHA/elus/actions/runs/40715793845) foi consultado **uma vez nesta execução** e está `completed/success`. O [CI da PR #62, HEAD `e3cccc8e`](https://github.com/OARANHA/elus/actions/runs/40688097499) também está `completed/success`. Ambos são gates de código, não aceite funcional ou prova de restauração.
 
 **Decisão preservada:** `NO-GO`. A origem e a execução efetiva dos 39 recibos continuam não comprovadas; a RPC `0765` permanece ausente. Não reaplicar migration nem corrigir ledger sem análise independente. Permanecem exigidos restauração comprovada, replay fiel PG15/17 descartável, auditoria de tipos/ACL/RLS/tenancy e autorização específica da operação destrutiva `0759`. E2E segue manual; nenhum SQL mutante, merge, imagem ou deploy nesta verificação.
+
+
+## Auditoria focal de ACL/RLS dos códigos MFA — 28/10/2026
+
+**Método:** consulta `SELECT` ao catálogo PostgreSQL do projeto Supabase `elus` (PG17.11), sem ler códigos, hashes ou linhas de clientes. Esta verificação é limitada à tabela `public.user_recovery_codes`; não certifica todo o RBAC, ACL ou RLS do banco.
+
+- **Privilégios efetivos de tabela (`has_table_privilege`):** `anon` e `authenticated` não possuem `SELECT`, `INSERT`, `UPDATE` nem `DELETE`; `service_role` possui os quatro privilégios. A avaliação considera privilégios efetivos da role, não somente GRANTs diretos.
+- **Política de linha:** `relrowsecurity=true`, `relforcerowsecurity=false`, owner `postgres`. Existe uma policy de `SELECT`, `user_recovery_codes_ninguem_le`, com `USING (false)`. Não há outras policies retornadas para essa tabela na consulta.
+- **Recibo versus função:** nova consulta agregada confirmou 50 registros no ledger, 208 tabelas `public`, exatamente um recibo `20261026010000` e **zero funções** `fn_elus_rotacionar_codigos_recuperacao` no catálogo; RLS da tabela permanece habilitado. Os grants de tabela não substituem a RPC ausente nem demonstram aplicação correta da migration `0765`.
+- **CI documental:** HEAD `1fbe2250ad4ca0d5af8ddf443b4735a2679bbdcb` da PR #59 teve `ci` [40725595500](https://github.com/OARANHA/elus/actions/runs/40725595500), `perf` [40725598901](https://github.com/OARANHA/elus/actions/runs/40725598901) e workflow GHCR [40725595391](https://github.com/OARANHA/elus/actions/runs/40725595391) `completed/success`. Isso não comprova aceite funcional, publicação ou upgrade. CI do commit documental presente nesta seção ainda não foi verificado.
+
+**Gate preservado:** NO-GO. Sem evidência independente da execução dos 39 DDLs, da restauração/replay histórico PG15/17 e da autorização específica do `DELETE` da `0759`, não reaplicar `0765`, não reparar ledger, não desbloquear `apply`. A proteção fail-closed da PR #62 ainda não está na `main`. Nenhum E2E, SQL mutante, merge, publicação de imagem ou deploy nesta auditoria.
