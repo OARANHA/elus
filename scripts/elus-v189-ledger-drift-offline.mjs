@@ -15,6 +15,8 @@ const ROOT = join(dirname(FILE), "..");
 const EXTRA_0765 = "20261026010000";
 const VERSION = /^\d{14}$/;
 const MAX_SNAPSHOT_BYTES = 64 * 1024;
+// Âncora de revisão: impede alterar matriz e hashes SQL juntos sem revisão do código.
+const REQUIRED_MATRIX_SOURCE_BLOB_SHA1 = "afecc6eb2364e0c41a4f38e607692558a83390b3";
 const REQUIRED_DEPENDENCY_EDGES = [
   "0716->0717", "0717->0753", "0687->0753", "0763->0706",
   "0684->0760", "0747->0757", "0755->0759",
@@ -49,6 +51,13 @@ function readSanitizedSnapshot() {
     chunks.push(Buffer.from(buffer.subarray(0, count)));
   }
   return JSON.parse(Buffer.concat(chunks).toString("utf8"));
+}
+
+/** Exige a matriz aprovada byte a byte; não atesta aplicação ou origem upstream. */
+export function verifyMatrixSourceBlob(bytes) {
+  if (!Buffer.isBuffer(bytes)) throw new Error("MATRIX_SOURCE_BLOB_DRIFT");
+  const actual = createHash("sha1").update(`blob ${bytes.length}\\0`).update(bytes).digest("hex");
+  if (actual !== REQUIRED_MATRIX_SOURCE_BLOB_SHA1) throw new Error("MATRIX_SOURCE_BLOB_DRIFT");
 }
 
 // Compara o conteúdo físico dos quatro SQLs próprios com o hash Git blob fixado.
@@ -229,15 +238,17 @@ if (process.argv[1] && resolve(process.argv[1]) === FILE) {
     if (process.argv.length !== 3 || process.argv[2] !== "inspect") {
       throw new Error("INSPECT_ONLY");
     }
-    const matrix = JSON.parse(readFileSync(join(ROOT,
-      "docs/integracao/elus-v189-ledger-replay-matrix.json"), "utf8"));
+    const matrixBytes = readFileSync(join(ROOT,
+      "docs/integracao/elus-v189-ledger-replay-matrix.json"));
+    verifyMatrixSourceBlob(matrixBytes);
+    const matrix = JSON.parse(matrixBytes.toString("utf8"));
     const snapshot = readSanitizedSnapshot();
     const result = reconcileLedgerSnapshot(snapshot, matrix);
     verifyProtectedElusMigrationBlobs(matrix);
     verifyImportedMigrationBlobs(matrix);
     process.stdout.write(JSON.stringify(result, null, 2) + "\n");
   } catch (error) {
-    const allowed = ["INSPECT_ONLY", "MATRIX_CONTRACT_DRIFT", "PROTECTED_ELUS_BLOB_DRIFT",
+    const allowed = ["INSPECT_ONLY", "MATRIX_CONTRACT_DRIFT", "MATRIX_SOURCE_BLOB_DRIFT", "PROTECTED_ELUS_BLOB_DRIFT",
       "IMPORTED_SQL_BLOB_DRIFT",
       "SANITIZED_SNAPSHOT_REQUIRED", "SNAPSHOT_TOO_LARGE"];
     const message = error instanceof Error && allowed.includes(error.message)
