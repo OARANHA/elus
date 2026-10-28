@@ -78,6 +78,37 @@ export function verifyProtectedElusMigrationBlobs(matrix, readMigration = (file)
   }
 }
 
+
+/**
+ * Verifica os 38 SQLs importados contra os hashes Git blob registrados na matriz.
+ * A matriz é a referência desta verificação; isto NÃO atesta a origem oficial,
+ * execução de DDL, objetos produtivos nem autoriza replay.
+ */
+export function verifyImportedMigrationBlobs(matrix, readMigration = (file) =>
+  readFileSync(join(ROOT, "supabase/migrations", file))) {
+  const imported = matrix?.migrations;
+  if (!Array.isArray(imported) || imported.length !== 38 ||
+      new Set(imported.map((m) => m.file)).size !== 38) {
+    throw new Error("IMPORTED_SQL_BLOB_DRIFT");
+  }
+  for (const { file, git_blob_sha1: expected } of imported) {
+    // Restringe a leitura ao diretório local de migrations, sem traversal.
+    if (typeof file !== "string" || !/^\\d{14}_[a-z0-9_]+\\.sql$/.test(file) ||
+        typeof expected !== "string" || !/^[0-9a-f]{40}$/.test(expected)) {
+      throw new Error("IMPORTED_SQL_BLOB_DRIFT");
+    }
+    let content;
+    try {
+      content = readMigration(file);
+    } catch {
+      throw new Error("IMPORTED_SQL_BLOB_DRIFT");
+    }
+    if (!Buffer.isBuffer(content)) throw new Error("IMPORTED_SQL_BLOB_DRIFT");
+    const actual = createHash("sha1").update(`blob ${content.length}\\0`).update(content).digest("hex");
+    if (actual !== expected) throw new Error("IMPORTED_SQL_BLOB_DRIFT");
+  }
+}
+
 export function reconcileLedgerSnapshot(snapshot, matrix) {
   if (matrix?.status !== "BLOCKED_FOR_REPLAY" ||
       matrix?.migrations?.length !== 38 ||
@@ -203,9 +234,11 @@ if (process.argv[1] && resolve(process.argv[1]) === FILE) {
     const snapshot = readSanitizedSnapshot();
     const result = reconcileLedgerSnapshot(snapshot, matrix);
     verifyProtectedElusMigrationBlobs(matrix);
+    verifyImportedMigrationBlobs(matrix);
     process.stdout.write(JSON.stringify(result, null, 2) + "\n");
   } catch (error) {
     const allowed = ["INSPECT_ONLY", "MATRIX_CONTRACT_DRIFT", "PROTECTED_ELUS_BLOB_DRIFT",
+      "IMPORTED_SQL_BLOB_DRIFT",
       "SANITIZED_SNAPSHOT_REQUIRED", "SNAPSHOT_TOO_LARGE"];
     const message = error instanceof Error && allowed.includes(error.message)
       ? error.message : "OFFLINE_AUDIT_FAILED";
