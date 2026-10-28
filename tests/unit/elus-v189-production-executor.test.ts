@@ -45,6 +45,13 @@ describe("ELUS v1.89: executor produtivo guardado", () => {
     expect(source).toContain("need(state.applied===39,'INCOMPLETE_LEDGER')");
     expect(source).toContain("need(rpc.present===true,'RPC_0765_MISSING')");
     expect(source).toContain("'RPC_0765_ACL_DRIFT'");
+    expect(source).toContain("'RPC_0765_SEARCH_PATH_DRIFT'");
+    expect(source).toContain("'RPC_0765_PUBLIC_EXECUTE_DRIFT'");
+    expect(source).toContain("p.proconfig @> ARRAY['search_path=']::text[]");
+    expect(source).toContain("pg_catalog.aclexplode(p.proacl)");
+    expect(source).toContain("acl.grantee=0 AND acl.privilege_type='EXECUTE'");
+    expect(source).toContain("recoveryRotationPinnedEmptySearchPath:rpc.pinned_empty_search_path");
+    expect(source).toContain("recoveryRotationPublicExecuteDenied:rpc.public_execute_denied");
     expect(source).toContain("'RECOVERY_CODES_RLS_DRIFT'");
     expect(source).toContain("'RECOVERY_CODES_CLIENT_DML_GRANT_DRIFT'");
     expect(source).toContain("'RECOVERY_CODES_DENY_SELECT_POLICY_DRIFT'");
