@@ -129,6 +129,31 @@ try{
      throw new Error("OFFICIAL_LEDGER_SCHEMA_DRIFT");
  }
  const ledgerShape = cols.rows.map(c=>({name:c.column_name,dataType:c.data_type,udtName:c.udt_name,nullable:c.is_nullable}));
+ // Ledger registration is not proof that its DDL is currently effective.
+ // On the observed 50-row ledger the ELUS 0765 version is registered, but
+ // the rotation function is absent from pg_proc. Check catalog metadata only:
+ // never read recovery hashes or attempt to replay the migration here.
+ const rotacaoRegistrada = q.rows.some(row => row.version === "20261026010000");
+ if (rotacaoRegistrada) {
+   // Existence alone is insufficient: the 0765 function is SECURITY DEFINER
+   // and must never be executable by browser roles. Inspect catalog only.
+   const provaRotacao = await client.query(`
+     SELECT p.oid IS NOT NULL AS existe,
+       COALESCE(p.prosecdef, false) AS security_definer,
+       COALESCE('search_path=' = ANY(p.proconfig), false) AS search_path_fechado,
+       CASE WHEN p.oid IS NULL THEN false ELSE has_function_privilege('anon', p.oid, 'EXECUTE') END AS anon_execute,
+       CASE WHEN p.oid IS NULL THEN false ELSE has_function_privilege('authenticated', p.oid, 'EXECUTE') END AS authenticated_execute,
+       CASE WHEN p.oid IS NULL THEN false ELSE has_function_privilege('service_role', p.oid, 'EXECUTE') END AS service_execute
+     FROM (SELECT to_regprocedure('public.fn_elus_rotacionar_codigos_recuperacao(uuid,text[])') AS oid) alvo
+     LEFT JOIN pg_catalog.pg_proc p ON p.oid = alvo.oid
+   `);
+   const funcao = provaRotacao.rows[0];
+   if (provaRotacao.rows.length !== 1 || funcao?.existe !== true)
+     throw new Error("LEDGER_0765_FUNCTION_ABSENT");
+   if (!funcao.security_definer || !funcao.search_path_fechado ||
+       funcao.anon_execute || funcao.authenticated_execute || !funcao.service_execute)
+     throw new Error("LEDGER_0765_FUNCTION_UNSAFE");
+ }
  const versions=q.rows.map(x=>x.version);
  if(JSON.stringify(versions)!==JSON.stringify(EXPECTED))throw new Error("HISTORICAL_LEDGER_MISMATCH");
  if(q.rows.some((row,i)=>row.name!==EXPECTED_NAMES[i]))throw new Error("HISTORICAL_LEDGER_NAME_MISMATCH");
@@ -144,7 +169,7 @@ try{
  console.log("PRE_CUTOFF_IMPORTS_REQUIRE_REVIEW=11");
  console.log("OFFICIAL_LEDGER_SCHEMA="+JSON.stringify(ledgerShape));
 } catch(e){
- console.error("GATE_RED="+(/HISTORICAL_LEDGER_MISMATCH|HISTORICAL_LEDGER_NAME_MISMATCH|SCHEMA_PRECONDITION_CHANGED|MIGRATION_VERSION_COLLISION|OFFICIAL_LEDGER_SCHEMA_DRIFT|READONLY_ROLE_REQUIRED/.test(e.message)?e.message:"PREFLIGHT_FAILED"));
+ console.error("GATE_RED="+(/HISTORICAL_LEDGER_MISMATCH|HISTORICAL_LEDGER_NAME_MISMATCH|SCHEMA_PRECONDITION_CHANGED|MIGRATION_VERSION_COLLISION|OFFICIAL_LEDGER_SCHEMA_DRIFT|LEDGER_0765_FUNCTION_ABSENT|LEDGER_0765_FUNCTION_UNSAFE|READONLY_ROLE_REQUIRED/.test(e.message)?e.message:"PREFLIGHT_FAILED"));
  process.exitCode=1;
 } finally{
  await client.query("ROLLBACK").catch(()=>{});
