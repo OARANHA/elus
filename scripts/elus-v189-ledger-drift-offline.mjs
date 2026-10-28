@@ -93,7 +93,7 @@ export function verifyImportedMigrationBlobs(matrix, readMigration = (file) =>
   }
   for (const { file, git_blob_sha1: expected } of imported) {
     // Restringe a leitura ao diretório local de migrations, sem traversal.
-    if (typeof file !== "string" || !/^\\d{14}_[a-z0-9_]+\\.sql$/.test(file) ||
+    if (typeof file !== "string" || !/^\d{14}_[a-z0-9_]+\.sql$/.test(file) ||
         typeof expected !== "string" || !/^[0-9a-f]{40}$/.test(expected)) {
       throw new Error("IMPORTED_SQL_BLOB_DRIFT");
     }
@@ -104,7 +104,7 @@ export function verifyImportedMigrationBlobs(matrix, readMigration = (file) =>
       throw new Error("IMPORTED_SQL_BLOB_DRIFT");
     }
     if (!Buffer.isBuffer(content)) throw new Error("IMPORTED_SQL_BLOB_DRIFT");
-    const actual = createHash("sha1").update(`blob ${content.length}\\0`).update(content).digest("hex");
+    const actual = createHash("sha1").update(`blob ${content.length}\0`).update(content).digest("hex");
     if (actual !== expected) throw new Error("IMPORTED_SQL_BLOB_DRIFT");
   }
 }
