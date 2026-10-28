@@ -56,7 +56,7 @@ function readSanitizedSnapshot() {
 /** Exige a matriz aprovada byte a byte; não atesta aplicação ou origem upstream. */
 export function verifyMatrixSourceBlob(bytes) {
   if (!Buffer.isBuffer(bytes)) throw new Error("MATRIX_SOURCE_BLOB_DRIFT");
-  const actual = createHash("sha1").update(`blob ${bytes.length}\\0`).update(bytes).digest("hex");
+  const actual = createHash("sha1").update(`blob ${bytes.length}\0`).update(bytes).digest("hex");
   if (actual !== REQUIRED_MATRIX_SOURCE_BLOB_SHA1) throw new Error("MATRIX_SOURCE_BLOB_DRIFT");
 }
 
