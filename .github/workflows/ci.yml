@@ -238,7 +238,7 @@ jobs:
       # em segundos; dentro da suíte longa, o mesmo vermelho chegava aos 7–12
       # minutos. Rodam UMA vez: o passo de unit abaixo pula o projeto `cercas`.
       # Seleção e medições: o bloco `projects` de vitest.config.ts.
-      # Na parte 4, junto do kit bash: o porquê e a conta estão no cabeçalho do job.
+      # Na parte 5, junto do kit bash: o porquê e a conta estão no cabeçalho do job.
       - name: Cercas estruturais
         if: matrix.parte == 5
         run: pnpm cercas
