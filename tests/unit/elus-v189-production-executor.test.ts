@@ -14,7 +14,7 @@ describe("ELUS v1.89: executor produtivo guardado", () => {
     expect(result.mode).toBe("offline");
     expect(result.count).toBe(39);
     expect(result.files).toHaveLength(39);
-    expect(new Set(result.files.map((entry: { file: string }) => entry.file))).toHaveLength(39);
+    expect(new Set(result.files.map((entry: { file: string }) => entry.file)).size).toBe(39);
     expect(result.files.every((entry: { sha256: string }) => /^[a-f0-9]{64}$/.test(entry.sha256))).toBe(true);
   });
 
