@@ -11,6 +11,8 @@ printf '%s\n' '{"versions":["20261018200431"],"publicTables":191}' \
   | node scripts/elus-v189-ledger-drift-offline.mjs inspect
 ```
 
+O stdin é limitado a **64 KiB** antes do parse do JSON (`GATE_RED=SNAPSHOT_TOO_LARGE` se excedido). O limite de 500 versões e a lista restrita de campos continuam aplicados após o parse.
+
 Não forneça credenciais, SQL de migrations, `statements`, `rollback`, códigos MFA, hashes, dados de usuários ou conteúdo de tabelas. A coleta da lista de versões, se necessária, exige autorização e credencial **somente leitura**, separadamente desta ferramenta.
 
 ## Interpretação

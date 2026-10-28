@@ -5,7 +5,7 @@
  * Não abre conexões, não lê dados de clientes e nunca autoriza replay.
  * Recibo registrado NÃO é prova de execução de SQL nem de objetos efetivos.
  */
-import { readFileSync } from "node:fs";
+import { readFileSync, readSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -13,6 +13,22 @@ const FILE = fileURLToPath(import.meta.url);
 const ROOT = join(dirname(FILE), "..");
 const EXTRA_0765 = "20261026010000";
 const VERSION = /^\d{14}$/;
+const MAX_SNAPSHOT_BYTES = 64 * 1024;
+
+// Limite antes do JSON.parse: o teto de 500 versões sozinho não limita stdin.
+function readSanitizedSnapshot() {
+  const chunks = [];
+  const buffer = Buffer.allocUnsafe(4096);
+  let totalBytes = 0;
+  while (true) {
+    const count = readSync(0, buffer, 0, buffer.length, null);
+    if (count === 0) break;
+    totalBytes += count;
+    if (totalBytes > MAX_SNAPSHOT_BYTES) throw new Error("SNAPSHOT_TOO_LARGE");
+    chunks.push(Buffer.from(buffer.subarray(0, count)));
+  }
+  return JSON.parse(Buffer.concat(chunks).toString("utf8"));
+}
 
 export function reconcileLedgerSnapshot(snapshot, matrix) {
   if (matrix?.status !== "BLOCKED_FOR_REPLAY" ||
@@ -122,10 +138,10 @@ if (process.argv[1] && resolve(process.argv[1]) === FILE) {
     }
     const matrix = JSON.parse(readFileSync(join(ROOT,
       "docs/integracao/elus-v189-ledger-replay-matrix.json"), "utf8"));
-    const snapshot = JSON.parse(readFileSync(0, "utf8"));
+    const snapshot = readSanitizedSnapshot();
     process.stdout.write(JSON.stringify(reconcileLedgerSnapshot(snapshot, matrix), null, 2) + "\n");
   } catch (error) {
-    const allowed = ["INSPECT_ONLY", "MATRIX_CONTRACT_DRIFT", "SANITIZED_SNAPSHOT_REQUIRED"];
+    const allowed = ["INSPECT_ONLY", "MATRIX_CONTRACT_DRIFT", "SANITIZED_SNAPSHOT_REQUIRED", "SNAPSHOT_TOO_LARGE"];
     const message = error instanceof Error && allowed.includes(error.message)
       ? error.message : "OFFLINE_AUDIT_FAILED";
     process.stderr.write("GATE_RED=" + message + "\n");

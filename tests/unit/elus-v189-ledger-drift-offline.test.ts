@@ -101,6 +101,16 @@ describe("ELUS v1.89 — comparação offline de recibos não comprova DDL", () 
     }
   });
 
+  it("rejeita stdin acima de 64 KiB antes de fazer parse do JSON", () => {
+    const result = inspect({ versions: all, padding: "x".repeat(65536) });
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain("GATE_RED=SNAPSHOT_TOO_LARGE");
+    expect(result.stdout).toBe("");
+    const normal = inspect({ versions: all });
+    expect(normal.status).toBe(0);
+    expect(normal.data.decision).toBe("NO_GO");
+  });
+
   it("recusa entradas com campos não sanitizados, versões inválidas e modo mutante", () => {
     for (const input of [
       { versions: all, statements: ["SELECT 1"] },
