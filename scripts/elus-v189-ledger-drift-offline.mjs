@@ -73,7 +73,7 @@ export function verifyProtectedElusMigrationBlobs(matrix, readMigration = (file)
       throw new Error("PROTECTED_ELUS_BLOB_DRIFT");
     }
     if (!Buffer.isBuffer(content)) throw new Error("PROTECTED_ELUS_BLOB_DRIFT");
-    const actual = createHash("sha1").update(`blob ${content.length}\\0`).update(content).digest("hex");
+    const actual = createHash("sha1").update(`blob ${content.length}\0`).update(content).digest("hex");
     if (actual !== expected) throw new Error("PROTECTED_ELUS_BLOB_DRIFT");
   }
 }
