@@ -163,23 +163,43 @@ describe("preflight v189: manifesto offline e cercas produtivas", () => {
     }
   });
 
-  it("não aceita 0765 registrada quando a função não existe no catálogo", async () => {
+  it("bloqueia 0765 ausente ou com privilégios inseguros, sem banco", async () => {
     const source = readFileSync(script, "utf8");
     const start = source.indexOf(" const rotacaoRegistrada =");
     const end = source.indexOf(" const versions=", start);
     expect(start).toBeGreaterThan(0);
     expect(end).toBeGreaterThan(start);
-    expect(source).toContain("LEDGER_0765_FUNCTION_ABSENT|READONLY_ROLE_REQUIRED");
+    expect(source).toContain("LEDGER_0765_FUNCTION_ABSENT|LEDGER_0765_FUNCTION_UNSAFE|READONLY_ROLE_REQUIRED");
     const guard = source.slice(start, end);
-    const run = (registered: boolean, exists: boolean) =>
-      runInNewContext(`(async () => {${guard}})()`, {
+    expect(guard).toContain("pg_catalog.pg_proc");
+    expect(guard).toContain("to_regprocedure");
+    const segura = {
+      existe: true, security_definer: true, search_path_fechado: true,
+      anon_execute: false, authenticated_execute: false, service_execute: true,
+    };
+    const run = (registered: boolean, row: Record<string, boolean>) => {
+      let consultas = 0;
+      const resultado = runInNewContext(`(async () => {${guard}})()`, {
         q: { rows: registered ? [{ version: "20261026010000" }] : [] },
-        client: { query: async () => ({ rows: [{ existe: exists }] }) },
+        client: { query: async () => { consultas++; return { rows: [row] }; } },
       }, { timeout: 1000 }) as Promise<void>;
+      return { resultado, consultas: () => consultas };
+    };
 
-    await expect(run(true, false)).rejects.toThrow("LEDGER_0765_FUNCTION_ABSENT");
-    await expect(run(true, true)).resolves.toBeUndefined();
-    await expect(run(false, false)).resolves.toBeUndefined();
+    await expect(run(true, { ...segura, existe: false }).resultado)
+      .rejects.toThrow("LEDGER_0765_FUNCTION_ABSENT");
+    await expect(run(true, segura).resultado).resolves.toBeUndefined();
+    for (const alteracao of [
+      { security_definer: false }, { search_path_fechado: false },
+      { anon_execute: true }, { authenticated_execute: true },
+      { service_execute: false },
+    ]) {
+      await expect(run(true, { ...segura, ...alteracao }).resultado)
+        .rejects.toThrow("LEDGER_0765_FUNCTION_UNSAFE");
+    }
+    const naoRegistrada = run(false, { ...segura, existe: false });
+    await expect(naoRegistrada.resultado).resolves.toBeUndefined();
+    expect(naoRegistrada.consultas()).toBe(0);
   });
 
 });
