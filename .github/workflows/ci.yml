@@ -86,8 +86,8 @@ permissions:
 # segue no grupo do PR, e o push novo continua cancelando o velho.
 
 jobs:
-  # A suíte de unit em TRÊS partes paralelas (duas até 22/09/2026), mais uma
-  # QUARTA parte sem unit, só com cercas e kit bash (desde 08/10/2026) — ver o
+  # A suíte de unit em QUATRO partes paralelas (três até 28/10/2026), mais uma
+  # QUINTA parte sem unit, só com cercas e kit bash (redistribuída em 28/10/2026) — ver o
   # fim deste bloco. O check obrigatório `verify` é o
   # agregador lá embaixo — mesmo padrão do `invariants`.
   #
@@ -129,7 +129,7 @@ jobs:
   # custo é um job a mais por rodada na fila de runners (~25 s de preâmbulo), NÃO
   # MEDIDO quanto à espera.
   #
-  # A QUARTA PARTE ENTROU EM 08/10/2026, e ela NÃO divide a suíte unitária: o
+  # A QUARTA PARTE ENTROU EM 08/10/2026, e ela NÃO dividia a suíte unitária: o
   # `--shard` continua N/3. Ela tira da parte 3 os passos de arquivo inteiro que
   # mais crescem. Medido na run 37757850760 da `main`: parte 3 com 12 min
   # (cercas 94 s + `Unit tests` 387 s + kit bash 218 s) contra 8 e 9 das partes
@@ -137,9 +137,10 @@ jobs:
   # teste falhando. O kit bash é o que cresce — cada PR de kit acrescenta casos
   # ao `test:shell`, e ele foi de 44 s (22/09) a 218 s. Reequilibrar não cabia:
   # nenhuma parte tinha 5 min de folga para receber os ~5 min de cercas+kit.
-  # Com eles numa parte própria, a 3 volta a ser só `Unit tests`, e o kit pode
-  # crescer até o orçamento sem levar a suíte junto. Previsão, não medição: a
-  # parte 4 fica em ~6 min (preâmbulo + cercas + kit) e a 3 em ~8.
+  # Com eles numa parte própria, a 3 voltou a ser só `Unit tests`.
+  # Em 28/10/2026, run 40632596481: parte 1 chegou a 13 min (orçamento 12),
+  # com 7191 testes passando. Redistribuir a suíte em QUATRO shards unitários;
+  # a parte 5 mantém cercas+kit, sem elevar orçamento ou teto.
   verify-parte:
     # Guarda de travamento. O DETECTOR de crescimento é o passo `Orçamento de
     # tempo` no fim de cada parte; a medição que justifica o número está em
@@ -155,7 +156,7 @@ jobs:
       # Sem fail-fast: um vermelho numa parte não esconde o da outra.
       fail-fast: false
       matrix:
-        parte: [1, 2, 3, 4]
+        parte: [1, 2, 3, 4, 5]
     steps:
       - uses: actions/checkout@v7
 
@@ -239,7 +240,7 @@ jobs:
       # Seleção e medições: o bloco `projects` de vitest.config.ts.
       # Na parte 4, junto do kit bash: o porquê e a conta estão no cabeçalho do job.
       - name: Cercas estruturais
-        if: matrix.parte == 4
+        if: matrix.parte == 5
         run: pnpm cercas
 
       - name: Typecheck
@@ -339,13 +340,13 @@ jobs:
           echo "OK — ${total} migrations na árvore, nenhum NNNN nem timestamp repetido."
 
       # `--project produto` é o `pnpm test:unit` MENOS as cercas, que já
-      # rodaram acima; `--shard` divide os arquivos entre as partes 1 a 3. Juntos
-      # são a suíte inteira, uma vez só. A parte 4 não roda unit: é cercas e kit
+      # rodaram acima; `--shard` divide os arquivos entre as partes 1 a 4. Juntos
+      # são a suíte inteira, uma vez só. A parte 5 não roda unit: é cercas e kit
       # bash (cabeçalho do job). Localmente o comando continua sendo
       # `pnpm test:unit`, sem recorte.
-      - name: Unit tests (parte ${{ matrix.parte }}/3)
-        if: matrix.parte != 4
-        run: pnpm test:unit --project produto --shard=${{ matrix.parte }}/3
+      - name: Unit tests (parte ${{ matrix.parte }}/4)
+        if: matrix.parte != 5
+        run: pnpm test:unit --project produto --shard=${{ matrix.parte }}/4
 
       # O MAPA DA SKILL COBRE O MENU? — aviso, nunca reprova.
       #
@@ -403,7 +404,7 @@ jobs:
       # escolher OpenRouter travava o instalador num laço, escolher OpenAI
       # deixava o .env pela metade — passaram por todos os checks verdes. 15s.
       - name: Kit self-host (bash)
-        if: matrix.parte == 4
+        if: matrix.parte == 5
         run: pnpm test:shell
 
       - name: Orçamento de tempo do verify-parte
