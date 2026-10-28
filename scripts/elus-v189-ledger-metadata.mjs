@@ -8,6 +8,41 @@ import { createHash, timingSafeEqual } from "node:crypto";
 const SHA256 = /^[0-9a-f]{64}$/;
 const VERSAO = /^\d{14}$/;
 
+
+/** Confere privilégios efetivos da role, além do BEGIN READ ONLY da transação. */
+export const LEDGER_READONLY_ROLE_SQL = `
+SELECT current_setting('transaction_read_only') = 'on' AS read_only,
+  (r.rolsuper OR r.rolcreaterole OR r.rolcreatedb OR r.rolreplication OR r.rolbypassrls) AS elevated,
+  pg_has_role(current_user, 'pg_write_all_data', 'MEMBER') AS write_member,
+  has_database_privilege(current_user, current_database(), 'CREATE') AS db_create,
+  EXISTS (
+    SELECT 1 FROM pg_namespace n
+    WHERE n.nspname NOT LIKE 'pg_%' AND n.nspname <> 'information_schema'
+      AND has_schema_privilege(current_user, n.oid, 'CREATE')
+  ) AS schema_create,
+  EXISTS (
+    SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+    WHERE n.nspname NOT LIKE 'pg_%' AND n.nspname <> 'information_schema'
+      AND c.relkind IN ('r', 'p', 'v', 'm', 'f')
+      AND (has_table_privilege(current_user, c.oid, 'INSERT')
+        OR has_table_privilege(current_user, c.oid, 'UPDATE')
+        OR has_table_privilege(current_user, c.oid, 'DELETE')
+        OR has_table_privilege(current_user, c.oid, 'TRUNCATE'))
+  ) AS table_write
+FROM pg_roles r WHERE r.rolname = current_user
+`;
+
+export function conferirRoleSomenteLeitura(rows) {
+  if (!Array.isArray(rows) || rows.length !== 1) throw new Error("READONLY_ROLE_REQUIRED");
+  const role = rows[0];
+  if (!role || role.read_only !== true ||
+      ["elevated", "write_member", "db_create", "schema_create", "table_write"]
+        .some((key) => role[key] !== false)) {
+    throw new Error("READONLY_ROLE_REQUIRED");
+  }
+  return true;
+}
+
 export const LEDGER_METADATA_SQL = `
 SELECT
   version,
