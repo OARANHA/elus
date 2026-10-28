@@ -108,6 +108,11 @@ async function main(){
   const rpc=(await c.query(`
     SELECT p.oid IS NOT NULL AS present,
            COALESCE(p.prosecdef,false) AS security_definer,
+           COALESCE(p.proconfig @> ARRAY['search_path=']::text[],false) AS pinned_empty_search_path,
+           COALESCE(p.proacl IS NOT NULL AND NOT EXISTS (
+             SELECT 1 FROM pg_catalog.aclexplode(p.proacl) AS acl
+             WHERE acl.grantee=0 AND acl.privilege_type='EXECUTE'
+           ),false) AS public_execute_denied,
            COALESCE(has_function_privilege('service_role',p.oid,'EXECUTE'),false) AS service_execute,
            COALESCE(has_function_privilege('anon',p.oid,'EXECUTE'),false) AS anon_execute,
            COALESCE(has_function_privilege('authenticated',p.oid,'EXECUTE'),false) AS authenticated_execute,
@@ -133,6 +138,8 @@ async function main(){
   if(mode==='verify'){
    need(state.applied===39,'INCOMPLETE_LEDGER');
    need(rpc.present===true,'RPC_0765_MISSING');
+   need(rpc.pinned_empty_search_path===true,'RPC_0765_SEARCH_PATH_DRIFT');
+   need(rpc.public_execute_denied===true,'RPC_0765_PUBLIC_EXECUTE_DRIFT');
    need(rpc.security_definer===true&&rpc.service_execute===true&&
         rpc.anon_execute===false&&rpc.authenticated_execute===false,'RPC_0765_ACL_DRIFT');
    need(rpc.recovery_codes_rls===true,'RECOVERY_CODES_RLS_DRIFT');
@@ -142,6 +149,8 @@ async function main(){
   if(mode!=='apply'){
    console.log(JSON.stringify({mode:'read-only',ledgerHistorical:11,...state,legacyMfaCodes:legacy,
     recoveryRotationRpcPresent:rpc.present,recoveryRotationSecurityDefiner:rpc.security_definer,
+    recoveryRotationPinnedEmptySearchPath:rpc.pinned_empty_search_path,
+    recoveryRotationPublicExecuteDenied:rpc.public_execute_denied,
     recoveryRotationServiceExecute:rpc.service_execute,recoveryRotationAnonExecute:rpc.anon_execute,
     recoveryRotationAuthenticatedExecute:rpc.authenticated_execute,
     recoveryCodesRls:rpc.recovery_codes_rls,
