@@ -1,6 +1,9 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
   LEDGER_METADATA_SQL,
+  LEDGER_READONLY_ROLE_SQL,
+  conferirRoleSomenteLeitura,
   fingerprintLedgerMetadados,
   conferirFingerprintLedgerMetadados,
 } from "../../scripts/elus-v189-ledger-metadata.mjs";
@@ -21,6 +24,32 @@ const rows = () => versions.map((version, i) => ({
 }));
 
 describe("ELUS v1.89 — atestação somente de metadados do ledger", () => {
+  it("exige transação read-only e role sem privilégios de escrita", () => {
+    const accepted = {
+      read_only: true, elevated: false, write_member: false,
+      db_create: false, schema_create: false, table_write: false,
+    };
+    expect(conferirRoleSomenteLeitura([accepted])).toBe(true);
+    for (const key of ["read_only", "elevated", "write_member",
+      "db_create", "schema_create", "table_write"] as const) {
+      const rejected = { ...accepted, [key]: !accepted[key] };
+      expect(() => conferirRoleSomenteLeitura([rejected])).toThrow("READONLY_ROLE_REQUIRED");
+    }
+    for (const invalid of [[], [accepted, accepted], [{ ...accepted, table_write: null }],
+      [{ ...accepted, elevated: undefined }], [null]]) {
+      expect(() => conferirRoleSomenteLeitura(invalid)).toThrow("READONLY_ROLE_REQUIRED");
+    }
+    for (const required of ["pg_write_all_data", "has_database_privilege",
+      "has_schema_privilege", "has_table_privilege", "rolbypassrls",
+      "'INSERT'", "'UPDATE'", "'DELETE'", "'TRUNCATE'"]) {
+      expect(LEDGER_READONLY_ROLE_SQL).toContain(required);
+    }
+    const preflight = readFileSync("scripts/elus-v189-ledger-metadata-preflight.mjs", "utf8");
+    expect(preflight.indexOf("conferirRoleSomenteLeitura(roleCheck.rows)"))
+      .toBeLessThan(preflight.indexOf("const columns = await client.query("));
+    expect(preflight).toContain('"READONLY_ROLE_REQUIRED"');
+  });
+
   it("produz fingerprint estável, sem retornar SQL bruto", () => {
     const snapshot = rows();
     const fingerprint = fingerprintLedgerMetadados(snapshot, versions);
