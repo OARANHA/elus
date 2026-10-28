@@ -5,6 +5,7 @@
  * Não abre conexões, não lê dados de clientes e nunca autoriza replay.
  * Recibo registrado NÃO é prova de execução de SQL nem de objetos efetivos.
  */
+import { createHash } from "node:crypto";
 import { readFileSync, readSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -48,6 +49,33 @@ function readSanitizedSnapshot() {
     chunks.push(Buffer.from(buffer.subarray(0, count)));
   }
   return JSON.parse(Buffer.concat(chunks).toString("utf8"));
+}
+
+// Compara o conteúdo físico dos quatro SQLs próprios com o hash Git blob fixado.
+// A matriz isolada não basta: seus hashes poderiam permanecer intactos enquanto
+// os arquivos de migrations fossem alterados.
+export function verifyProtectedElusMigrationBlobs(matrix, readMigration = (file) =>
+  readFileSync(join(ROOT, "supabase/migrations", file))) {
+  const protectedFiles = matrix?.protected_elus_migrations;
+  if (!Array.isArray(protectedFiles) || protectedFiles.length !== 4 ||
+      new Set(protectedFiles.map((m) => m.file)).size !== 4) {
+    throw new Error("PROTECTED_ELUS_BLOB_DRIFT");
+  }
+  for (const { file, git_blob_sha1: expected } of protectedFiles) {
+    if (!Object.hasOwn(REQUIRED_PROTECTED_ELUS_MIGRATIONS, file) ||
+        REQUIRED_PROTECTED_ELUS_MIGRATIONS[file] !== expected) {
+      throw new Error("PROTECTED_ELUS_BLOB_DRIFT");
+    }
+    let content;
+    try {
+      content = readMigration(file);
+    } catch {
+      throw new Error("PROTECTED_ELUS_BLOB_DRIFT");
+    }
+    if (!Buffer.isBuffer(content)) throw new Error("PROTECTED_ELUS_BLOB_DRIFT");
+    const actual = createHash("sha1").update(`blob ${content.length}\\0`).update(content).digest("hex");
+    if (actual !== expected) throw new Error("PROTECTED_ELUS_BLOB_DRIFT");
+  }
 }
 
 export function reconcileLedgerSnapshot(snapshot, matrix) {
@@ -173,9 +201,12 @@ if (process.argv[1] && resolve(process.argv[1]) === FILE) {
     const matrix = JSON.parse(readFileSync(join(ROOT,
       "docs/integracao/elus-v189-ledger-replay-matrix.json"), "utf8"));
     const snapshot = readSanitizedSnapshot();
-    process.stdout.write(JSON.stringify(reconcileLedgerSnapshot(snapshot, matrix), null, 2) + "\n");
+    const result = reconcileLedgerSnapshot(snapshot, matrix);
+    verifyProtectedElusMigrationBlobs(matrix);
+    process.stdout.write(JSON.stringify(result, null, 2) + "\n");
   } catch (error) {
-    const allowed = ["INSPECT_ONLY", "MATRIX_CONTRACT_DRIFT", "SANITIZED_SNAPSHOT_REQUIRED", "SNAPSHOT_TOO_LARGE"];
+    const allowed = ["INSPECT_ONLY", "MATRIX_CONTRACT_DRIFT", "PROTECTED_ELUS_BLOB_DRIFT",
+      "SANITIZED_SNAPSHOT_REQUIRED", "SNAPSHOT_TOO_LARGE"];
     const message = error instanceof Error && allowed.includes(error.message)
       ? error.message : "OFFLINE_AUDIT_FAILED";
     process.stderr.write("GATE_RED=" + message + "\n");
