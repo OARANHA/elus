@@ -46,6 +46,15 @@ describe("ELUS v1.89: executor produtivo guardado", () => {
     expect(source).toContain("need(rpc.present===true,'RPC_0765_MISSING')");
     expect(source).toContain("'RPC_0765_ACL_DRIFT'");
     expect(source).toContain("'RECOVERY_CODES_RLS_DRIFT'");
+    expect(source).toContain("'RECOVERY_CODES_CLIENT_DML_GRANT_DRIFT'");
+    expect(source).toContain("'RECOVERY_CODES_DENY_SELECT_POLICY_DRIFT'");
+    expect(source).toContain("has_table_privilege(roles.role,t.oid,'SELECT')");
+    expect(source).toContain("has_table_privilege(roles.role,t.oid,'INSERT')");
+    expect(source).toContain("has_table_privilege(roles.role,t.oid,'UPDATE')");
+    expect(source).toContain("has_table_privilege(roles.role,t.oid,'DELETE')");
+    expect(source).toContain("pg_get_expr(pol.polqual,pol.polrelid)='false'");
+    expect(source).toContain("recoveryCodesClientDmlDenied:rpc.recovery_codes_client_dml_denied");
+    expect(source).toContain("recoveryCodesDenySelectPolicy:rpc.recovery_codes_deny_select_policy");
     expect(source).toContain("to_regprocedure('public.fn_elus_rotacionar_codigos_recuperacao(uuid,text[])')");
     expect(source).toContain("has_function_privilege('service_role',p.oid,'EXECUTE')");
     expect(source).toContain("has_function_privilege('anon',p.oid,'EXECUTE')");
