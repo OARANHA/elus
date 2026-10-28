@@ -43,6 +43,7 @@ describe("ELUS v1.89: executor produtivo guardado", () => {
     const source = readFileSync(script, "utf8");
     expect(source).toContain("if(mode==='verify'){");
     expect(source).toContain("need(state.applied===39,'INCOMPLETE_LEDGER')");
+    expect(source).toContain("need(legacy===0,'MFA_LEGACY_ROWS_REMAIN_AFTER_0759')");
     expect(source).toContain("need(rpc.present===true,'RPC_0765_MISSING')");
     expect(source).toContain("'RPC_0765_ACL_DRIFT'");
     expect(source).toContain("'RPC_0765_SEARCH_PATH_DRIFT'");
