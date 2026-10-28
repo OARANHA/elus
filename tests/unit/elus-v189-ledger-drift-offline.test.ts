@@ -60,6 +60,34 @@ describe("ELUS v1.89 — comparação offline de recibos não comprova DDL", () 
     expect(result.data.receiptPattern).not.toBe("EXPECTED_SET_RECORDED_UNVERIFIED");
   });
 
+  it("distingue recibos importados fora de prefixo de um replay completo", () => {
+    const ordered = matrix.migrations.map((m) => m.version).sort();
+    const result = inspect({
+      versions: [...historical, ordered[1], "20261026010000"],
+      publicTables: 208,
+    });
+    expect(result.status).toBe(0);
+    expect(result.data.receiptPattern).toBe("NONPREFIX_IMPORT_RECEIPTS");
+    expect(result.data.counts.importedPresent).toBe(1);
+    expect(result.data.differences.importedMissing).toContain(ordered[0]);
+    expect(result.data.decision).toBe("NO_GO");
+    expect(result.data.signals.sqlExecutionProven).toBe(false);
+  });
+
+  it("recusa volume excessivo e contagens que não são inteiros seguros", () => {
+    for (const input of [
+      { versions: Array(501).fill(all[0]) },
+      { versions: all, publicTables: 1.5 },
+      { versions: all, publicTables: Number.MAX_SAFE_INTEGER + 1 },
+      { versions: all, publicTables: null },
+    ]) {
+      const result = inspect(input);
+      expect(result.status).not.toBe(0);
+      expect(result.stderr).toContain("GATE_RED=SANITIZED_SNAPSHOT_REQUIRED");
+      expect(result.stdout).toBe("");
+    }
+  });
+
   it("recusa entradas com campos não sanitizados, versões inválidas e modo mutante", () => {
     for (const input of [
       { versions: all, statements: ["SELECT 1"] },
