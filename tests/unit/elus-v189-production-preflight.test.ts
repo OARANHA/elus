@@ -163,4 +163,23 @@ describe("preflight v189: manifesto offline e cercas produtivas", () => {
     }
   });
 
+  it("não aceita 0765 registrada quando a função não existe no catálogo", async () => {
+    const source = readFileSync(script, "utf8");
+    const start = source.indexOf(" const rotacaoRegistrada =");
+    const end = source.indexOf(" const versions=", start);
+    expect(start).toBeGreaterThan(0);
+    expect(end).toBeGreaterThan(start);
+    expect(source).toContain("LEDGER_0765_FUNCTION_ABSENT|READONLY_ROLE_REQUIRED");
+    const guard = source.slice(start, end);
+    const run = (registered: boolean, exists: boolean) =>
+      runInNewContext(`(async () => {${guard}})()`, {
+        q: { rows: registered ? [{ version: "20261026010000" }] : [] },
+        client: { query: async () => ({ rows: [{ existe: exists }] }) },
+      }, { timeout: 1000 }) as Promise<void>;
+
+    await expect(run(true, false)).rejects.toThrow("LEDGER_0765_FUNCTION_ABSENT");
+    await expect(run(true, true)).resolves.toBeUndefined();
+    await expect(run(false, false)).resolves.toBeUndefined();
+  });
+
 });
