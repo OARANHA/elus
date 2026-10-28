@@ -137,6 +137,8 @@ async function main(){
   `)).rows[0];
   if(mode==='verify'){
    need(state.applied===39,'INCOMPLETE_LEDGER');
+   // A 0759 elimina os formatos legados; recibo completo não prova esse efeito.
+   need(legacy===0,'MFA_LEGACY_ROWS_REMAIN_AFTER_0759');
    need(rpc.present===true,'RPC_0765_MISSING');
    need(rpc.pinned_empty_search_path===true,'RPC_0765_SEARCH_PATH_DRIFT');
    need(rpc.public_execute_denied===true,'RPC_0765_PUBLIC_EXECUTE_DRIFT');
