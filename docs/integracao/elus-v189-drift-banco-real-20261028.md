@@ -31,3 +31,39 @@ Não executar `supabase db push`, `db reset`, replay de 39 migrations, edição 
 5. Exigir backup/restauração comprovados, ensaio descartável PostgreSQL 15/17, revisão de segurança e autorização específica antes de qualquer mudança produtiva.
 
 **Resultado:** produção **NO-GO** para o procedimento v1.89 desenhado sobre o snapshot anterior. Esta documentação não altera código de aplicação, SQL, migrations ou workflows. O E2E permanece exclusivamente manual (`workflow_dispatch`).
+
+## Reconciliação incremental do catálogo MFA (28/10/2026, ~07h30 BRT)
+
+O projeto Supabase `elus` foi reconfirmado como `ACTIVE_HEALTHY` em PostgreSQL 17.11. Consulta **SELECT apenas de metadados** (`pg_catalog` e ledger; sem ler hashes, códigos, usuários ou dados de clientes) retornou:
+
+| Evidência do catálogo | Resultado |
+| --- | --- |
+| Ledger total / tabelas públicas | 50 / 208 (sem alteração no snapshot anterior) |
+| Versão `20261023180557` (0759) registrada | 1 |
+| Versão `20261026010000` (0765) registrada | 1 |
+| Função `public.fn_elus_rotacionar_codigos_recuperacao` | **0** |
+| Função com nome contendo `rotac` e `recuperacao`, em qualquer schema | **0** |
+| Tabela `public.user_recovery_codes` | Existe; `relrowsecurity=true`, `relforcerowsecurity=false` |
+| Policies de `user_recovery_codes` | Uma policy chamada `user_recovery_codes_ninguem_le`, comando `SELECT` (`polcmd='r'`) |
+
+Consulta reproduzível para o **achado principal**, sem acesso a linhas de usuário:
+
+```sql
+SELECT
+  (SELECT count(*) FROM supabase_migrations.schema_migrations
+   WHERE version = '20261026010000') AS migration_0765_registrada,
+  to_regprocedure(
+    'public.fn_elus_rotacionar_codigos_recuperacao(uuid,text[])'
+  ) IS NOT NULL AS funcao_0765_presente,
+  (SELECT c.relrowsecurity
+   FROM pg_catalog.pg_class c
+   JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+   WHERE n.nspname = 'public' AND c.relname = 'user_recovery_codes'
+   LIMIT 1) AS recovery_rls_habilitada;
+```
+
+**Interpretação restrita:** a migration `0765` declara `CREATE OR REPLACE FUNCTION public.fn_elus_rotacionar_codigos_recuperacao(uuid,text[])`, com `SECURITY DEFINER` e execução restrita a `service_role`, mas o objeto **não existe atualmente**. O teste de invariantes `tests/invariants/elus-mfa-0765-rotacao-atomica.test.ts` aplica essa migration explicitamente num PostgreSQL efêmero; seu GREEN não comprova que o objeto existe no Supabase real. A policy observada e o RLS habilitado também **não** provam, isoladamente, segurança de todas as operações, grants, roles ou dependências. Causa da ausência não determinada.
+
+**Próximo gate técnico:** inventário independente dos objetos e permissões exigidos pelo conjunto de migrations registradas, com comparação ao baseline efetivamente implantado. A PR #65 acrescenta um diagnóstico `LEDGER_0765_FUNCTION_ABSENT` ao preflight, mas não corrige o objeto nem autoriza replay. Com o HEAD da PR #65, esse diagnóstico pode ocorrer **antes** do bloqueio de ledger 11/191; ambos são razões válidas de NO-GO.
+
+A consulta de metadados foi feita via conector Supabase; **não** foi uma execução autenticada como role estritamente read-only. O texto SQL foi apenas `SELECT`. Não houve transação de escrita, alteração de schema, execução de migration, E2E, merge, imagem ou deploy.
