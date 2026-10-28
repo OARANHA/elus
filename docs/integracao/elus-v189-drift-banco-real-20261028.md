@@ -67,3 +67,24 @@ SELECT
 **Próximo gate técnico:** inventário independente dos objetos e permissões exigidos pelo conjunto de migrations registradas, com comparação ao baseline efetivamente implantado. A PR #65 acrescenta um diagnóstico `LEDGER_0765_FUNCTION_ABSENT` ao preflight, mas não corrige o objeto nem autoriza replay. Com o HEAD da PR #65, esse diagnóstico pode ocorrer **antes** do bloqueio de ledger 11/191; ambos são razões válidas de NO-GO.
 
 A consulta de metadados foi feita via conector Supabase; **não** foi uma execução autenticada como role estritamente read-only. O texto SQL foi apenas `SELECT`. Não houve transação de escrita, alteração de schema, execução de migration, E2E, merge, imagem ou deploy.
+
+## Inventário adicional de ACL/RLS e dependências MFA (28/10/2026, ~09h26 BRT)
+
+Nova inspeção de **metadados exclusivamente por `SELECT`**, no projeto Supabase `elus` (`tbwcgdmenrcnghogqkqi`, PostgreSQL 17.11, `ACTIVE_HEALTHY`), sem ler linhas de `auth.users` ou `user_recovery_codes`:
+
+| Objeto / controle | Evidência observada |
+| --- | --- |
+| `public.user_recovery_codes` | Tabela existente, `relrowsecurity=true`, `relforcerowsecurity=false` |
+| Colunas | `id uuid NOT NULL`, `user_id uuid NOT NULL`, `code_hash bytea NOT NULL`, `created_at timestamptz NOT NULL`, `used_at timestamptz`, `used_ip inet` |
+| Constraints | PK `user_recovery_codes_pkey(id)`; FK `user_recovery_codes_user_id_fkey(user_id) → auth.users(id) ON DELETE CASCADE` |
+| Policy | `user_recovery_codes_ninguem_le`, comando `SELECT`, expressão `USING (false)` |
+| Grants de tabela visíveis em `information_schema.role_table_grants` | `postgres` e `service_role`: `SELECT`, `INSERT`, `UPDATE`, `DELETE`, `TRUNCATE`, `REFERENCES`, `TRIGGER`; nenhuma linha para `anon`/`authenticated` nesse inventário |
+| Triggers não internos da tabela | Nenhum |
+| Funções em `public` com nome contendo `recuperacao` ou `recovery` | Nenhuma |
+| Ledger | `0759` (`20261023180557`) e `0765` (`20261026010000`) continuam registrados |
+
+A inspeção das funções foi restrita ao catálogo `pg_proc`/`pg_namespace`. A migration versionada `0765` declara a função `public.fn_elus_rotacionar_codigos_recuperacao(uuid,text[])`, `SECURITY DEFINER`, `SET search_path = ''`, com `EXECUTE` somente para `service_role`; **esse contrato não está implantado no catálogo observado**. O preflight proposto na PR #65 rejeita a ausência. Não aplicar automaticamente a migration para corrigir o drift.
+
+**Limitações:** `role_table_grants` não substitui auditoria completa de privilégios efetivos, herança de roles, grants de schema, RLS para escrita, dependências, políticas em outras tabelas ou segurança da aplicação. A policy `SELECT false` e a ausência de grants diretos a `anon`/`authenticated` não provam sozinhas ausência de outros caminhos de acesso. Não se conclui que `0759` foi executada apenas porque está registrada, nem se identifica a causa da ausência de `0765`.
+
+**Próxima etapa segura:** mapear o baseline e os contratos SQL esperados contra o inventário real, em revisão estática e ambiente descartável; manter a aplicação produtiva e o ledger intactos até restauração demonstrada, ACL/RLS revisados e autorização independente da operação destrutiva `0759`. A leitura foi realizada pelo conector Supabase, **não** por role estritamente read-only; as consultas enviadas foram apenas `SELECT`.
