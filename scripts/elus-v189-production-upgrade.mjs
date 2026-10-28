@@ -103,8 +103,32 @@ async function main(){
   else await c.query('BEGIN READ ONLY');
   const state=await snapshot(c,items);
   const legacy=Number((await c.query('SELECT count(*) AS n FROM public.user_recovery_codes WHERE octet_length(code_hash) <> 32')).rows[0].n);
+  // Read-only catalog attestation: a matching migration receipt does not prove
+  // that its SECURITY DEFINER RPC or least-privilege grants exist in the schema.
+  const rpc=(await c.query(`
+    SELECT p.oid IS NOT NULL AS present,
+           COALESCE(p.prosecdef,false) AS security_definer,
+           COALESCE(has_function_privilege('service_role',p.oid,'EXECUTE'),false) AS service_execute,
+           COALESCE(has_function_privilege('anon',p.oid,'EXECUTE'),false) AS anon_execute,
+           COALESCE(has_function_privilege('authenticated',p.oid,'EXECUTE'),false) AS authenticated_execute,
+           COALESCE((SELECT relrowsecurity FROM pg_class
+                     WHERE oid=to_regclass('public.user_recovery_codes')),false) AS recovery_codes_rls
+    FROM (SELECT to_regprocedure('public.fn_elus_rotacionar_codigos_recuperacao(uuid,text[])') AS oid) AS expected
+    LEFT JOIN pg_proc p ON p.oid=expected.oid
+  `)).rows[0];
+  if(mode==='verify'){
+   need(state.applied===39,'INCOMPLETE_LEDGER');
+   need(rpc.present===true,'RPC_0765_MISSING');
+   need(rpc.security_definer===true&&rpc.service_execute===true&&
+        rpc.anon_execute===false&&rpc.authenticated_execute===false,'RPC_0765_ACL_DRIFT');
+   need(rpc.recovery_codes_rls===true,'RECOVERY_CODES_RLS_DRIFT');
+  }
   if(mode!=='apply'){
-   console.log(JSON.stringify({mode:'read-only',ledgerHistorical:11,...state,legacyMfaCodes:legacy,manifest:39}));
+   console.log(JSON.stringify({mode:'read-only',ledgerHistorical:11,...state,legacyMfaCodes:legacy,
+    recoveryRotationRpcPresent:rpc.present,recoveryRotationSecurityDefiner:rpc.security_definer,
+    recoveryRotationServiceExecute:rpc.service_execute,recoveryRotationAnonExecute:rpc.anon_execute,
+    recoveryRotationAuthenticatedExecute:rpc.authenticated_execute,
+    recoveryCodesRls:rpc.recovery_codes_rls,manifest:39}));
    return;
   }
   need(legacy===0,'MFA_LEGACY_ROWS_REQUIRE_SEPARATE_APPROVAL');
