@@ -39,6 +39,20 @@ describe("ELUS v1.89: executor produtivo guardado", () => {
     expect(run.stdout).not.toContain("APPLIED=");
   });
 
+  it("exige prova de schema e ACL na verificação read-only, não apenas recibos", () => {
+    const source = readFileSync(script, "utf8");
+    expect(source).toContain("if(mode==='verify'){");
+    expect(source).toContain("need(state.applied===39,'INCOMPLETE_LEDGER')");
+    expect(source).toContain("need(rpc.present===true,'RPC_0765_MISSING')");
+    expect(source).toContain("'RPC_0765_ACL_DRIFT'");
+    expect(source).toContain("'RECOVERY_CODES_RLS_DRIFT'");
+    expect(source).toContain("to_regprocedure('public.fn_elus_rotacionar_codigos_recuperacao(uuid,text[])')");
+    expect(source).toContain("has_function_privilege('service_role',p.oid,'EXECUTE')");
+    expect(source).toContain("has_function_privilege('anon',p.oid,'EXECUTE')");
+    expect(source).toContain("has_function_privilege('authenticated',p.oid,'EXECUTE')");
+    expect(source).toContain("recoveryRotationRpcPresent:rpc.present");
+  });
+
   it("exige assinatura operacional e preserva guardas do ledger e rollback", () => {
     const source = readFileSync(script, "utf8");
     expect(source).toContain("ADMIN_APPROVAL_REQUIRED");
