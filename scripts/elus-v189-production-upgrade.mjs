@@ -103,7 +103,14 @@ async function snapshot(c,items){
  need(receipts.every(r=>expected.has(r.version)&&expected.get(r.version).name===r.name),'UNKNOWN_RECEIPT');
  const seen=new Set(receipts.map(x=>x.version));
  need(items.every((x,i)=>i<receipts.length?seen.has(x.version):!seen.has(x.version)),'NONPREFIX_LEDGER');
- for(const r of receipts)need(r.md5===digest(Buffer.from(expected.get(r.version).sql),'md5'),'RECEIPT_HASH_DRIFT');
+ // Cada recibo novo deve armazenar exatamente o SQL fixado como UM statement.
+ // MD5 da concatenação sozinho aceitaria um array dividido em vários elementos.
+ for(const r of receipts){
+  const item=expected.get(r.version);
+  need(r.statement_count===1,'RECEIPT_STATEMENT_CARDINALITY_DRIFT');
+  need(r.first_statement_bytes===Buffer.byteLength(item.sql,'utf8'),'RECEIPT_STATEMENT_LENGTH_DRIFT');
+  need(r.md5===digest(Buffer.from(item.sql),'md5'),'RECEIPT_HASH_DRIFT');
+ }
  const tables=Number((await c.query("SELECT count(*) AS n FROM pg_tables WHERE schemaname='public'")).rows[0].n);
  if(receipts.length===0)need(tables===191,'INITIAL_SCHEMA_DRIFT');
  if(receipts.length===39)need(tables===208,'FINAL_SCHEMA_DRIFT');
