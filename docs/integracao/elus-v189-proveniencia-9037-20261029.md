@@ -39,3 +39,15 @@ Consultas `SELECT` ao projeto `elus`, PostgreSQL 17.11, em 29/10/2026:
 - A [PR #62](https://github.com/OARANHA/elus/pull/62) permanece aberta, mergeável, HEAD `3b1ac7a2b7cf4c4859f890eca9e5d2def8aec3c5`; o [CI #40865137502](https://github.com/OARANHA/elus/actions/runs/40865137502) desse HEAD concluiu `success`. A [PR #43](https://github.com/OARANHA/elus/pull/43) permanece integrada; `main=a44e039390577c3adc279aa9168c18e99bb64a93`.
 
 **Decisão operacional preservada:** 9037 não pertence ao manifesto fixado v1.89; não elevar limite de 50 recibos nem autorizar `apply` para acomodá-la. A investigação da RPC 0765 deve continuar por evidências de execução/DDL e catálogo, sem inferir causa a partir da ordem dos recibos. Mantêm-se os gates de restauração/replay PG15/17, isolamento multi-tenant e autorização independente para a 0759. Nenhum SQL mutante, E2E, merge, imagem ou deploy nesta rodada.
+
+## Sobreposição comprovada entre ELUS 0690 e ELUS360 9037 — 29/10/2026
+
+**Comparação estática dos SQLs versionados:** a migration própria ELUS `20261020120000_0690_org_ai_autonomy_protected.sql` (blob `4ad880adf0a8e294e20a1b50dae1fb9dbed1db65`) e a migration externa 9037 (blob `b4fd132fdd482c017a823f2baf013b20b2850c2d`) declaram **a mesma função** `public.fn_guard_organizations_ai_autonomy()` com `CREATE OR REPLACE FUNCTION` e recriam o mesmo trigger `trg_guard_organizations_ai_autonomy` em `public.organizations`.
+
+A guarda da **0690** aceita `auth.role() = 'service_role'` (além do caso controlado `postgres`); a versão da **9037** exige, no primeiro ramo, **`current_user = 'service_role' AND auth.role() = 'service_role'`**. Logo, as versões não são semanticamente idênticas: a 9037 acrescenta uma condição ao ramo de serviço. Não inferir daí eficácia funcional ou cobertura de todas as rotas.
+
+**Catálogo vivo, somente SELECT:** `to_regprocedure('public.fn_guard_organizations_ai_autonomy()')` existe; `pg_get_functiondef` contém a condição conjunta de `current_user` e `auth.role()`; o trigger correspondente está habilitado. A função não contém referência à RPC de rotação MFA 0765. A consulta de metadados da mesma rodada confirmou 51 recibos, 0765 com um statement de 2.747 bytes, 9037 com um statement de 34.985 bytes e **nenhuma função** de rotação de códigos de recuperação identificada por nome.
+
+**Implicação de compatibilidade:** reaplicar o SQL da 0690 **depois** da 9037, em qualquer replay ou instalação/atualização que execute novamente esse bloco, poderia substituir a versão mais restritiva do guard por uma versão anterior. Isso é um **risco condicional de regressão**, não evidência de que tal reaplicação ocorreu. Antes de qualquer plano de upgrade, reconciliar a ordem e a semântica da guarda 0690/9037 em uma trilha de compatibilidade separada, sem incorporar a 9037 às 39 migrations v1.89 e sem alterar o limite fail-closed de 50 recibos do executor.
+
+**Gates inalterados:** a ausência da RPC 0765 segue sem causa demonstrada; restauração/replay PG15/17, isolamento multi-tenant e autorização específica da operação destrutiva 0759 continuam pendentes. Nenhum SQL mutante, E2E, merge, imagem ou deploy nesta investigação.
