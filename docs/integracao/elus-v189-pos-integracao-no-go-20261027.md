@@ -213,3 +213,13 @@ Consulta **exclusivamente de leitura** ao catálogo do projeto ELUS (PostgreSQL 
 - **Limites e próximo gate:** a análise foi de corpo e ACL, sem chamada real da RPC, sem dois tenants sintéticos e sem revisão completa de `fn_support_context`, permissões de criação nos schemas ou efeitos downstream. Não revogar grants nem alterar `search_path` por contagem bruta. Exigir teste negativo de isolamento em ambiente descartável e revisão focal dos demais 53 corpos/grants antes de declarar segurança funcional.
 
 **Estado de upgrade inalterado:** NO-GO por divergência da RPC `0765`, falta de proveniência/execução comprovada dos 39 recibos, restauração e replay histórico PG15/17, auditoria multi-tenant e autorização independente para a operação destrutiva `0759`. Nenhum SQL mutante, E2E/Playwright, merge, publicação de imagem ou deploy.
+
+## Metadados transacionais dos recibos adicionais — 29/10/2026 (somente leitura)
+
+**Método:** duas consultas `SELECT` ao catálogo de migrações `supabase_migrations.schema_migrations` do ELUS, sem ler SQL bruto ou linhas de clientes e sem executar DDL/DML. Agrupou-se o identificador da versão da tupla `xmin::text`, distinguindo as 11 versões históricas fixadas no executor dos 39 recibos adicionais. `xmin` é metadado MVCC da versão atual da linha; **não** é recibo de execução de DDL, timestamp ou prova de autoria.
+
+**Resultado medido:** os **39 recibos adicionais têm 39 valores `xmin` distintos**, entre `7727` e `7782`; na ordenação por `xmin`, **29 dos 38 pares** são consecutivos e **9 não são**. O recibo da RPC `0765` tem `xmin=7782`. A configuração `track_commit_timestamp` está **`off`**, impossibilitando inferir datas de commit desses identificadores por esse mecanismo. Os 11 recibos históricos também apresentaram valores `xmin` distintos no agrupamento consultado.
+
+**Interpretação restrita:** os 39 valores distintos indicam que as **versões atuais das linhas** foram produzidas por transações diferentes; podem refletir inserções ou atualizações e não identificam quem as produziu. A proximidade dos identificadores é compatível com processamento sequencial de recibos, mas não demonstra execução dos SQLs associados nem estabelece uma linha do tempo verificável. A ausência da função `fn_elus_rotacionar_codigos_recuperacao`, apesar do recibo `0765`, permanece sem explicação causal.
+
+**Gate inalterado: NO-GO.** Exigir evidência independente de execução, backup/restauração e replay histórico PostgreSQL 15/17, isolamento multi-tenant e aprovação específica do efeito destrutivo da `0759`. Não corrigir ledger ou executar SQL por inferência. Nesta auditoria não houve E2E/Playwright, SQL mutante, merge, publicação de imagem ou deploy.
