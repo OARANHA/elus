@@ -97,3 +97,10 @@ Consulta **exclusivamente SELECT**, no projeto ELUS (PostgreSQL 17.11), sem reto
 - A RPC `public.fn_elus_rotacionar_codigos_recuperacao(uuid,text[])` continua **ausente**, apesar do recibo 0765 com bytes idênticos ao SQL versionado.
 
 **Alcance:** não se identificou falta dessas dependências básicas que explique a ausência da RPC. A checagem não compila nem executa o DDL, não comprova privilégios de criação no momento da migration, não reconstrói a sequência de eventos e não estabelece causa. Mantidos NO-GO, teto fail-closed de 50 recibos, bloqueio de `apply` e exigências independentes de restauração/replay PostgreSQL 15/17, isolamento multi-tenant e aprovação da 0759. Nenhuma alteração no banco foi realizada.
+
+
+## Atestação adicional de isolamento da tabela MFA — 29/10/2026
+
+Consulta exclusivamente `SELECT` ao catálogo do Supabase ELUS, sem ler registros de usuários: `public.user_recovery_codes` existe, possui RLS habilitado, uma policy (a policy de leitura com predicado `false`), dois constraints e nenhum trigger de usuário. Para os papéis `anon` e `authenticated`, `has_table_privilege` retornou `false` em todas as quatro operações DML (SELECT, INSERT, UPDATE, DELETE). O catálogo `pg_proc` contém **zero funções** com nome `fn_elus_rotacionar_codigos_recuperacao` em qualquer schema. Isso comprova uma proteção de acesso no catálogo observado, **não** valida isolamento funcional entre tenants, nem explica por que a RPC 0765 não existe apesar do recibo exato.
+
+Na [PR #62](https://github.com/OARANHA/elus/pull/62), os commits [`f88db11b`](https://github.com/OARANHA/elus/commit/f88db11b185b31fc09145c99c63443c99a000dca) e [`ef0082d5`](https://github.com/OARANHA/elus/commit/ef0082d54b194d29742d7f32763f3c8cf2cd5320) ampliam o modo `diagnose` somente leitura com contagem de RPCs homônimas em qualquer schema, RLS da tabela MFA e presença da policy de leitura negada, com teste estático de regressão. O CI anterior (`a07f44d3`) estava GREEN; o CI desses commits novos não foi consultado nesta execução. A proteção `apply` permanece bloqueada, sem mudar manifesto, baseline ou limite de 50 recibos. **NO-GO** mantido.
