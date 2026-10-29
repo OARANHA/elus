@@ -161,3 +161,19 @@ Referências: [gate do banco real](elus-v189-banco-real-e-gates-20261025.md), [p
 **CI do código de proteção:** [PR #62](https://github.com/OARANHA/elus/pull/62), HEAD `526d32532b1212b18942eed08af433cfdd35625c`, [CI #40780493720](https://github.com/OARANHA/elus/actions/runs/40780493720) `completed/success`, com cinco partições `verify-parte`, agregadores e invariantes PostgreSQL 15/17 concluídos com sucesso. O workflow E2E na `main` segue somente `workflow_dispatch`; nenhum E2E ou teste local foi executado nesta auditoria. O HEAD da proteção ainda está fora da `main`; CI GREEN não constitui aceite funcional.
 
 **Gate preservado: NO-GO.** Ainda faltam proveniência independente da inserção/execução dos 39 recibos, explicação da RPC ausente, prova de backup/restauração e replay histórico PostgreSQL 15/17, auditoria completa ACL/RLS/tenancy e autorização específica para o `DELETE` da `0759`. Nenhum SQL mutante, merge, publicação manual de imagem ou deploy nesta coleta.
+
+
+## Auditoria transversal de RLS nas tabelas tenant-aware — 28/10/2026
+
+**Método e fronteira:** duas consultas `SELECT` ao catálogo PostgreSQL do projeto ELUS (sem leitura de linhas de clientes, sem DDL, sem chamadas de funções e sem mutação). Foram consideradas apenas relações físicas `public` de tipo tabela comum/particionada com coluna `organization_id` visível. Não inclui tabelas sem essa coluna, views, schemas privados, privilégios herdados por execução de funções nem políticas avaliadas sob identidades reais.
+
+- **186 tabelas tenant-aware** nessa régua; **186/186 com RLS habilitado** e **zero** com RLS desabilitado.
+- **24/186 sem políticas RLS** cadastradas. Ausência de policy implica negação por padrão para papéis sujeitos a RLS; não prova que todo acesso por `service_role`, owner ou função `SECURITY DEFINER` esteja isolado.
+- **47/186** possuem privilégio efetivo `SELECT` para `anon`; **159/186**, para `authenticated`. Concessão de tabela não implica visibilidade de linhas quando RLS está habilitado.
+- Entre as 47 tabelas com `SELECT` para `anon`, foram encontradas **66 policies** de comando `SELECT`/`ALL` atribuídas a `PUBLIC` ou `anon`. **Zero** têm expressão `USING` literalmente nula, `true` ou `(true)`. Esta comparação textual NÃO valida predicados, funções chamadas, combinação de policies permissivas/restritivas, `WITH CHECK`, bypass ou isolamento real entre organizações.
+
+**Conclusão limitada:** não foi encontrado RLS desabilitado nesse conjunto, mas o resultado **não é homologação de tenancy**. A revisão das 47 concessões `anon`, das policies e dos caminhos com privilégios elevados continua necessária; nenhum teste de dois tenants foi executado. A RPC `0765` continua sem explicação comprovada, conforme auditorias anteriores.
+
+**Revalidação GitHub desta execução:** `main=a44e039390577c3adc279aa9168c18e99bb64a93`; PR #43 merged; PR #62 aberta/mergeável no HEAD `526d32532b1212b18942eed08af433cfdd35625c`, com [CI #40780493720](https://github.com/OARANHA/elus/actions/runs/40780493720), [perf #40780493591](https://github.com/OARANHA/elus/actions/runs/40780493591) e [GHCR #40780493603](https://github.com/OARANHA/elus/actions/runs/40780493603) `completed/success` no evento de PR. Sucesso do workflow GHCR não comprova publicação de imagem. PR #51 permanece Draft e `mergeable=false` no snapshot, sem resolução de conflito nesta rodada; PRs #52 e #58 permanecem Draft. E2E em `main` continua apenas `workflow_dispatch`.
+
+**Gate: NO-GO.** Faltam proveniência/execução das 39 entradas adicionais, explicação e reparo autorizado da RPC `0765`, restauração comprovada, replay fiel v1.85→v1.89 em PG15/17 e autorização independente para o `DELETE` da `0759`. Nenhum E2E/Playwright, SQL mutante, merge, publicação manual ou deploy foi executado nesta auditoria.
