@@ -70,6 +70,23 @@ describe("ELUS v1.89: executor produtivo guardado", () => {
     expect(source).toContain("recoveryRotationRpcPresent:rpc.present");
   });
 
+  it("confere sete fingerprints históricos privados contra o verificador v1.85", () => {
+    const source = readFileSync(script, "utf8");
+    const verifier = readFileSync("scripts/verificar-lotes-v185.mjs", "utf8");
+    const fromExecutor = [...source.matchAll(/\\['(\\d{14})',(\\d+),'([a-f0-9]{32})'\\]/g)]
+      .map((match) => [match[1], Number(match[2]), match[3]]);
+    const fromVerifier = [...verifier.matchAll(/\\["(\\d{14})", (\\d+), "([a-f0-9]{32})"\\]/g)]
+      .map((match) => [match[1], Number(match[2]), match[3]]);
+    expect(fromExecutor).toHaveLength(7);
+    expect(fromExecutor).toEqual(fromVerifier);
+    expect(source).toContain("cardinality(statements) AS statement_count");
+    expect(source).toContain("octet_length(statements[1]) AS first_statement_bytes");
+    expect(source).toContain("r.statement_count===1");
+    expect(source).toContain("r.first_statement_bytes===expected[0]");
+    expect(source).toContain("digest(Buffer.from(r.md5||'','ascii'),'md5')===expected[1]");
+    expect(source).toContain("'HISTORY_STATEMENT_DRIFT'");
+  });
+
   it("exige assinatura operacional e preserva guardas do ledger e rollback", () => {
     const source = readFileSync(script, "utf8");
     expect(source).toContain("ADMIN_APPROVAL_REQUIRED");
