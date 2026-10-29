@@ -190,3 +190,15 @@ Referências: [gate do banco real](elus-v189-banco-real-e-gates-20261025.md), [p
 **Logs:** no recorte padrão de 24 horas dos logs PostgreSQL, buscas agregadas não encontraram menções ao identificador da RPC, ao nome da migration nem à tabela de migrations. Ausência nesse recorte não exclui operações anteriores ou não registradas.
 
 **Resultado:** recibo presente e RPC ausente permanecem contraditórios; **a causa e a proveniência não estão comprovadas**. Não reaplicar `0765`, não editar o ledger, não desbloquear `apply`. Mantido **NO-GO** até evidência de restauração/replay fiel PostgreSQL 15/17, revisão ACL/RLS e autorização independente do `DELETE` da `0759`. Nenhum E2E, SQL mutante, merge, publicação manual de imagem ou deploy foi executado.
+
+
+## Auditoria complementar — políticas aplicáveis a anon nas tabelas tenant-aware (28/10/2026)
+
+Consulta **exclusivamente de leitura** ao catálogo do projeto ELUS (PostgreSQL 17.11), filtrando tabelas `public` com coluna `organization_id`, RLS habilitado e privilégio efetivo de `SELECT` para `anon`:
+
+- **47 tabelas** atendem ao filtro. O privilégio `SELECT` isolado **não** significa que a role consegue ler linhas: a política RLS continua aplicável.
+- **46/47** possuem pelo menos uma política de `SELECT`/`ALL` aplicável a `anon` ou `PUBLIC`; **`agent_cases`** é a exceção, com zero políticas aplicáveis neste filtro e RLS habilitado (negação por padrão para a role sem bypass).
+- Foram inspecionadas **66 políticas aplicáveis**. **65** contêm marcadores textuais de escopo/autorização (`organization_id`, `fn_user_org_ids`, `fn_role_at_least`, `fn_can_view`, `fn_is_platform_admin`, `fn_conversation_scope` ou `auth.uid`). A única fora dessa classificação textual é a política **restritiva** `idempotency_platform_creation_server_only` em `idempotency_keys`, cuja expressão limita `endpoint` e `tenant_creation_trusted`.
+- **0/66** têm expressão `USING` nula ou literalmente `true`. O resultado é **triagem estática de políticas**, não teste de isolamento entre dois tenants, nem demonstração de ausência de bypass em funções `SECURITY DEFINER`, views ou caminhos com `service_role`.
+
+**Encaminhamento:** manter a revisão funcional negativa por papéis e dois tenants sintéticos como gate antes de qualquer operação produtiva; investigar `agent_cases` quanto à intenção de ausência de políticas e conferir os caminhos de leitura via `service_role`. Esta auditoria não altera banco, migrations, executor, E2E, imagens ou deploy. O **NO-GO** de `0759`, da RPC `0765`, da restauração e do replay histórico PG15/17 permanece inalterado.
