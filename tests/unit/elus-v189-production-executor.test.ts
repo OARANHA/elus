@@ -146,6 +146,17 @@ describe("ELUS v1.89: executor produtivo guardado", () => {
     expect(source).toContain("r.md5===digest(Buffer.from(item.sql),'md5')");
   });
 
+  it("bloqueia 51 recibos e versoes nao previstas no plano v1.89", () => {
+    const source = readFileSync(script, "utf8");
+    // O banco observado em 29/10 possui uma 51a entrada alheia ao manifesto
+    // fixado. Nao ampliar automaticamente a allowlist ou a cardinalidade.
+    expect(source).toContain("need(records.length<=50,'LEDGER_COUNT_DRIFT')");
+    expect(source).toContain("receipts.length<=39");
+    expect(source).toContain("'UNKNOWN_RECEIPT'");
+    expect(source).toContain("'NONPREFIX_LEDGER'");
+    expect(source).toContain("'RECEIPT_HASH_DRIFT'");
+  });
+
   it("exige assinatura operacional e preserva guardas do ledger e rollback", () => {
     const source = readFileSync(script, "utf8");
     expect(source).toContain("ADMIN_APPROVAL_REQUIRED");
