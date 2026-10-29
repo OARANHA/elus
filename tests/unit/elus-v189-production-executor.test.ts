@@ -116,6 +116,16 @@ describe("ELUS v1.89: executor produtivo guardado", () => {
     expect(source).toContain("'ELUS_HISTORY_STATEMENT_DRIFT'");
   });
 
+  it("reprova recibos v1.89 repartidos ou com bytes divergentes, mesmo com MD5 concatenado igual", () => {
+    const source = readFileSync(script, "utf8");
+    expect(source).toContain("cardinality(statements) AS statement_count");
+    expect(source).toContain("octet_length(statements[1]) AS first_statement_bytes");
+    expect(source).toContain("r.statement_count===1,'RECEIPT_STATEMENT_CARDINALITY_DRIFT'");
+    expect(source).toContain("r.first_statement_bytes===Buffer.byteLength(item.sql,'utf8')");
+    expect(source).toContain("'RECEIPT_STATEMENT_LENGTH_DRIFT'");
+    expect(source).toContain("r.md5===digest(Buffer.from(item.sql),'md5')");
+  });
+
   it("exige assinatura operacional e preserva guardas do ledger e rollback", () => {
     const source = readFileSync(script, "utf8");
     expect(source).toContain("ADMIN_APPROVAL_REQUIRED");
