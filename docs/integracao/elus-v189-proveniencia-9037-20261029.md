@@ -51,3 +51,14 @@ A guarda da **0690** aceita `auth.role() = 'service_role'` (além do caso contro
 **Implicação de compatibilidade:** reaplicar o SQL da 0690 **depois** da 9037, em qualquer replay ou instalação/atualização que execute novamente esse bloco, poderia substituir a versão mais restritiva do guard por uma versão anterior. Isso é um **risco condicional de regressão**, não evidência de que tal reaplicação ocorreu. Antes de qualquer plano de upgrade, reconciliar a ordem e a semântica da guarda 0690/9037 em uma trilha de compatibilidade separada, sem incorporar a 9037 às 39 migrations v1.89 e sem alterar o limite fail-closed de 50 recibos do executor.
 
 **Gates inalterados:** a ausência da RPC 0765 segue sem causa demonstrada; restauração/replay PG15/17, isolamento multi-tenant e autorização específica da operação destrutiva 0759 continuam pendentes. Nenhum SQL mutante, E2E, merge, imagem ou deploy nesta investigação.
+
+
+## Atestação do campo rollback no ledger (29/10/2026)
+
+**Consulta exclusivamente SELECT, sem ler conteúdo de `statements` ou `rollback`, sem dados de clientes:** em `supabase_migrations.schema_migrations`, a coluna `rollback` está **SQL NULL em todos os 51 recibos observados**: 11 registros históricos v1.85/ELUS, 39 registros do manifesto v1.89 (38 upstream + 0765) e o recibo externo 9037. Nos 39 candidatos v1.89, foram observados **39 NULL, zero arrays vazios e zero arrays não vazios**. A 0765 e a 9037 possuem cada uma um `statement` registrado, mas `rollback IS NULL`.
+
+**Interpretação limitada:** não existem instruções de rollback armazenadas **nessa coluna do ledger** para os 51 registros consultados. Isso **não prova** que não haja backups, scripts de restauração externos ou outros mecanismos operacionais; tampouco prova execução dos SQLs ou autorização para desfazê-los. Não preencher `rollback` retroativamente nem improvisar reversões de DDL. O caminho de recuperação precisa ser demonstrado por **backup existente + restauração verificada em ambiente descartável**, além dos gates independentes de replay PG15/17, RLS/ACL/tenancy e aprovação específica da operação destrutiva 0759.
+
+**Revalidação simultânea:** ledger total 51, 208 tabelas em `public`, 9037 com um statement de 34.985 bytes, função `fn_guard_organizations_ai_autonomy()` presente com a condição conjunta `current_user='service_role'` e `auth.role()='service_role'`, trigger habilitado; RPC 0765 continua ausente. Essa fotografia não comprova causa da divergência 0765.
+
+**NO-GO inalterado:** não ampliar o manifesto/allowlist de 50 recibos, não executar `apply`, SQL mutante, E2E/Playwright, merge, publicação de imagens ou deploy. O CI do HEAD `3b1ac7a2` da PR #62 foi verificado uma única vez nesta rodada: [run #40865137502](https://github.com/OARANHA/elus/actions/runs/40865137502) `completed/success`; não é aceite funcional.
