@@ -74,7 +74,8 @@ describe("ELUS v1.89: executor produtivo guardado", () => {
   it("confere sete fingerprints históricos privados contra o verificador v1.85", () => {
     const source = readFileSync(script, "utf8");
     const verifier = readFileSync("scripts/verificar-lotes-v185.mjs", "utf8");
-    const historicalBlock = source.split("const HISTORICAL_FINGERPRINTS=new Map([", 2)[1]?.split("]);", 1)[0] ?? "";
+    const historicalBlock =
+      source.split("const HISTORICAL_FINGERPRINTS=new Map([", 2)[1]?.split("]);", 1)[0] ?? "";
     const fromExecutor = [...historicalBlock.matchAll(/\['(\d{14})',(\d+),'([a-f0-9]{32})'\]/g)]
       .map((match) => [match[1], Number(match[2]), match[3]]);
     const fromVerifier = [...verifier.matchAll(/\["(\d{14})", (\d+), "([a-f0-9]{32})"\]/g)]
@@ -91,7 +92,8 @@ describe("ELUS v1.89: executor produtivo guardado", () => {
 
   it("confere quatro recibos ELUS históricos contra SQL versionado e ledger atestado", () => {
     const source = readFileSync(script, "utf8");
-    const block = source.split("const ELUS_HISTORICAL_FINGERPRINTS=new Map([", 2)[1]?.split("]);", 1)[0] ?? "";
+    const block =
+      source.split("const ELUS_HISTORICAL_FINGERPRINTS=new Map([", 2)[1]?.split("]);", 1)[0] ?? "";
     const expected = [
       ["20261019204449", "20261019120000_0689_integracoes_erp_vendaerp.sql"],
       ["20261021025530", "20261020120000_0690_org_ai_autonomy_protected.sql"],
@@ -104,10 +106,13 @@ describe("ELUS v1.89: executor produtivo guardado", () => {
     expect(fingerprints.map((row) => row[0])).toEqual(expected.map((row) => row[0]));
     for (const [index, [, filename]] of expected.entries()) {
       const bytes = readFileSync(`supabase/migrations/${filename}`);
-      expect(bytes.length).toBe(fingerprints[index][1]);
-      expect(createHash("md5").update(bytes).digest("hex")).toBe(fingerprints[index][2]);
+      const fingerprint = fingerprints[index]!;
+      expect(bytes.length).toBe(fingerprint[1]);
+      expect(createHash("md5").update(bytes).digest("hex")).toBe(fingerprint[2]);
     }
-    expect(source).toContain("r.statement_count===1&&r.first_statement_bytes===own[0]&&r.md5===own[1]");
+    expect(source).toContain(
+      "r.statement_count===1&&r.first_statement_bytes===own[0]&&r.md5===own[1]",
+    );
     expect(source).toContain("'ELUS_HISTORY_STATEMENT_DRIFT'");
   });
 
