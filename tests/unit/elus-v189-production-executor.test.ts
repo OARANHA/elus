@@ -157,6 +157,13 @@ describe("ELUS v1.89: executor produtivo guardado", () => {
       "md5(statements[1])='10df3c797779f8cb4461631cb22676d2'",
     );
     expect(diagnostic).toContain("version='20261026010000'");
+    expect(diagnostic).toContain("receipt_0765_exact");
+    expect(diagnostic).toContain("octet_length(statements[1])=2747");
+    expect(diagnostic).toContain("md5(statements[1])='add7a7db36db87cd213fd7a7d0f81db7'");
+    expect(diagnostic).toContain("receipt0765Exact:Number(ledger.receipt_0765_exact)===1");
+    const rpcSql = readFileSync("supabase/migrations/20261026010000_0765_elus_rotacao_atomica_codigos_recuperacao.sql");
+    expect(rpcSql.length).toBe(2747);
+    expect(createHash("md5").update(rpcSql).digest("hex")).toBe("add7a7db36db87cd213fd7a7d0f81db7");
     expect(diagnostic).toContain(
       "to_regprocedure('public.fn_elus_rotacionar_codigos_recuperacao(uuid,text[])')",
     );
