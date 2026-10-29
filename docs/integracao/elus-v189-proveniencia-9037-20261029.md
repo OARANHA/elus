@@ -28,3 +28,14 @@ Consultas `SELECT` ao projeto `elus`, PostgreSQL 17.11, em 29/10/2026:
 **Bloqueios remanescentes:** esclarecer ausência da RPC 0765; comprovar origem/execução dos DDLs importados, restauração de backup e replay fiel v1.85→v1.89 em PostgreSQL 15/17 descartável; demonstrar isolamento entre dois tenants; obter autorização específica e independente para o `DELETE` da migration 0759. O recibo 9037 não resolve nenhum desses gates.
 
 **Escopo desta auditoria:** somente GitHub, memória de contexto e SQL de metadados/ACL em leitura. Nenhum SQL mutante, E2E/Playwright, merge, publicação manual de imagem ou deploy foi executado.
+
+## Revalidação independente e exclusão de causa direta — 29/10/2026
+
+**Fontes verificadas nesta rodada:** SQL versionado da 9037 em `OARANHA/elus360`, blob `b4fd132fdd482c017a823f2baf013b20b2850c2d` no merge `046900b48ff31be588934db903fa341bcc43f1d4`; catálogo/ledger do projeto Supabase ELUS por **um SELECT somente de metadados**, sem ler dados de clientes. O arquivo versionado possui 34.985 bytes no recibo SQL do banco (não equiparar comprimento de string JavaScript a bytes UTF-8).
+
+- O ledger continua com **51 recibos**; a 9037 (`20261029104815`) tem **um statement de 34.985 bytes**; a 0765 (`20261026010000`) possui recibo. O catálogo mantém **208 tabelas** em `public` e RLS habilitado em `public.user_recovery_codes`.
+- A busca de `pg_catalog.pg_proc` por `proname='fn_elus_rotacionar_codigos_recuperacao'` retornou **zero funções em todos os schemas**. Portanto a divergência 0765 continua material, independentemente da identidade dos bytes do recibo.
+- A inspeção **estática** do SQL 9037 não encontrou menções a `fn_elus_rotacionar_codigos_recuperacao` nem a `user_recovery_codes`, nem `DROP FUNCTION`, `ALTER FUNCTION` ou `CREATE EVENT TRIGGER`. Seu único `DROP` de objeto encontrado é `DROP TRIGGER IF EXISTS trg_guard_organizations_ai_autonomy ON public.organizations`. Não foi identificado mecanismo direto no texto 9037 que explique a ausência da RPC 0765. **Isso não demonstra a causa da ausência nem exclui efeitos indiretos ou ações externas.**
+- A [PR #62](https://github.com/OARANHA/elus/pull/62) permanece aberta, mergeável, HEAD `3b1ac7a2b7cf4c4859f890eca9e5d2def8aec3c5`; o [CI #40865137502](https://github.com/OARANHA/elus/actions/runs/40865137502) desse HEAD concluiu `success`. A [PR #43](https://github.com/OARANHA/elus/pull/43) permanece integrada; `main=a44e039390577c3adc279aa9168c18e99bb64a93`.
+
+**Decisão operacional preservada:** 9037 não pertence ao manifesto fixado v1.89; não elevar limite de 50 recibos nem autorizar `apply` para acomodá-la. A investigação da RPC 0765 deve continuar por evidências de execução/DDL e catálogo, sem inferir causa a partir da ordem dos recibos. Mantêm-se os gates de restauração/replay PG15/17, isolamento multi-tenant e autorização independente para a 0759. Nenhum SQL mutante, E2E, merge, imagem ou deploy nesta rodada.
