@@ -84,3 +84,16 @@ Consulta separada a `pg_catalog.pg_proc`, incluindo todos os schemas não intern
 Na [PR #62](https://github.com/OARANHA/elus/pull/62), o diagnóstico `diagnose` passou a emitir `receipt0765Exact` separadamente de `receipt0765Present` e `rpc0765Present`, exigindo nome, cardinalidade, bytes e MD5 fixados, com teste unitário que confronta o fingerprint ao arquivo SQL. Commits `6a8ba736`, `b1403239`, `a07f44d3`; o CI desse novo HEAD **não foi consultado nesta execução**. `apply` continua bloqueado antes da conexão e o teto de 50 recibos do verificador v1.89 não foi ampliado.
 
 **Decisão:** investigar a cadeia de execução da 0765 por evidência independente; não reaplicar, não editar ledger, não liberar upgrade nem produção sem os gates de restauração/replay, tenancy e aprovação específica da 0759.
+
+
+## Dependências SQL da 0765 verificadas no catálogo — 29/10/2026
+
+Consulta **exclusivamente SELECT**, no projeto ELUS (PostgreSQL 17.11), sem retornar dados de clientes ou SQL armazenado no ledger, confrontou as dependências declaradas no arquivo versionado `20261026010000_0765_elus_rotacao_atomica_codigos_recuperacao.sql`:
+
+- `public.user_recovery_codes` existe; `user_id` é `uuid NOT NULL` e `code_hash` é `bytea NOT NULL`.
+- `pg_catalog.hashtextextended(text,bigint)`, `pg_catalog.pg_advisory_xact_lock(bigint)` e `pg_catalog.decode(text,text)` existem.
+- `pg_catalog.unnest` é polimórfica (`unnest(anyarray)`); por isso `to_regprocedure('pg_catalog.unnest(text[])')` retorna falso **sem indicar função ausente**. A chamada real `SELECT count(*) FROM pg_catalog.unnest(ARRAY['a','b']::text[])` retornou 2 linhas, confirmando resolução do overload para `text[]`.
+- Seis event triggers habilitados foram observados no catálogo; sua existência, isoladamente, não demonstra interferência na migration 0765.
+- A RPC `public.fn_elus_rotacionar_codigos_recuperacao(uuid,text[])` continua **ausente**, apesar do recibo 0765 com bytes idênticos ao SQL versionado.
+
+**Alcance:** não se identificou falta dessas dependências básicas que explique a ausência da RPC. A checagem não compila nem executa o DDL, não comprova privilégios de criação no momento da migration, não reconstrói a sequência de eventos e não estabelece causa. Mantidos NO-GO, teto fail-closed de 50 recibos, bloqueio de `apply` e exigências independentes de restauração/replay PostgreSQL 15/17, isolamento multi-tenant e aprovação da 0759. Nenhuma alteração no banco foi realizada.
