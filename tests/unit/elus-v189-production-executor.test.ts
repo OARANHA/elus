@@ -71,6 +71,26 @@ describe("ELUS v1.89: executor produtivo guardado", () => {
     expect(source).toContain("recoveryRotationRpcPresent:rpc.present");
   });
 
+  it("atesta canarios de DDLs distintos em verify sem confundir recibo com execucao", () => {
+    const source = readFileSync(script, "utf8");
+    const canaries = [
+      "public.crm_lead_attachments",
+      "public.mfa_trusted_devices",
+      "public.importacoes_de_historico",
+      "public.automation_rodizio_atribuicoes",
+      "public.fn_session_mfa_proven()",
+      "public.fn_automation_rodizio_atribuir(uuid,uuid,uuid,uuid)",
+    ];
+    for (const object of canaries) {
+      expect(source).toContain(object);
+    }
+    expect(source).toContain("Object.values(schemaCanaries).every(v=>v===true)");
+    expect(source).toContain("'SCHEMA_CANARY_DRIFT'");
+    expect(source).toContain("schemaCanaries,manifest:39");
+    expect(source).toContain("if(mode==='verify'){");
+    expect(source).toContain("BEGIN READ ONLY");
+  });
+
   it("confere sete fingerprints históricos privados contra o verificador v1.85", () => {
     const source = readFileSync(script, "utf8");
     const verifier = readFileSync("scripts/verificar-lotes-v185.mjs", "utf8");
