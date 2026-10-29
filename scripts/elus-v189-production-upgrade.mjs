@@ -127,7 +127,12 @@ async function diagnoseLedger(c){
        AND cardinality(statements)=1
        AND octet_length(statements[1])=34985
        AND md5(statements[1])='10df3c797779f8cb4461631cb22676d2') AS external_9037_exact,
-     count(*) FILTER (WHERE version='20261026010000') AS receipt_0765
+     count(*) FILTER (WHERE version='20261026010000') AS receipt_0765,
+     count(*) FILTER (WHERE version='20261026010000'
+       AND name='0765_elus_rotacao_atomica_codigos_recuperacao'
+       AND cardinality(statements)=1
+       AND octet_length(statements[1])=2747
+       AND md5(statements[1])='add7a7db36db87cd213fd7a7d0f81db7') AS receipt_0765_exact
    FROM supabase_migrations.schema_migrations
  `)).rows[0];
  const catalog=(await c.query(`
@@ -151,6 +156,7 @@ async function diagnoseLedger(c){
    ledgerReceipts:Number(ledger.total_receipts),
    external9037Exact:Number(ledger.external_9037_exact)===1,
    receipt0765Present:Number(ledger.receipt_0765)===1,
+   receipt0765Exact:Number(ledger.receipt_0765_exact)===1,
    rpc0765Present:catalog.rpc_0765_present===true,
    guard9037Strict:catalog.guard_9037_strict===true,
    guardTriggerEnabled:catalog.guard_trigger_enabled===true,
