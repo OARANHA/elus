@@ -146,6 +146,25 @@ describe("ELUS v1.89: executor produtivo guardado", () => {
     expect(source).toContain("r.md5===digest(Buffer.from(item.sql),'md5')");
   });
 
+  it("diagnostica o recibo externo 9037 e a RPC 0765 sem liberar o upgrade", () => {
+    const source = readFileSync(script, "utf8");
+    const diagnostic = source.split("async function diagnoseLedger(c){", 2)[1]?.split("async function main(){", 1)[0] ?? "";
+    expect(diagnostic).toContain("SELECT count(*) AS total_receipts");
+    expect(diagnostic).toContain("version='20261029104815'");
+    expect(diagnostic).toContain("md5(statements[1])='10df3c797779f8cb4461631cb22676d2'");
+    expect(diagnostic).toContain("version='20261026010000'");
+    expect(diagnostic).toContain("to_regprocedure('public.fn_elus_rotacionar_codigos_recuperacao(uuid,text[])')");
+    expect(diagnostic).toContain("guard_9037_strict");
+    expect(diagnostic).toContain("guard_trigger_enabled");
+    expect(diagnostic).toContain("DIAGNOSTIC_ONLY_NOT_RELEASE_APPROVAL");
+    expect(diagnostic).not.toMatch(/\\b(?:INSERT|UPDATE|DELETE|ALTER|DROP|CREATE)\\b/i);
+    expect(source).toContain("if(mode==='diagnose'){");
+    expect(source.indexOf("if(mode==='diagnose'){")).toBeLessThan(source.indexOf("const state=await snapshot(c,items)"));
+    expect(source).toContain("need(records.length<=50,'LEDGER_COUNT_DRIFT')");
+    expect(source).toContain("PRODUCTION_APPLY_BLOCKED_PENDING_RESTORE_AND_0759_APPROVAL");
+    expect(source).toContain("BEGIN READ ONLY");
+  });
+
   it("bloqueia 51 recibos e versoes nao previstas no plano v1.89", () => {
     const source = readFileSync(script, "utf8");
     // O banco observado em 29/10 possui uma 51a entrada alheia ao manifesto
