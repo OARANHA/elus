@@ -19,6 +19,18 @@ const HISTORY=[
  ['20261021025613','elus_0692_chutes_catalog_sync']
 ];
 const EXTRA='20261026010000_0765_elus_rotacao_atomica_codigos_recuperacao.sql';
+// Impressões públicas dos sete statements históricos privados, já validadas
+// pelo exportador v1.85. Nunca expor o SQL nem tratá-las como prova de replay.
+const HISTORICAL_FINGERPRINTS=new Map([
+ ['20261018200431',174,'72db224ba3b80c474d771d66cb593668'],
+ ['20261018204508',508044,'a1bfe00566688f95f316e4e37ffeb97c'],
+ ['20261018204837',509703,'f7e534e726ec192c1db7fe984cf5c2a3'],
+ ['20261018204851',510397,'df7399b2361471a32f6baebb5a51823b'],
+ ['20261018204924',510108,'f3a0b9ea9d0cce746c2d403f9a04dd7f'],
+ ['20261018204939',509661,'e6038fa04f2faa45f9416dc462beeb52'],
+ ['20261018204955',484187,'dab84f1d8332894d78cf737b28488450'],
+]);
+
 const digest=(data,algo='sha256')=>createHash(algo).update(data).digest('hex');
 function need(ok,reason){if(!ok)throw Error(reason);}
 function manifest(){
@@ -57,9 +69,19 @@ function config(){
   connectionTimeoutMillis:8000,query_timeout:120000};
 }
 async function snapshot(c,items){
- const records=(await c.query("SELECT version,name,md5(array_to_string(statements,'')) AS md5 FROM supabase_migrations.schema_migrations ORDER BY version")).rows;
+ const records=(await c.query("SELECT version,name,md5(array_to_string(statements,'')) AS md5, cardinality(statements) AS statement_count, octet_length(statements[1]) AS first_statement_bytes FROM supabase_migrations.schema_migrations ORDER BY version")).rows;
  const old=records.filter(x=>HISTORY.some(y=>y[0]===x.version));
  need(old.length===11&&old.every((r,i)=>r.version===HISTORY[i][0]&&r.name===HISTORY[i][1]),'HISTORY_DRIFT');
+ // O nome e a versão do recibo não bastam: comparar também a identidade
+ // dos sete SQLs privados da instalação v1.85, sem exportar seu conteúdo.
+ for(const r of old){
+  const expected=HISTORICAL_FINGERPRINTS.get(r.version);
+  if(expected){
+   need(r.statement_count===1&&r.first_statement_bytes===expected[0]&&
+        digest(Buffer.from(r.md5||'','ascii'),'md5')===expected[1],
+        'HISTORY_STATEMENT_DRIFT');
+  }
+ }
  need(records.length<=50,'LEDGER_COUNT_DRIFT');
  const receipts=records.filter(x=>!HISTORY.some(y=>y[0]===x.version));
  need(receipts.length<=39&&new Set(receipts.map(x=>x.version)).size===receipts.length,'RECEIPT_DUPLICATE');
