@@ -74,3 +74,13 @@ Consulta **somente SELECT** ao `extensions.pg_stat_statements` do Supabase ELUS 
 - Consulta agregada aos `postgres_logs` encontrou 180 registros na janela 25/10 16:00–26/10 16:00 UTC e 478 registros em 28/10 16:20–29/10 16:20 UTC, sem correspondências textuais à RPC/DDL no campo de atributos pesquisado. Ausência em logs também **não** prova ausência de execução: política de logging e retenção não foram auditadas.
 
 **Limite inferencial:** `pg_stat_statements` mantém estatísticas agregadas, pode desalocar entradas e está configurado para rastrear comandos de topo. A ausência do nome da função nessa amostra **não prova** que a migration 0765 nunca foi executada, nem que tenha ocorrido DROP posterior. Continua comprovada apenas a divergência **recibo 0765 presente / RPC ausente**. Não há autorização para reaplicar SQL, remover recibos ou liberar `apply`.
+
+## Identidade exata do SQL 0765 no ledger — 29/10/2026
+
+Consulta SQL exclusivamente de leitura à `supabase_migrations.schema_migrations`, sem retornar o texto do statement, encontrou para `version=20261026010000`, `name=0765_elus_rotacao_atomica_codigos_recuperacao`: **um statement**, **2.747 bytes**, MD5 `add7a7db36db87cd213fd7a7d0f81db7` e Git blob SHA-1 `a05333f5b12b78c334181887f089b39398d9aa50`. O Git blob foi calculado dos bytes do statement armazenado (prefixo Git `blob <bytes>\0`) e é **idêntico** ao blob do arquivo versionado `supabase/migrations/20261026010000_0765_elus_rotacao_atomica_codigos_recuperacao.sql` na `main`. O mesmo SELECT reconfirmou a identidade do recibo externo 9037 (34.985 bytes, blob `b4fd132fdd482c017a823f2baf013b20b2850c2d`).
+
+Consulta separada a `pg_catalog.pg_proc`, incluindo todos os schemas não internos, retornou **nenhuma função** cujo nome contenha `rotacionar`, `recuperacao` ou `recovery`. Isso reduz a hipótese de simples assinatura/schema alternativo, mas **não identifica** se o DDL 0765 foi ignorado, revertido, ou se houve remoção posterior. Identidade do recibo **não comprova** a execução do SQL.
+
+Na [PR #62](https://github.com/OARANHA/elus/pull/62), o diagnóstico `diagnose` passou a emitir `receipt0765Exact` separadamente de `receipt0765Present` e `rpc0765Present`, exigindo nome, cardinalidade, bytes e MD5 fixados, com teste unitário que confronta o fingerprint ao arquivo SQL. Commits `6a8ba736`, `b1403239`, `a07f44d3`; o CI desse novo HEAD **não foi consultado nesta execução**. `apply` continua bloqueado antes da conexão e o teto de 50 recibos do verificador v1.89 não foi ampliado.
+
+**Decisão:** investigar a cadeia de execução da 0765 por evidência independente; não reaplicar, não editar ledger, não liberar upgrade nem produção sem os gates de restauração/replay, tenancy e aprovação específica da 0759.
