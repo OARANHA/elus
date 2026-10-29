@@ -73,9 +73,9 @@ describe("ELUS v1.89: executor produtivo guardado", () => {
   it("confere sete fingerprints históricos privados contra o verificador v1.85", () => {
     const source = readFileSync(script, "utf8");
     const verifier = readFileSync("scripts/verificar-lotes-v185.mjs", "utf8");
-    const fromExecutor = [...source.matchAll(/\\['(\\d{14})',(\\d+),'([a-f0-9]{32})'\\]/g)]
+    const fromExecutor = [...source.matchAll(/\['(\d{14})',(\d+),'([a-f0-9]{32})'\]/g)]
       .map((match) => [match[1], Number(match[2]), match[3]]);
-    const fromVerifier = [...verifier.matchAll(/\\["(\\d{14})", (\\d+), "([a-f0-9]{32})"\\]/g)]
+    const fromVerifier = [...verifier.matchAll(/\["(\d{14})", (\d+), "([a-f0-9]{32})"\]/g)]
       .map((match) => [match[1], Number(match[2]), match[3]]);
     expect(fromExecutor).toHaveLength(7);
     expect(fromExecutor).toEqual(fromVerifier);
