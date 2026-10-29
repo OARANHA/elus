@@ -145,6 +145,16 @@ async function main(){
   if(mode==='apply'){await c.query('SELECT pg_advisory_lock($1)',[76050002]);locked=true;}
   else await c.query('BEGIN READ ONLY');
   const state=await snapshot(c,items);
+  // Amostra de DDLs independentes: recibos e contagem de tabelas nao provam
+  // que cada objeto de migration foi criado. Isto NAO substitui replay.
+  const schemaCanaries=(await c.query(`
+    SELECT to_regclass('public.crm_lead_attachments') IS NOT NULL AS lead_attachments,
+           to_regclass('public.mfa_trusted_devices') IS NOT NULL AS mfa_trusted_devices,
+           to_regclass('public.importacoes_de_historico') IS NOT NULL AS history_imports,
+           to_regclass('public.automation_rodizio_atribuicoes') IS NOT NULL AS automation_round_robin,
+           to_regprocedure('public.fn_session_mfa_proven()') IS NOT NULL AS mfa_proven,
+           to_regprocedure('public.fn_automation_rodizio_atribuir(uuid,uuid,uuid,uuid)') IS NOT NULL AS automation_round_robin_fn
+  `)).rows[0];
   const legacy=Number((await c.query('SELECT count(*) AS n FROM public.user_recovery_codes WHERE octet_length(code_hash) <> 32')).rows[0].n);
   // Read-only catalog attestation: a matching migration receipt does not prove
   // that its SECURITY DEFINER RPC or least-privilege grants exist in the schema.
@@ -180,6 +190,7 @@ async function main(){
   `)).rows[0];
   if(mode==='verify'){
    need(state.applied===39,'INCOMPLETE_LEDGER');
+   need(Object.values(schemaCanaries).every(v=>v===true),'SCHEMA_CANARY_DRIFT');
    // A 0759 elimina os formatos legados; recibo completo não prova esse efeito.
    need(legacy===0,'MFA_LEGACY_ROWS_REMAIN_AFTER_0759');
    need(rpc.present===true,'RPC_0765_MISSING');
@@ -200,7 +211,8 @@ async function main(){
     recoveryRotationAuthenticatedExecute:rpc.authenticated_execute,
     recoveryCodesRls:rpc.recovery_codes_rls,
     recoveryCodesClientDmlDenied:rpc.recovery_codes_client_dml_denied,
-    recoveryCodesDenySelectPolicy:rpc.recovery_codes_deny_select_policy,manifest:39}));
+    recoveryCodesDenySelectPolicy:rpc.recovery_codes_deny_select_policy,
+    schemaCanaries,manifest:39}));
    return;
   }
   need(legacy===0,'MFA_LEGACY_ROWS_REQUIRE_SEPARATE_APPROVAL');
