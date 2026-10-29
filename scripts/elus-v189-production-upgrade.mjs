@@ -150,7 +150,16 @@ async function diagnoseLedger(c){
       FROM pg_catalog.pg_trigger t
       WHERE t.tgrelid=to_regclass('public.organizations')
         AND t.tgname='trg_guard_organizations_ai_autonomy'
-        AND NOT t.tgisinternal) AS guard_trigger_wiring_correct
+        AND NOT t.tgisinternal) AS guard_trigger_wiring_correct,
+     (SELECT count(*) FROM pg_catalog.pg_proc p
+      WHERE p.proname='fn_elus_rotacionar_codigos_recuperacao') AS rpc_0765_any_schema_count,
+     (SELECT relrowsecurity FROM pg_catalog.pg_class
+      WHERE oid=to_regclass('public.user_recovery_codes')) AS recovery_codes_rls,
+     EXISTS(SELECT 1 FROM pg_catalog.pg_policy pol
+            WHERE pol.polrelid=to_regclass('public.user_recovery_codes')
+              AND pol.polcmd='r'
+              AND pol.polname='user_recovery_codes_ninguem_le'
+              AND pg_get_expr(pol.polqual,pol.polrelid)='false') AS recovery_codes_deny_select_policy
  `)).rows[0];
  return {
    ledgerReceipts:Number(ledger.total_receipts),
@@ -161,6 +170,9 @@ async function diagnoseLedger(c){
    guard9037Strict:catalog.guard_9037_strict===true,
    guardTriggerEnabled:catalog.guard_trigger_enabled===true,
    guardTriggerWiringCorrect:catalog.guard_trigger_wiring_correct===true,
+   rpc0765NamedFunctionsAnySchema:Number(catalog.rpc_0765_any_schema_count),
+   recoveryCodesRls:catalog.recovery_codes_rls===true,
+   recoveryCodesDenySelectPolicy:catalog.recovery_codes_deny_select_policy===true,
    gate:'DIAGNOSTIC_ONLY_NOT_RELEASE_APPROVAL'
  };
 }
