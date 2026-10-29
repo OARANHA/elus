@@ -1,6 +1,6 @@
 #!/usr/bin/env node
-/** ELUS v1.89: executor PRODUTIVO separado. Não executar sem aprovação explícita,
- * dump restaurável + digests de rollback, e revisão do PR. */
+/** ELUS v1.89: verificador somente leitura. Aplicação produtiva desabilitada.
+ * Desbloqueio exige executor separado, gates e autorização específica. */
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
@@ -133,17 +133,10 @@ async function main(){
   throw Error('PRODUCTION_APPLY_BLOCKED_PENDING_RESTORE_AND_0759_APPROVAL');
  }
  sourceGuard();
- if(mode==='apply'){
-  need(process.env.ELUS_V189_PROD_ACK==='I_AUTHORIZE_ELUS_V189_PRODUCTION_LEDGER_39','ADMIN_APPROVAL_REQUIRED');
-  need(/^[a-f0-9]{64}$/.test(process.env.ELUS_V189_VERIFIED_BACKUP_SHA256||''),'VERIFIED_BACKUP_REQUIRED');
-  need(process.env.ELUS_V189_ROLLBACK_APP_DIGEST==='sha256:5af1da63aced2560c1c10d2fb2505346322eff0757a1239dd6a63bcca2656c74','ROLLBACK_DIGEST_DRIFT');
- }
  const c=new pg.Client(config());
  await c.connect();
- let locked=false;
  try{
-  if(mode==='apply'){await c.query('SELECT pg_advisory_lock($1)',[76050002]);locked=true;}
-  else await c.query('BEGIN READ ONLY');
+  await c.query('BEGIN READ ONLY');
   const state=await snapshot(c,items);
   // Amostra de DDLs independentes: recibos e contagem de tabelas nao provam
   // que cada objeto de migration foi criado. Isto NAO substitui replay.
@@ -202,8 +195,7 @@ async function main(){
    need(rpc.recovery_codes_client_dml_denied===true,'RECOVERY_CODES_CLIENT_DML_GRANT_DRIFT');
    need(rpc.recovery_codes_deny_select_policy===true,'RECOVERY_CODES_DENY_SELECT_POLICY_DRIFT');
   }
-  if(mode!=='apply'){
-   console.log(JSON.stringify({mode:'read-only',ledgerHistorical:11,...state,legacyMfaCodes:legacy,
+  console.log(JSON.stringify({mode:'read-only',ledgerHistorical:11,...state,legacyMfaCodes:legacy,
     recoveryRotationRpcPresent:rpc.present,recoveryRotationSecurityDefiner:rpc.security_definer,
     recoveryRotationPinnedEmptySearchPath:rpc.pinned_empty_search_path,
     recoveryRotationPublicExecuteDenied:rpc.public_execute_denied,
@@ -213,28 +205,8 @@ async function main(){
     recoveryCodesClientDmlDenied:rpc.recovery_codes_client_dml_denied,
     recoveryCodesDenySelectPolicy:rpc.recovery_codes_deny_select_policy,
     schemaCanaries,manifest:39}));
-   return;
-  }
-  need(legacy===0,'MFA_LEGACY_ROWS_REQUIRE_SEPARATE_APPROVAL');
-  for(let i=state.applied;i<39;i++){
-   const item=items[i];
-   await c.query('BEGIN');
-   try{
-    await c.query(item.sql);
-    await c.query('INSERT INTO supabase_migrations.schema_migrations (version,name,statements) VALUES ($1,$2,$3::text[])',[item.version,item.name,[item.sql]]);
-    await c.query('COMMIT');
-   }catch(e){
-    await c.query('ROLLBACK').catch(()=>{});
-    throw Error('FAILED_AT_'+item.version,{cause:e});
-   }
-   console.log('APPLIED='+String(i+1)+'/39');
-  }
-  const done=await snapshot(c,items);
-  need(done.applied===39,'POST_APPLY_LEDGER_DRIFT');
-  console.log('OFFICIAL_LEDGER_50_VERIFIED');
  }finally{
-  if(locked)await c.query('SELECT pg_advisory_unlock($1)',[76050002]).catch(()=>{});
-  else await c.query('ROLLBACK').catch(()=>{});
+  await c.query('ROLLBACK').catch(()=>{});
   await c.end();
  }
 }
