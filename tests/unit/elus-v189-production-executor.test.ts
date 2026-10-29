@@ -162,6 +162,10 @@ describe("ELUS v1.89: executor produtivo guardado", () => {
     );
     expect(diagnostic).toContain("guard_9037_strict");
     expect(diagnostic).toContain("guard_trigger_enabled");
+    expect(diagnostic).toContain("guard_trigger_wiring_correct");
+    expect(diagnostic).toContain("t.tgfoid=to_regprocedure('public.fn_guard_organizations_ai_autonomy()')");
+    expect(diagnostic).toContain("t.tgtype=23");
+    expect(diagnostic).toContain("guardTriggerWiringCorrect:catalog.guard_trigger_wiring_correct===true");
     expect(diagnostic).toContain("DIAGNOSTIC_ONLY_NOT_RELEASE_APPROVAL");
     expect(diagnostic).not.toMatch(/\b(?:INSERT|UPDATE|DELETE|ALTER|DROP|CREATE)\b/i);
     expect(source).toContain("if(mode==='diagnose'){");

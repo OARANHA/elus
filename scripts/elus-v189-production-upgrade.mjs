@@ -139,7 +139,13 @@ async function diagnoseLedger(c){
      (SELECT t.tgenabled IN ('O','A') FROM pg_catalog.pg_trigger t
       WHERE t.tgrelid=to_regclass('public.organizations')
         AND t.tgname='trg_guard_organizations_ai_autonomy'
-        AND NOT t.tgisinternal) AS guard_trigger_enabled
+        AND NOT t.tgisinternal) AS guard_trigger_enabled,
+     (SELECT t.tgfoid=to_regprocedure('public.fn_guard_organizations_ai_autonomy()')
+             AND t.tgtype=23
+      FROM pg_catalog.pg_trigger t
+      WHERE t.tgrelid=to_regclass('public.organizations')
+        AND t.tgname='trg_guard_organizations_ai_autonomy'
+        AND NOT t.tgisinternal) AS guard_trigger_wiring_correct
  `)).rows[0];
  return {
    ledgerReceipts:Number(ledger.total_receipts),
@@ -148,6 +154,7 @@ async function diagnoseLedger(c){
    rpc0765Present:catalog.rpc_0765_present===true,
    guard9037Strict:catalog.guard_9037_strict===true,
    guardTriggerEnabled:catalog.guard_trigger_enabled===true,
+   guardTriggerWiringCorrect:catalog.guard_trigger_wiring_correct===true,
    gate:'DIAGNOSTIC_ONLY_NOT_RELEASE_APPROVAL'
  };
 }
