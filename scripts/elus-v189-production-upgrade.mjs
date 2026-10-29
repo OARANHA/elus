@@ -116,9 +116,44 @@ async function snapshot(c,items){
  if(receipts.length===39)need(tables===208,'FINAL_SCHEMA_DRIFT');
  return {applied:receipts.length,publicTables:tables};
 }
+// Diagnóstico independente do gate de upgrade: observa a migration externa
+// 9037 sem aceitá-la no manifesto v1.89 ou no limite fail-closed de 50.
+// Somente metadados; nunca retorna statements ou dados de tenants.
+async function diagnoseLedger(c){
+ const ledger=(await c.query(`
+   SELECT count(*) AS total_receipts,
+     count(*) FILTER (WHERE version='20261029104815'
+       AND name='elus_9037_ai_autonomy_guarded'
+       AND cardinality(statements)=1
+       AND octet_length(statements[1])=34985
+       AND md5(statements[1])='10df3c797779f8cb4461631cb22676d2') AS external_9037_exact,
+     count(*) FILTER (WHERE version='20261026010000') AS receipt_0765
+   FROM supabase_migrations.schema_migrations
+ `)).rows[0];
+ const catalog=(await c.query(`
+   SELECT to_regprocedure('public.fn_elus_rotacionar_codigos_recuperacao(uuid,text[])') IS NOT NULL AS rpc_0765_present,
+     (SELECT position('current_user = ''service_role'' and auth.role() = ''service_role'''
+             in lower(p.prosrc))>0
+      FROM pg_catalog.pg_proc p
+      WHERE p.oid=to_regprocedure('public.fn_guard_organizations_ai_autonomy()')) AS guard_9037_strict,
+     (SELECT t.tgenabled IN ('O','A') FROM pg_catalog.pg_trigger t
+      WHERE t.tgrelid=to_regclass('public.organizations')
+        AND t.tgname='trg_guard_organizations_ai_autonomy'
+        AND NOT t.tgisinternal) AS guard_trigger_enabled
+ `)).rows[0];
+ return {
+   ledgerReceipts:Number(ledger.total_receipts),
+   external9037Exact:Number(ledger.external_9037_exact)===1,
+   receipt0765Present:Number(ledger.receipt_0765)===1,
+   rpc0765Present:catalog.rpc_0765_present===true,
+   guard9037Strict:catalog.guard_9037_strict===true,
+   guardTriggerEnabled:catalog.guard_trigger_enabled===true,
+   gate:'DIAGNOSTIC_ONLY_NOT_RELEASE_APPROVAL'
+ };
+}
 async function main(){
  const mode=process.argv[2];
- need(['manifest','preflight','verify','apply'].includes(mode),'INVALID_MODE');
+ need(['manifest','preflight','verify','diagnose','apply'].includes(mode),'INVALID_MODE');
  const items=manifest();
  if(mode==='manifest'){
   console.log(JSON.stringify({mode:'offline',count:39,files:items.map(({file,sha256})=>({file,sha256}))}));
@@ -137,6 +172,10 @@ async function main(){
  await c.connect();
  try{
   await c.query('BEGIN READ ONLY');
+  if(mode==='diagnose'){
+   console.log(JSON.stringify({mode:'read-only-diagnostic',...await diagnoseLedger(c)}));
+   return;
+  }
   const state=await snapshot(c,items);
   // Amostra de DDLs independentes: recibos e contagem de tabelas nao provam
   // que cada objeto de migration foi criado. Isto NAO substitui replay.
