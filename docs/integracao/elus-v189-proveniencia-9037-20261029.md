@@ -62,3 +62,15 @@ A guarda da **0690** aceita `auth.role() = 'service_role'` (além do caso contro
 **Revalidação simultânea:** ledger total 51, 208 tabelas em `public`, 9037 com um statement de 34.985 bytes, função `fn_guard_organizations_ai_autonomy()` presente com a condição conjunta `current_user='service_role'` e `auth.role()='service_role'`, trigger habilitado; RPC 0765 continua ausente. Essa fotografia não comprova causa da divergência 0765.
 
 **NO-GO inalterado:** não ampliar o manifesto/allowlist de 50 recibos, não executar `apply`, SQL mutante, E2E/Playwright, merge, publicação de imagens ou deploy. O CI do HEAD `3b1ac7a2` da PR #62 foi verificado uma única vez nesta rodada: [run #40865137502](https://github.com/OARANHA/elus/actions/runs/40865137502) `completed/success`; não é aceite funcional.
+
+
+## Telemetria SQL: evidência negativa limitada para a RPC 0765 — 29/10/2026
+
+Consulta **somente SELECT** ao `extensions.pg_stat_statements` do Supabase ELUS (PostgreSQL 17.11), sem retornar texto integral de queries, SQL de clientes ou credenciais:
+
+- `pg_stat_statements.track=top`, `track_utility=on`, `max=5000`; estatísticas reiniciadas em **18/10/2026 01:44:16 UTC**. No instante consultado havia **4.831 entradas** e **26 desalocações** (`dealloc`): a cobertura histórica **não é completa**.
+- Havia **zero entradas** contendo o identificador `fn_elus_rotacionar_codigos_recuperacao` e **zero chamadas registradas** sob esse filtro; como controles de observabilidade, 20 entradas continham `fn_session_mfa_proven` e três continham `fn_guard_organizations_ai_autonomy`. Esses valores são correspondências textuais, não contagens de execuções de DDL.
+- Das 12 entradas com padrão textual `DROP FUNCTION`, nenhuma continha o nome da RPC de rotação. Uma entrada com a versão `20261026010000` era **SELECT de auditoria** ao ledger, não INSERT/aplicação da migration; portanto **não** serve como recibo de execução.
+- Consulta agregada aos `postgres_logs` encontrou 180 registros na janela 25/10 16:00–26/10 16:00 UTC e 478 registros em 28/10 16:20–29/10 16:20 UTC, sem correspondências textuais à RPC/DDL no campo de atributos pesquisado. Ausência em logs também **não** prova ausência de execução: política de logging e retenção não foram auditadas.
+
+**Limite inferencial:** `pg_stat_statements` mantém estatísticas agregadas, pode desalocar entradas e está configurado para rastrear comandos de topo. A ausência do nome da função nessa amostra **não prova** que a migration 0765 nunca foi executada, nem que tenha ocorrido DROP posterior. Continua comprovada apenas a divergência **recibo 0765 presente / RPC ausente**. Não há autorização para reaplicar SQL, remover recibos ou liberar `apply`.
