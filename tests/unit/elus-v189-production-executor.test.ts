@@ -98,7 +98,7 @@ describe("ELUS v1.89: executor produtivo guardado", () => {
       ["20261021025551", "20261020120001_0691_chutes_chat_catalog.sql"],
       ["20261021025613", "20261020230000_0692_chutes_catalog_sync.sql"],
     ];
-    const fingerprints = [...block.matchAll(/\\['(\\d{14})',(\\d+),'([a-f0-9]{32})'\\]/g)]
+    const fingerprints = [...block.matchAll(/\['(\d{14})',(\d+),'([a-f0-9]{32})'\]/g)]
       .map((match) => [match[1], Number(match[2]), match[3]] as const);
     expect(fingerprints).toHaveLength(4);
     expect(fingerprints.map((row) => row[0])).toEqual(expected.map((row) => row[0]));
