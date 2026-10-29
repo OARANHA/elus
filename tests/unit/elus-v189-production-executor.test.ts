@@ -157,16 +157,18 @@ describe("ELUS v1.89: executor produtivo guardado", () => {
     expect(source).toContain("'RECEIPT_HASH_DRIFT'");
   });
 
-  it("exige assinatura operacional e preserva guardas do ledger e rollback", () => {
+  it("mantém o verificador sem caminho SQL mutante, mesmo após remoção da guarda", () => {
     const source = readFileSync(script, "utf8");
-    expect(source).toContain("ADMIN_APPROVAL_REQUIRED");
-    expect(source).toContain("VERIFIED_BACKUP_REQUIRED");
-    expect(source).toContain("ROLLBACK_DIGEST_DRIFT");
+    expect(source).toContain("if(mode==='apply'){");
+    expect(source).toContain("PRODUCTION_APPLY_BLOCKED_PENDING_RESTORE_AND_0759_APPROVAL");
+    expect(source).toContain("BEGIN READ ONLY");
+    expect(source).toContain("await c.query('ROLLBACK')");
     expect(source).toContain("DB_TARGET_MISMATCH");
     expect(source).toContain("NONPREFIX_LEDGER");
     expect(source).toContain("RECEIPT_HASH_DRIFT");
-    expect(source).toContain("pg_advisory_lock");
-    expect(source).toContain("ROLLBACK");
-    expect(source).toContain("MFA_LEGACY_ROWS_REQUIRE_SEPARATE_APPROVAL");
+    expect(source).not.toContain("pg_advisory_lock");
+    expect(source).not.toContain("await c.query(item.sql)");
+    expect(source).not.toContain("INSERT INTO supabase_migrations.schema_migrations");
+    expect(source).not.toContain("APPLIED=");
   });
 });
