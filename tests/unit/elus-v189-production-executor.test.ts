@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { execFileSync, spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
@@ -73,7 +74,8 @@ describe("ELUS v1.89: executor produtivo guardado", () => {
   it("confere sete fingerprints históricos privados contra o verificador v1.85", () => {
     const source = readFileSync(script, "utf8");
     const verifier = readFileSync("scripts/verificar-lotes-v185.mjs", "utf8");
-    const fromExecutor = [...source.matchAll(/\['(\d{14})',(\d+),'([a-f0-9]{32})'\]/g)]
+    const historicalBlock = source.split("const HISTORICAL_FINGERPRINTS=new Map([", 2)[1]?.split("]);", 1)[0] ?? "";
+    const fromExecutor = [...historicalBlock.matchAll(/\['(\d{14})',(\d+),'([a-f0-9]{32})'\]/g)]
       .map((match) => [match[1], Number(match[2]), match[3]]);
     const fromVerifier = [...verifier.matchAll(/\["(\d{14})", (\d+), "([a-f0-9]{32})"\]/g)]
       .map((match) => [match[1], Number(match[2]), match[3]]);
@@ -85,6 +87,28 @@ describe("ELUS v1.89: executor produtivo guardado", () => {
     expect(source).toContain("r.first_statement_bytes===expected[0]");
     expect(source).toContain("digest(Buffer.from(r.md5||'','ascii'),'md5')===expected[1]");
     expect(source).toContain("'HISTORY_STATEMENT_DRIFT'");
+  });
+
+  it("confere quatro recibos ELUS históricos contra SQL versionado e ledger atestado", () => {
+    const source = readFileSync(script, "utf8");
+    const block = source.split("const ELUS_HISTORICAL_FINGERPRINTS=new Map([", 2)[1]?.split("]);", 1)[0] ?? "";
+    const expected = [
+      ["20261019204449", "20261019120000_0689_integracoes_erp_vendaerp.sql"],
+      ["20261021025530", "20261020120000_0690_org_ai_autonomy_protected.sql"],
+      ["20261021025551", "20261020120001_0691_chutes_chat_catalog.sql"],
+      ["20261021025613", "20261020230000_0692_chutes_catalog_sync.sql"],
+    ];
+    const fingerprints = [...block.matchAll(/\\['(\\d{14})',(\\d+),'([a-f0-9]{32})'\\]/g)]
+      .map((match) => [match[1], Number(match[2]), match[3]] as const);
+    expect(fingerprints).toHaveLength(4);
+    expect(fingerprints.map((row) => row[0])).toEqual(expected.map((row) => row[0]));
+    for (const [index, [, filename]] of expected.entries()) {
+      const bytes = readFileSync(`supabase/migrations/${filename}`);
+      expect(bytes.length).toBe(fingerprints[index][1]);
+      expect(createHash("md5").update(bytes).digest("hex")).toBe(fingerprints[index][2]);
+    }
+    expect(source).toContain("r.statement_count===1&&r.first_statement_bytes===own[0]&&r.md5===own[1]");
+    expect(source).toContain("'ELUS_HISTORY_STATEMENT_DRIFT'");
   });
 
   it("exige assinatura operacional e preserva guardas do ledger e rollback", () => {
