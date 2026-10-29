@@ -30,6 +30,15 @@ const HISTORICAL_FINGERPRINTS=new Map([
  ['20261018204939',509661,'e6038fa04f2faa45f9416dc462beeb52'],
  ['20261018204955',484187,'dab84f1d8332894d78cf737b28488450'],
 ]);
+// Os quatro recibos ELUS anteriores ao upgrade são públicos e versionados.
+// Os MD5/tamanhos abaixo foram confrontados com os arquivos SQL da main e
+// com o ledger produtivo por SELECT, sem executar os statements.
+const ELUS_HISTORICAL_FINGERPRINTS=new Map([
+ ['20261019204449',13326,'0d76f02a421336ac784a9668e58df143'],
+ ['20261021025530',2344,'89178273952e0c2af1174916ab1bf0e4'],
+ ['20261021025551',2484,'45c956e88e760a9e853f2b9e319b6f7d'],
+ ['20261021025613',7457,'11bee3e8876a69eb515bf962db5dec44'],
+]);
 
 const digest=(data,algo='sha256')=>createHash(algo).update(data).digest('hex');
 function need(ok,reason){if(!ok)throw Error(reason);}
@@ -80,6 +89,11 @@ async function snapshot(c,items){
    need(r.statement_count===1&&r.first_statement_bytes===expected[0]&&
         digest(Buffer.from(r.md5||'','ascii'),'md5')===expected[1],
         'HISTORY_STATEMENT_DRIFT');
+  }
+  const own=ELUS_HISTORICAL_FINGERPRINTS.get(r.version);
+  if(own){
+   need(r.statement_count===1&&r.first_statement_bytes===own[0]&&r.md5===own[1],
+        'ELUS_HISTORY_STATEMENT_DRIFT');
   }
  }
  need(records.length<=50,'LEDGER_COUNT_DRIFT');
