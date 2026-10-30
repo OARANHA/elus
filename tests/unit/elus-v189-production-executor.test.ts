@@ -217,6 +217,31 @@ describe("ELUS v1.89: executor produtivo guardado", () => {
     expect(source).toContain("BEGIN READ ONLY");
   });
 
+  it("não confunde a guarda histórica 0690 com a condição mais restritiva da 9037", () => {
+    const historical = readFileSync(
+      "supabase/migrations/20261020120000_0690_org_ai_autonomy_protected.sql",
+      "utf8",
+    );
+    expect(historical).toContain("auth.role() = 'service_role'\n      or (current_user = 'postgres'");
+    expect(historical).not.toContain(
+      "current_user = 'service_role' and auth.role() = 'service_role'",
+    );
+
+    const source = readFileSync(script, "utf8");
+    const diagnostic =
+      source.split("async function diagnoseLedger(c){", 2)[1]?.split("async function main(){", 1)[0] ??
+      "";
+    expect(diagnostic).toContain(
+      "position('current_user = ''service_role'' and auth.role() = ''service_role'''",
+    );
+    expect(diagnostic).toContain("in lower(p.prosrc))>0");
+    expect(diagnostic).toContain(
+      "WHERE p.oid=to_regprocedure('public.fn_guard_organizations_ai_autonomy()')",
+    );
+    expect(diagnostic).toContain("guard9037Strict:catalog.guard_9037_strict===true");
+    expect(source).toContain("need(records.length<=50,'LEDGER_COUNT_DRIFT')");
+  });
+
   it("bloqueia 51 recibos e versoes nao previstas no plano v1.89", () => {
     const source = readFileSync(script, "utf8");
     // O banco observado em 29/10 possui uma 51a entrada alheia ao manifesto
