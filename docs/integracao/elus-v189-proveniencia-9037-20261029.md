@@ -236,3 +236,14 @@ O executor produtivo versionado exige `cardinality(statements)`, `octet_length(s
 **Próximo gate técnico, ainda não executado:** em ambiente descartável e com autorização apropriada, demonstrar restauração integral e reconstrução do ledger com `statements[]` idênticos aos 11 recibos históricos; executar um plano explícito que reconcilie as 11 migrations importadas anteriores ao corte, as 27 posteriores, as três colisões de número e a colisão de timestamp; medir o resultado em **PG15 e PG17**, comparar catálogo/ACL/RLS e isolamento de dois tenants, investigar a RPC 0765 ausente apesar do recibo exato e submeter o `DELETE` 0759 à aprovação independente. A evidência disponível **não autoriza** aplicar SQL, habilitar `apply`, merge, publicação ou deploy. Produção permanece **NO-GO**.
 
 **Sondagem auxiliar de logs (não conclusiva):** consulta agregada e somente leitura de `postgres_logs` em 27, 28 e 29/10/2026 encontrou respectivamente 49, 7.782 e 594 eventos. A busca textual em `log_attributes` não encontrou o nome `fn_elus_rotacionar_codigos_recuperacao` nesses períodos; houve uma menção genérica a `DROP FUNCTION` em 28/10, sem referência ao nome da RPC. Logs não são trilha completa de DDL, portanto **não** atribuir causa à ausência da função nem inferir que ela nunca foi criada.
+
+
+## 30/10/2026 — Revalidação independente dos 11 recibos históricos (somente leitura)
+
+**Fonte medida nesta rodada:** `supabase_migrations.schema_migrations` no projeto ELUS, consulta `SELECT` limitada às 11 versões históricas fixadas no executor `scripts/elus-v189-production-upgrade.mjs`. Foram retornadas **11/11 versões** com `cardinality(statements)=1`, nomes esperados e comprimentos exatos. Nenhum conteúdo de `statements[]` foi exportado ou publicado.
+
+- **Sete blocos privados v1.85:** todos os sete comprimentos correspondem a `HISTORICAL_FINGERPRINTS` e a `scripts/verificar-lotes-v185.mjs`. Os sete `md5(md5(statement))` foram conferidos independentemente a partir dos MD5 retornados pelo banco: **7/7 idênticos**.
+- **Quatro recibos próprios ELUS (0689–0692):** comprimento e MD5 de `statements[1]` correspondem exatamente a `ELUS_HISTORICAL_FINGERPRINTS` do executor: **4/4 idênticos**. A ordem histórica observada termina em `20261021025613`.
+- **Resultado limitado:** **11/11 identidades históricas compatíveis** com as impressões fixadas no código. Isso atesta identidade dos recibos consultados, **não** comprova execução integral dos SQLs, consistência funcional, backup restaurável, replay fiel em PG15/17 ou autorização de upgrade. O workflow privado continua espelhando apenas `version/name`, sem `statements[]`.
+
+**Gates preservados:** `apply` bloqueado; RPC 0765 ausente apesar do recibo, divergência 0690/9037, replay completo PG15/17, isolamento de tenants e autorização independente para o DELETE 0759 continuam pendentes. Nenhum SQL mutante, E2E, merge ou deploy nesta verificação.
