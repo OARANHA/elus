@@ -156,6 +156,13 @@ describe("ELUS v1.89: executor produtivo guardado", () => {
     expect(diagnostic).toContain(
       "md5(statements[1])='10df3c797779f8cb4461631cb22676d2'",
     );
+    // 0690 historica e 9037 externa coexistem: o diagnostico nao as aplica.
+    expect(diagnostic).toContain("version='20261021025530'");
+    expect(diagnostic).toContain("name='elus_0690_org_ai_autonomy_protected'");
+    expect(diagnostic).toContain("octet_length(statements[1])=2344");
+    expect(diagnostic).toContain("md5(statements[1])='89178273952e0c2af1174916ab1bf0e4'");
+    expect(diagnostic).toContain("receipt0690Exact:Number(ledger.receipt_0690_exact)===1");
+    expect(diagnostic).toContain("guard0690And9037Coexist:Number(ledger.receipt_0690_exact)===1&&Number(ledger.external_9037_exact)===1");
     expect(diagnostic).toContain("version='20261026010000'");
     expect(diagnostic).toContain("receipt_0765_exact");
     expect(diagnostic).toContain("octet_length(statements[1])=2747");
