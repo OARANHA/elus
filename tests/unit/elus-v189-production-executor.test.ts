@@ -309,8 +309,14 @@ describe("ELUS v1.89: executor produtivo guardado", () => {
     expect(plan.upstreamAfterCut).toHaveLength(27);
     const upstream = [...plan.upstreamBeforeOrAtCut, ...plan.upstreamAfterCut] as string[];
     expect(new Set(upstream).size).toBe(38);
-    expect(plan.upstreamBeforeOrAtCut.every((file: string) => file.slice(0, 14) <= result.historicalCut)).toBe(true);
-    expect(plan.upstreamAfterCut.every((file: string) => file.slice(0, 14) > result.historicalCut)).toBe(true);
+    expect(
+      plan.upstreamBeforeOrAtCut.every(
+        (file: string) => file.slice(0, 14) <= result.historicalCut,
+      ),
+    ).toBe(true);
+    expect(
+      plan.upstreamAfterCut.every((file: string) => file.slice(0, 14) > result.historicalCut),
+    ).toBe(true);
     expect(plan.elusHistoricalVersions).toEqual([
       "20261019204449",
       "20261021025530",
@@ -327,5 +333,4 @@ describe("ELUS v1.89: executor produtivo guardado", () => {
     expect(plan.reason).toBe("RESTORE_AND_FULL_LEDGER_STATEMENTS_NOT_VERIFIED");
     expect(stdout).not.toContain("20261029104815");
   });
-
 });
