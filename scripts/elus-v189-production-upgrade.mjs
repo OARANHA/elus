@@ -209,7 +209,27 @@ async function main(){
  need(['manifest','preflight','verify','diagnose','apply'].includes(mode),'INVALID_MODE');
  const items=manifest();
  if(mode==='manifest'){
-  console.log(JSON.stringify({mode:'offline',count:39,files:items.map(({file,sha256})=>({file,sha256}))}));
+  // Classificacao offline do corte historico, NAO um plano de aplicacao.
+  // Os 11 SQL upstream anteriores ao corte nao podem ser reaplicados
+  // automaticamente a uma instalacao que ja possua os 11 recibos v1.85.
+  const cut=HISTORY.at(-1)[0];
+  const imported=items.filter(x=>x.file!==EXTRA);
+  const beforeCut=imported.filter(x=>x.version<=cut).map(x=>x.file);
+  const afterCut=imported.filter(x=>x.version>cut).map(x=>x.file);
+  need(beforeCut.length===11&&afterCut.length===27,'REPLAY_CUT_DRIFT');
+  console.log(JSON.stringify({mode:'offline',count:39,
+    files:items.map(({file,sha256})=>({file,sha256})),
+    historicalCut:cut,
+    replayClassification:{
+      upstreamBeforeOrAtCut:beforeCut,
+      upstreamAfterCut:afterCut,
+      elusHistoricalVersions:HISTORY.slice(-4).map(x=>x[0]),
+      atomicMfaMigration:EXTRA,
+      destructiveMigration:'20261023180557_0759_codigos_de_recuperacao_antigos_saem.sql',
+      replayApproved:false,
+      reason:'RESTORE_AND_FULL_LEDGER_STATEMENTS_NOT_VERIFIED'
+    }
+  }));
   return;
  }
  // FAIL-CLOSED: o executor da main não comprova restauração do backup
