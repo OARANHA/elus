@@ -228,6 +228,29 @@ describe("ELUS v1.89: executor produtivo guardado", () => {
     expect(source).toContain("'RECEIPT_HASH_DRIFT'");
   });
 
+  it("fixa o DELETE 0759 ao formato legado e confronta a contagem somente leitura", () => {
+    const migration = readFileSync(
+      "supabase/migrations/20261023180557_0759_codigos_de_recuperacao_antigos_saem.sql",
+      "utf8",
+    );
+    const statement = migration.replace(/--[^\n]*/g, "").trim().replace(/\s+/g, " ").toLowerCase();
+    expect(statement).toBe(
+      "delete from public.user_recovery_codes where octet_length(code_hash) <> 32;",
+    );
+    const blob = createHash("sha1")
+      .update(`blob ${Buffer.byteLength(migration, "utf8")}\0`)
+      .update(migration)
+      .digest("hex");
+    expect(blob).toBe("44bb738f4e111f6550a16c720751c69cf902146b");
+
+    const source = readFileSync(script, "utf8");
+    expect(source).toContain(
+      "SELECT count(*) AS n FROM public.user_recovery_codes WHERE octet_length(code_hash) <> 32",
+    );
+    expect(source).toContain("PRODUCTION_APPLY_BLOCKED_PENDING_RESTORE_AND_0759_APPROVAL");
+    // Mesmo com zero linhas legadas, a autorização destrutiva permanece independente.
+  });
+
   it("mantém o verificador sem caminho SQL mutante, mesmo após remoção da guarda", () => {
     const source = readFileSync(script, "utf8");
     expect(source).toContain("if(mode==='apply'){");
