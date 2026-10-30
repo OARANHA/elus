@@ -233,7 +233,11 @@ describe("ELUS v1.89: executor produtivo guardado", () => {
       "supabase/migrations/20261023180557_0759_codigos_de_recuperacao_antigos_saem.sql",
       "utf8",
     );
-    const statement = migration.replace(/--[^\n]*/g, "").trim().replace(/\s+/g, " ").toLowerCase();
+    const statement = migration
+      .replace(/--[^\n]*/g, "")
+      .trim()
+      .replace(/\s+/g, " ")
+      .toLowerCase();
     expect(statement).toBe(
       "delete from public.user_recovery_codes where octet_length(code_hash) <> 32;",
     );
