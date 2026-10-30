@@ -297,4 +297,35 @@ describe("ELUS v1.89: executor produtivo guardado", () => {
     expect(source).not.toContain("INSERT INTO supabase_migrations.schema_migrations");
     expect(source).not.toContain("APPLIED=");
   });
+  it("classifica o corte 11/27 sem confundir inventario offline com replay aprovado", () => {
+    const stdout = execFileSync(process.execPath, [script, "manifest"], {
+      encoding: "utf8",
+      timeout: 20000,
+    });
+    const result = JSON.parse(stdout);
+    const plan = result.replayClassification;
+    expect(result.historicalCut).toBe("20261021025613");
+    expect(plan.upstreamBeforeOrAtCut).toHaveLength(11);
+    expect(plan.upstreamAfterCut).toHaveLength(27);
+    const upstream = [...plan.upstreamBeforeOrAtCut, ...plan.upstreamAfterCut] as string[];
+    expect(new Set(upstream).size).toBe(38);
+    expect(plan.upstreamBeforeOrAtCut.every((file: string) => file.slice(0, 14) <= result.historicalCut)).toBe(true);
+    expect(plan.upstreamAfterCut.every((file: string) => file.slice(0, 14) > result.historicalCut)).toBe(true);
+    expect(plan.elusHistoricalVersions).toEqual([
+      "20261019204449",
+      "20261021025530",
+      "20261021025551",
+      "20261021025613",
+    ]);
+    expect(plan.atomicMfaMigration).toBe(
+      "20261026010000_0765_elus_rotacao_atomica_codigos_recuperacao.sql",
+    );
+    expect(plan.destructiveMigration).toBe(
+      "20261023180557_0759_codigos_de_recuperacao_antigos_saem.sql",
+    );
+    expect(plan.replayApproved).toBe(false);
+    expect(plan.reason).toBe("RESTORE_AND_FULL_LEDGER_STATEMENTS_NOT_VERIFIED");
+    expect(stdout).not.toContain("20261029104815");
+  });
+
 });
