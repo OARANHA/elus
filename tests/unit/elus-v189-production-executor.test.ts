@@ -175,6 +175,16 @@ describe("ELUS v1.89: executor produtivo guardado", () => {
     expect(diagnostic).toContain("t.tgfoid=to_regprocedure('public.fn_guard_organizations_ai_autonomy()')");
     expect(diagnostic).toContain("t.tgtype=23");
     expect(diagnostic).toContain("guardTriggerWiringCorrect:catalog.guard_trigger_wiring_correct===true");
+    expect(diagnostic).toContain("AS guard_function_invoker");
+    expect(diagnostic).toContain("AS guard_function_execute_restricted");
+    expect(diagnostic).toContain("NOT p.prosecdef");
+    expect(diagnostic).toContain("has_function_privilege('service_role',p.oid,'EXECUTE')");
+    expect(diagnostic).toContain("NOT has_function_privilege('anon',p.oid,'EXECUTE')");
+    expect(diagnostic).toContain("NOT has_function_privilege('authenticated',p.oid,'EXECUTE')");
+    expect(diagnostic).toContain("guardFunctionInvoker:catalog.guard_function_invoker===true");
+    expect(diagnostic).toContain(
+      "guardFunctionExecuteRestricted:catalog.guard_function_execute_restricted===true",
+    );
     expect(diagnostic).toContain("p.proname='fn_elus_rotacionar_codigos_recuperacao'");
     expect(diagnostic).toContain("rpc0765NamedFunctionsAnySchema:Number(catalog.rpc_0765_any_schema_count)");
     expect(diagnostic).toContain("relrowsecurity FROM pg_catalog.pg_class");
