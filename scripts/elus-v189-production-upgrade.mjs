@@ -127,6 +127,11 @@ async function diagnoseLedger(c){
        AND cardinality(statements)=1
        AND octet_length(statements[1])=34985
        AND md5(statements[1])='10df3c797779f8cb4461631cb22676d2') AS external_9037_exact,
+     count(*) FILTER (WHERE version='20261021025530'
+       AND name='elus_0690_org_ai_autonomy_protected'
+       AND cardinality(statements)=1
+       AND octet_length(statements[1])=2344
+       AND md5(statements[1])='89178273952e0c2af1174916ab1bf0e4') AS receipt_0690_exact,
      count(*) FILTER (WHERE version='20261026010000') AS receipt_0765,
      count(*) FILTER (WHERE version='20261026010000'
        AND name='0765_elus_rotacao_atomica_codigos_recuperacao'
@@ -179,6 +184,9 @@ async function diagnoseLedger(c){
  return {
    ledgerReceipts:Number(ledger.total_receipts),
    external9037Exact:Number(ledger.external_9037_exact)===1,
+   receipt0690Exact:Number(ledger.receipt_0690_exact)===1,
+   // Colisao de SQLs versionados, nao prova de replay nem de ordem de execucao.
+   guard0690And9037Coexist:Number(ledger.receipt_0690_exact)===1&&Number(ledger.external_9037_exact)===1,
    receipt0765Present:Number(ledger.receipt_0765)===1,
    receipt0765Exact:Number(ledger.receipt_0765_exact)===1,
    rpc0765Present:catalog.rpc_0765_present===true,
