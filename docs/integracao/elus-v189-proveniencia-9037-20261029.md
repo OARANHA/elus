@@ -247,3 +247,10 @@ O executor produtivo versionado exige `cardinality(statements)`, `octet_length(s
 - **Resultado limitado:** **11/11 identidades históricas compatíveis** com as impressões fixadas no código. Isso atesta identidade dos recibos consultados, **não** comprova execução integral dos SQLs, consistência funcional, backup restaurável, replay fiel em PG15/17 ou autorização de upgrade. O workflow privado continua espelhando apenas `version/name`, sem `statements[]`.
 
 **Gates preservados:** `apply` bloqueado; RPC 0765 ausente apesar do recibo, divergência 0690/9037, replay completo PG15/17, isolamento de tenants e autorização independente para o DELETE 0759 continuam pendentes. Nenhum SQL mutante, E2E, merge ou deploy nesta verificação.
+
+
+## 30/10/2026 — Triagem read-only de migrations posteriores à RPC 0765
+
+Consulta agregada exclusivamente `SELECT` em `supabase_migrations.schema_migrations` no PostgreSQL 17.11, sem exportar `statements[]` ou executar DDL: há **exatamente 1 recibo com versão posterior a `20261026010000`** (a migration externa 9037 já identificada). Entre os recibos posteriores, **0** statements contêm a referência literal `fn_elus_rotacionar_codigos_recuperacao` e **0** contêm o padrão textual `DROP FUNCTION`. O statement do próprio recibo 0765 contém a declaração literal `CREATE OR REPLACE FUNCTION public.fn_elus_rotacionar_codigos_recuperacao` (**1/1**).
+
+**Limite probatório:** essa triagem restringe a hipótese de uma remoção explícita por SQL versionado posterior, mas **não** descarta DDL manual, efeitos indiretos, SQL dinâmico, alteração não registrada ou falha parcial da aplicação. A causa da RPC ausente continua indeterminada; o recibo 0765 não comprova criação efetiva. **NO-GO** mantido, sem reexecução de migration, SQL mutante, E2E, merge ou deploy. Próximo gate: rastreabilidade de DDL e restauração/replay fiel PG15/17 com `statements[]` e autorização separada 0759.
