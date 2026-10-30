@@ -195,3 +195,21 @@ Consulta única `SELECT` ao Supabase ELUS (PostgreSQL 17.11), sem retornar hashe
 - `to_regprocedure('public.fn_elus_rotacionar_codigos_recuperacao(uuid,text[])')`: **NULL**; a RPC 0765 permanece ausente apesar do recibo.
 
 **Limite da evidência:** contagem zero é um retrato pontual, não demonstra que a 0759 foi aplicada corretamente, que não existam efeitos indiretos, nem que a ausência da RPC seja aceitável. A 0759 permanece sujeita à autorização destrutiva independente, e a regeneração MFA permanece bloqueada até reconciliação segura da RPC 0765. Não foi executado SQL mutante, E2E, merge ou deploy. Na PR #62 foi acrescentado teste unitário simulado para resposta `PGRST202` da RPC ausente, sem validar concorrência ou banco real.
+
+
+## Atestação byte a byte dos 39 recibos v1.89 — 30/10/2026
+
+**Nova evidência somente leitura, não homologação de upgrade.** O manifesto versionado de `tests/unit/elus-v189-import-ledger-integrity.test.ts` na `main` (Git blob `663d7581e58dc9dea55bc4a6ef81e96166d71f6f`) contém 38 pares `arquivo SQL → Git blob SHA-1`. Foi acrescentado ao conjunto de comparação o SQL ELUS adicional `20261026010000_0765_elus_rotacao_atomica_codigos_recuperacao.sql`, Git blob `a05333f5b12b78c334181887f089b39398d9aa50`, formando **39 identidades versionadas e 39 versões distintas**.
+
+Em **30/10/2026**, um único `SELECT` ao ledger `supabase_migrations.schema_migrations` comparou, para cada uma das 39 versões esperadas: (1) existência do recibo; (2) igualdade do nome; (3) cardinalidade `statements = 1`; e (4) **Git blob SHA-1 calculado dos bytes UTF-8 do statement registrado**, com `extensions.digest(convert_to('blob ' || octet_length(statements[1])::text, 'UTF8') || decode('00','hex') || convert_to(statements[1], 'UTF8'), 'sha1')`. A comparação foi feita no servidor e retornou **somente contagens agregadas e divergências de identidade**, sem extrair SQL ou dados de tenants.
+
+| Resultado | Contagem |
+| --- | ---: |
+| SQLs esperados no manifesto 38 + 0765 | 39 |
+| Recibos localizados por versão | **39** |
+| Recibos com nome, cardinalidade e Git blob exatos | **39** |
+| Ausentes / nomes divergentes / cardinalidade divergente / bytes divergentes | **0 / 0 / 0 / 0** |
+
+Um segundo `SELECT` de conferência retornou **51 recibos totais**, com as versões 0765 e 9037 presentes, **RPC 0765 ausente** e **zero linhas** em `public.user_recovery_codes` naquele instante.
+
+**Interpretação obrigatória:** a identidade dos **39 SQLs armazenados no ledger** está atestada byte a byte contra os arquivos fixados. Isso **não comprova que os 39 statements foram executados integralmente**, que seus objetos continuam presentes, nem que o upgrade foi reproduzido com sucesso. A contradição concreta continua: **recibo 0765 exato e RPC ausente**. O recibo externo 9037 permanece fora do manifesto; **não** aumentar o limite de 50 do executor para 51. Prosseguem NO-GO e os gates de restauração/replay PG15/17, isolamento multi-tenant, reconciliação de efeitos e autorização específica para o DELETE 0759. Nenhum SQL mutante, E2E/Playwright, merge, imagem ou deploy foi executado nesta verificação.
