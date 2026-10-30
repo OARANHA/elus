@@ -156,3 +156,10 @@ Na [PR #62](https://github.com/OARANHA/elus/pull/62), os commits [`f88db11b`](ht
 - **Três índices**; coluna `code_hash` do tipo `bytea`, compatível com a contagem de formato usada no predicado `octet_length(code_hash) <> 32` da migration 0759.
 
 **Conclusão restrita:** o catálogo atual não mostra triggers de DELETE definidos pelo usuário, FKs de entrada ou regras de reescrita dependentes que ampliem diretamente o efeito da exclusão 0759. É um snapshot do esquema atual, não um ensaio de replay, nem prova de ausência de efeitos indiretos na aplicação. A contagem anterior de zero registros legados e esta auditoria **não** autorizam o DELETE. Continuam exigidos backup restaurável, replay isolado PG15/17, isolamento multi-tenant, reconciliação 0765/0690/9037 e **aprovação independente da 0759**. Produção permanece **NO-GO**.
+
+
+## Event triggers do Supabase e a RPC 0765 — inspeção 30/10/2026
+
+Consulta **exclusivamente SELECT** a `pg_catalog.pg_event_trigger` e `pg_catalog.pg_proc` no projeto ELUS (PostgreSQL 17.11) encontrou seis event triggers habilitados (`evtenabled='O'`), todos com função de tratamento pertencente a `supabase_admin`: `issue_graphql_placeholder` e `pgrst_drop_watch` (`sql_drop`); `issue_pg_cron_access`, `issue_pg_graphql_access`, `issue_pg_net_access` e `pgrst_ddl_watch` (`ddl_command_end`). Nenhum desses handlers é `SECURITY DEFINER`.
+
+Inspeção textual de `pg_get_functiondef(evtfoid)`, **sem retornar o código das funções nem dados de clientes**, encontrou zero referências literais a `fn_elus_rotacionar_codigos_recuperacao` e `user_recovery_codes` nos seis handlers. O handler `issue_pg_graphql_access` contém `DROP FUNCTION` genérico e `pgrst_ddl_watch` contém `CREATE FUNCTION` genérico; isso **não** demonstra atuação sobre a RPC 0765. A análise textual não elimina SQL dinâmico, dependências indiretas, mudanças históricas dos handlers ou DDL posterior. A causa da ausência da RPC 0765 permanece **indeterminada** apesar do recibo exato. Não executar reaplicação, correção de ledger, `apply`, E2E, merge ou deploy com base nesta inspeção. **NO-GO inalterado.**
