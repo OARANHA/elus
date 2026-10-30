@@ -185,3 +185,13 @@ Inspeção textual de `pg_get_functiondef(evtfoid)`, **sem retornar o código da
 - `app/actions/auth/confirmMfaEnroll.ts` (blob `741f8d9aefacadd3cf42f8e6292567ae6134900e`) usa INSERT de serviço para gerar códigos no cadastro inicial; `app/actions/auth/useRecoveryCode.ts` (blob `adb26faf2621c12b5a65ae8eef451791ba384600`) usa leitura/UPDATE de serviço para consumir um código. **São caminhos distintos** da rotação 0765; não concluir que todos os fluxos MFA estão indisponíveis pela ausência da RPC.
 
 **Impacto inferido e delimitado:** no código revisado, a **regeneração de códigos** depende da RPC ausente no snapshot do catálogo; uma tentativa que alcance a chamada tende a falhar fechado, sem devolver códigos novos. Não houve invocação da Server Action, simulação de usuário real, E2E ou medição de disponibilidade da funcionalidade em produção. A existência do recibo 0765 não resolve essa dependência. A causa histórica da ausência da função continua indeterminada; nenhuma correção de banco está autorizada.
+
+## Contagem agregada de códigos de recuperação — 30/10/2026
+
+Consulta única `SELECT` ao Supabase ELUS (PostgreSQL 17.11), sem retornar hashes, IDs ou dados de usuários:
+
+- `supabase_migrations.schema_migrations`: **51 recibos**; 0765 e 9037 registrados.
+- `public.user_recovery_codes`: **0 linhas no total**; portanto **0 linhas** no predicado destrutivo da 0759 (`octet_length(code_hash) <> 32`) no instante da leitura.
+- `to_regprocedure('public.fn_elus_rotacionar_codigos_recuperacao(uuid,text[])')`: **NULL**; a RPC 0765 permanece ausente apesar do recibo.
+
+**Limite da evidência:** contagem zero é um retrato pontual, não demonstra que a 0759 foi aplicada corretamente, que não existam efeitos indiretos, nem que a ausência da RPC seja aceitável. A 0759 permanece sujeita à autorização destrutiva independente, e a regeneração MFA permanece bloqueada até reconciliação segura da RPC 0765. Não foi executado SQL mutante, E2E, merge ou deploy. Na PR #62 foi acrescentado teste unitário simulado para resposta `PGRST202` da RPC ausente, sem validar concorrência ou banco real.
