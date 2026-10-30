@@ -155,6 +155,14 @@ async function diagnoseLedger(c){
       WHERE p.proname='fn_elus_rotacionar_codigos_recuperacao') AS rpc_0765_any_schema_count,
      (SELECT relrowsecurity FROM pg_catalog.pg_class
       WHERE oid=to_regclass('public.user_recovery_codes')) AS recovery_codes_rls,
+     COALESCE((SELECT bool_and(
+       NOT has_table_privilege(roles.role,t.oid,'SELECT')
+       AND NOT has_table_privilege(roles.role,t.oid,'INSERT')
+       AND NOT has_table_privilege(roles.role,t.oid,'UPDATE')
+       AND NOT has_table_privilege(roles.role,t.oid,'DELETE'))
+       FROM (VALUES ('anon'),('authenticated')) AS roles(role)
+       CROSS JOIN (SELECT to_regclass('public.user_recovery_codes') AS oid) AS t
+     ),false) AS recovery_codes_client_dml_denied,
      EXISTS(SELECT 1 FROM pg_catalog.pg_policy pol
             WHERE pol.polrelid=to_regclass('public.user_recovery_codes')
               AND pol.polcmd='r'
@@ -172,6 +180,7 @@ async function diagnoseLedger(c){
    guardTriggerWiringCorrect:catalog.guard_trigger_wiring_correct===true,
    rpc0765NamedFunctionsAnySchema:Number(catalog.rpc_0765_any_schema_count),
    recoveryCodesRls:catalog.recovery_codes_rls===true,
+   recoveryCodesClientDmlDenied:catalog.recovery_codes_client_dml_denied===true,
    recoveryCodesDenySelectPolicy:catalog.recovery_codes_deny_select_policy===true,
    gate:'DIAGNOSTIC_ONLY_NOT_RELEASE_APPROVAL'
  };
