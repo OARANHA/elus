@@ -190,6 +190,8 @@ async function diagnoseLedger(c){
    receipt0765Present:Number(ledger.receipt_0765)===1,
    receipt0765Exact:Number(ledger.receipt_0765_exact)===1,
    rpc0765Present:catalog.rpc_0765_present===true,
+   // Recibo armazenado nao prova que a RPC existe no catalogo atual.
+   receipt0765RpcMismatch:Number(ledger.receipt_0765)>0&&catalog.rpc_0765_present!==true,
    guard9037Strict:catalog.guard_9037_strict===true,
    guardTriggerEnabled:catalog.guard_trigger_enabled===true,
    guardTriggerWiringCorrect:catalog.guard_trigger_wiring_correct===true,
