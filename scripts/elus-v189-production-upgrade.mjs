@@ -151,6 +151,13 @@ async function diagnoseLedger(c){
       WHERE t.tgrelid=to_regclass('public.organizations')
         AND t.tgname='trg_guard_organizations_ai_autonomy'
         AND NOT t.tgisinternal) AS guard_trigger_wiring_correct,
+     (SELECT NOT p.prosecdef FROM pg_catalog.pg_proc p
+      WHERE p.oid=to_regprocedure('public.fn_guard_organizations_ai_autonomy()')) AS guard_function_invoker,
+     (SELECT has_function_privilege('service_role',p.oid,'EXECUTE')
+             AND NOT has_function_privilege('anon',p.oid,'EXECUTE')
+             AND NOT has_function_privilege('authenticated',p.oid,'EXECUTE')
+      FROM pg_catalog.pg_proc p
+      WHERE p.oid=to_regprocedure('public.fn_guard_organizations_ai_autonomy()')) AS guard_function_execute_restricted,
      (SELECT count(*) FROM pg_catalog.pg_proc p
       WHERE p.proname='fn_elus_rotacionar_codigos_recuperacao') AS rpc_0765_any_schema_count,
      (SELECT relrowsecurity FROM pg_catalog.pg_class
@@ -178,6 +185,8 @@ async function diagnoseLedger(c){
    guard9037Strict:catalog.guard_9037_strict===true,
    guardTriggerEnabled:catalog.guard_trigger_enabled===true,
    guardTriggerWiringCorrect:catalog.guard_trigger_wiring_correct===true,
+   guardFunctionInvoker:catalog.guard_function_invoker===true,
+   guardFunctionExecuteRestricted:catalog.guard_function_execute_restricted===true,
    rpc0765NamedFunctionsAnySchema:Number(catalog.rpc_0765_any_schema_count),
    recoveryCodesRls:catalog.recovery_codes_rls===true,
    recoveryCodesClientDmlDenied:catalog.recovery_codes_client_dml_denied===true,
