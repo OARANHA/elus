@@ -119,3 +119,14 @@ Na [PR #62](https://github.com/OARANHA/elus/pull/62), os commits [`f88db11b`](ht
 **GitHub na verificação:** PR #43 merged; PR #62 aberta e mergeável no HEAD `0e38a2d88e3251aef22695f07b993d5294255cf2`. Os workflows desse HEAD concluíram `success`: [ci #41003215238](https://github.com/OARANHA/elus/actions/runs/41003215238), [perf #41003215280](https://github.com/OARANHA/elus/actions/runs/41003215280) e [GHCR #41003215314](https://github.com/OARANHA/elus/actions/runs/41003215314). Esses resultados não comprovam aceite funcional, publicação efetiva de imagem ou autorização de produção.
 
 **NO-GO inalterado:** não ampliar o teto de 50 recibos nem incluir a 9037 no manifesto v1.89; `apply` permanece bloqueado antes da conexão. Faltam prova de restauração de backup, replay v1.85→v1.89 em PG15/17 descartável, isolamento multi-tenant, esclarecimento da RPC 0765 e aprovação independente da operação destrutiva 0759. Nenhum SQL mutante, E2E/Playwright, merge, publicação manual de imagem ou deploy nesta execução.
+
+## Pesquisa de corpo de função e privilégios atuais — 30/10/2026
+
+**Fonte:** consulta única exclusivamente `SELECT` ao `pg_catalog.pg_proc`, `pg_catalog.has_schema_privilege` e `supabase_migrations.schema_migrations` no projeto Supabase ELUS, PostgreSQL 17.11. Nenhum corpo SQL, dado de cliente ou credencial foi retornado.
+
+- `fn_elus_rotacionar_codigos_recuperacao`: **zero** funções com esse nome em todos os schemas.
+- Busca nos corpos `pg_proc.prosrc` por três marcadores distintivos da migration 0765 — `elus:recovery:`, `incomplete recovery rotation` e `invalid recovery hashes` — retornou **zero correspondências para cada marcador**. Não foi localizada uma cópia renomeada do corpo da RPC por esses critérios; isso não exclui implementações reescritas ou evidências fora do catálogo atual.
+- Privilégio **atual** `CREATE` no schema `public`: papel `postgres` = **true**; papel `service_role` = **false**. Isso não informa qual papel executou a migration 0765, nem quais privilégios possuía no momento histórico da aplicação.
+- Ledger: **51 recibos**; o recibo 0765 continua com cardinalidade 1, 2.747 bytes e MD5 `add7a7db36db87cd213fd7a7d0f81db7` (**uma correspondência exata**). O recibo não prova execução do DDL.
+
+**Conclusão restrita:** a divergência **recibo 0765 exato / função ausente** permanece, sem evidência de cópia renomeada com o mesmo corpo e sem causa histórica determinada. Não inferir falha de permissão, `DROP` posterior ou não execução do DDL a partir dessas observações. Permanecem bloqueados `apply`, upgrade e deploy até restauração/replay PostgreSQL 15/17, reconciliação do ledger e da guarda 0690/9037, isolamento multi-tenant e autorização específica da 0759. Nenhum SQL mutante ou E2E foi executado.
