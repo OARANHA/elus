@@ -315,7 +315,9 @@ describe("ELUS v1.89: executor produtivo guardado", () => {
       ),
     ).toBe(true);
     expect(
-      plan.upstreamAfterCut.every((file: string) => file.slice(0, 14) > result.historicalCut),
+      plan.upstreamAfterCut.every(
+        (file: string) => file.slice(0, 14) > result.historicalCut,
+      ),
     ).toBe(true);
     expect(plan.elusHistoricalVersions).toEqual([
       "20261019204449",
