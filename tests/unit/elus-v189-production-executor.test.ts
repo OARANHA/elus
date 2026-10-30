@@ -188,7 +188,9 @@ describe("ELUS v1.89: executor produtivo guardado", () => {
     expect(diagnostic).toContain("pol.polname='user_recovery_codes_ninguem_le'");
     expect(diagnostic).toContain("recoveryCodesDenySelectPolicy:catalog.recovery_codes_deny_select_policy===true");
     expect(diagnostic).toContain("DIAGNOSTIC_ONLY_NOT_RELEASE_APPROVAL");
-    expect(diagnostic).not.toMatch(/\b(?:INSERT|UPDATE|DELETE|ALTER|DROP|CREATE)\b/i);
+    // Os nomes de privilégios aparecem em has_table_privilege(), não como DML executável.
+    const withoutPrivilegeChecks = diagnostic.replace(/has_table_privilege\([^)]*\)/g, "has_table_privilege()");
+    expect(withoutPrivilegeChecks).not.toMatch(/\b(?:INSERT|UPDATE|DELETE|ALTER|DROP|CREATE)\b/i);
     expect(source).toContain("if(mode==='diagnose'){");
     expect(source.indexOf("if(mode==='diagnose'){")).toBeLessThan(
       source.indexOf("const state=await snapshot(c,items)"),
