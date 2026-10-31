@@ -199,6 +199,17 @@ async function diagnoseLedger(c){
  `)).rows[0];
  const catalog=(await c.query(`
    SELECT to_regprocedure('public.fn_elus_rotacionar_codigos_recuperacao(uuid,text[])') IS NOT NULL AS rpc_0765_present,
+     COALESCE((SELECT p.prosecdef FROM pg_catalog.pg_proc p
+       WHERE p.oid=to_regprocedure('public.fn_elus_rotacionar_codigos_recuperacao(uuid,text[])')),false) AS rpc_0765_security_definer,
+     COALESCE((SELECT p.proconfig @> ARRAY['search_path=""']::text[] FROM pg_catalog.pg_proc p
+       WHERE p.oid=to_regprocedure('public.fn_elus_rotacionar_codigos_recuperacao(uuid,text[])')),false) AS rpc_0765_pinned_search_path,
+     COALESCE((SELECT has_function_privilege('service_role',p.oid,'EXECUTE')
+       AND NOT has_function_privilege('anon',p.oid,'EXECUTE')
+       AND NOT has_function_privilege('authenticated',p.oid,'EXECUTE')
+       AND NOT EXISTS (SELECT 1 FROM pg_catalog.aclexplode(p.proacl) AS acl
+         WHERE acl.grantee=0 AND acl.privilege_type='EXECUTE')
+       FROM pg_catalog.pg_proc p
+       WHERE p.oid=to_regprocedure('public.fn_elus_rotacionar_codigos_recuperacao(uuid,text[])')),false) AS rpc_0765_service_only,
      (SELECT position('current_user = ''service_role'' and auth.role() = ''service_role'''
              in lower(p.prosrc))>0
       FROM pg_catalog.pg_proc p
@@ -248,6 +259,11 @@ async function diagnoseLedger(c){
    receipt0765Present:Number(ledger.receipt_0765)===1,
    receipt0765Exact:Number(ledger.receipt_0765_exact)===1,
    rpc0765Present:catalog.rpc_0765_present===true,
+   // Presenca no catalogo nao comprova SECURITY DEFINER, search_path ou ACL.
+   // Sinais diagnosticos somente leitura; nunca autorizam apply.
+   rpc0765SecurityDefiner:catalog.rpc_0765_security_definer===true,
+   rpc0765PinnedSearchPath:catalog.rpc_0765_pinned_search_path===true,
+   rpc0765ServiceOnly:catalog.rpc_0765_service_only===true,
    // Recibo armazenado nao prova que a RPC existe no catalogo atual.
    receipt0765RpcMismatch:Number(ledger.receipt_0765)>0&&catalog.rpc_0765_present!==true,
    guard9037Strict:catalog.guard_9037_strict===true,
