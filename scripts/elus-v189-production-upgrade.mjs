@@ -58,6 +58,10 @@ const DEPENDENCY_CHAINS=[
  [
   "20261023160002_0747_mfa_dispositivo_confiavel.sql",
   "20261023160012_0757_poder_de_plataforma_exige_sessao_confirmada.sql"
+ ],
+ [
+  "20261023160010_0755_codigos_de_recuperacao_so_pelo_servidor.sql",
+  "20261023180557_0759_codigos_de_recuperacao_antigos_saem.sql"
  ]
 ];
 const digest=(data,algo='sha256')=>createHash(algo).update(data).digest('hex');
