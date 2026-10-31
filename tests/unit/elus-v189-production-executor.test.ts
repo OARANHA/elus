@@ -363,4 +363,43 @@ describe("ELUS v1.89: executor produtivo guardado", () => {
     expect(plan.reason).toBe("RESTORE_AND_FULL_LEDGER_STATEMENTS_NOT_VERIFIED");
     expect(stdout).not.toContain("20261029104815");
   });
+  it("atesta a ordem nominal de quatro cadeias SQL sem autorizar replay", () => {
+    const stdout = execFileSync(process.execPath, [script, "manifest"], {
+      encoding: "utf8",
+      timeout: 20000,
+    });
+    const result = JSON.parse(stdout);
+    const expectedChains = [
+      [
+        "20261020230856_0716_agendas_de_servicos.sql",
+        "20261021173000_0717_desambigua_calendar_service_professionals.sql",
+        "20261023160008_0753_aviso_de_agendamento_no_whatsapp.sql",
+      ],
+      [
+        "20261020120002_0763_banco_externo_db_type_e_aviso.sql",
+        "20261022120000_0706_banco_externo_receitas.sql",
+      ],
+      [
+        "20261020000001_0684_a_reacao_nao_passa_pelos_gatilhos.sql",
+        "20261023230250_0760_historico_importado_nao_dispara.sql",
+      ],
+      [
+        "20261023160002_0747_mfa_dispositivo_confiavel.sql",
+        "20261023160012_0757_poder_de_plataforma_exige_sessao_confirmada.sql",
+      ],
+    ];
+    expect(result.replayClassification.dependencyChains).toEqual(expectedChains);
+    expect(result.replayClassification.dependencyOrderVerified).toBe(true);
+    const positions = new Map(
+      result.files.map((entry: { file: string }, index: number) => [entry.file, index]),
+    );
+    for (const chain of expectedChains) {
+      const indices = chain.map((file) => positions.get(file));
+      expect(indices.every((index) => typeof index === "number")).toBe(true);
+      expect(indices).toEqual([...indices].sort((a, b) => a! - b!));
+    }
+    expect(readFileSync(script, "utf8")).toContain("'DEPENDENCY_ORDER_DRIFT'");
+    expect(result.replayClassification.replayApproved).toBe(false);
+  });
+
 });
