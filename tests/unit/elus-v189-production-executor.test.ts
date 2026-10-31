@@ -237,7 +237,7 @@ describe("ELUS v1.89: executor produtivo guardado", () => {
     expect(helper).toContain("historicalReceiptsMatched:matched");
     expect(helper).toContain("historicalReceiptsExpected:HISTORY.length");
     expect(helper).toContain("historicalReceiptsExact:rows.length===HISTORY.length&&matched===HISTORY.length");
-    expect(helper).not.toMatch(/\\b(?:INSERT|UPDATE|DELETE|ALTER|DROP|CREATE)\\b/i);
+    expect(helper).not.toMatch(/\b(?:INSERT|UPDATE|DELETE|ALTER|DROP|CREATE)\b/i);
     expect(helper).not.toContain("console.log");
     const diagnose =
       source.split("async function diagnoseLedger(c){", 2)[1]?.split("async function main(){", 1)[0] ??
