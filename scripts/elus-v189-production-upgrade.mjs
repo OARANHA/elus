@@ -116,10 +116,35 @@ async function snapshot(c,items){
  if(receipts.length===39)need(tables===208,'FINAL_SCHEMA_DRIFT');
  return {applied:receipts.length,publicTables:tables};
 }
+// Atestacao isolada dos 11 recibos historicos, inclusive os sete lotes
+// privados. Retorna somente contagens/booleanos; nunca exporta statements[].
+// Funciona mesmo com recibos externos que bloqueiam snapshot/preflight.
+async function historicalReceiptDiagnostic(c){
+ const rows=(await c.query(`
+   SELECT version,name,cardinality(statements) AS statement_count,
+     octet_length(statements[1]) AS first_statement_bytes,
+     md5(array_to_string(statements,'')) AS md5
+   FROM supabase_migrations.schema_migrations
+   WHERE version = ANY($1::text[])
+   ORDER BY version
+ `,[HISTORY.map(([version])=>version)])).rows;
+ const matched=rows.filter(r=>{
+  const expected=HISTORY.find(([version])=>version===r.version);
+  if(!expected||r.name!==expected[1]||r.statement_count!==1)return false;
+  const privateFp=HISTORICAL_FINGERPRINTS.get(r.version);
+  if(privateFp)return r.first_statement_bytes===privateFp[0]&&
+    digest(Buffer.from(r.md5||'','ascii'),'md5')===privateFp[1];
+  const elusFp=ELUS_HISTORICAL_FINGERPRINTS.get(r.version);
+  return Boolean(elusFp&&r.first_statement_bytes===elusFp[0]&&r.md5===elusFp[1]);
+ }).length;
+ return {historicalReceiptsMatched:matched,historicalReceiptsExpected:HISTORY.length,
+   historicalReceiptsExact:rows.length===HISTORY.length&&matched===HISTORY.length};
+}
 // Diagnóstico independente do gate de upgrade: observa a migration externa
 // 9037 sem aceitá-la no manifesto v1.89 ou no limite fail-closed de 50.
 // Somente metadados; nunca retorna statements ou dados de tenants.
 async function diagnoseLedger(c){
+ const historical=await historicalReceiptDiagnostic(c);
  const ledger=(await c.query(`
    SELECT count(*) AS total_receipts,
      count(*) FILTER (WHERE version='20261029104815'
@@ -182,6 +207,7 @@ async function diagnoseLedger(c){
               AND pg_get_expr(pol.polqual,pol.polrelid)='false') AS recovery_codes_deny_select_policy
  `)).rows[0];
  return {
+   ...historical,
    ledgerReceipts:Number(ledger.total_receipts),
    external9037Exact:Number(ledger.external_9037_exact)===1,
    receipt0690Exact:Number(ledger.receipt_0690_exact)===1,
