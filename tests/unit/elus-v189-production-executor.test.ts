@@ -363,7 +363,7 @@ describe("ELUS v1.89: executor produtivo guardado", () => {
     expect(plan.reason).toBe("RESTORE_AND_FULL_LEDGER_STATEMENTS_NOT_VERIFIED");
     expect(stdout).not.toContain("20261029104815");
   });
-  it("atesta a ordem nominal de quatro cadeias SQL sem autorizar replay", () => {
+  it("atesta a ordem nominal de cinco cadeias SQL sem autorizar replay", () => {
     const stdout = execFileSync(process.execPath, [script, "manifest"], {
       encoding: "utf8",
       timeout: 20000,
@@ -386,6 +386,10 @@ describe("ELUS v1.89: executor produtivo guardado", () => {
       [
         "20261023160002_0747_mfa_dispositivo_confiavel.sql",
         "20261023160012_0757_poder_de_plataforma_exige_sessao_confirmada.sql",
+      ],
+      [
+        "20261023160010_0755_codigos_de_recuperacao_so_pelo_servidor.sql",
+        "20261023180557_0759_codigos_de_recuperacao_antigos_saem.sql",
       ],
     ];
     expect(result.replayClassification.dependencyChains).toEqual(expectedChains);
