@@ -88,7 +88,7 @@ describe("ELUS v1.89: executor produtivo guardado", () => {
     expect(source).toContain("'SCHEMA_CANARY_DRIFT'");
     expect(source).toContain("schemaCanaries,manifest:39");
     expect(source).toContain("if(mode==='verify'){");
-    expect(source).toContain("BEGIN READ ONLY");
+    expect(source).toContain("BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY");
   });
 
   it("confere sete fingerprints históricos privados contra o verificador v1.85", () => {
@@ -217,7 +217,7 @@ describe("ELUS v1.89: executor produtivo guardado", () => {
     );
     expect(source).toContain("need(records.length<=50,'LEDGER_COUNT_DRIFT')");
     expect(source).toContain("PRODUCTION_APPLY_BLOCKED_PENDING_RESTORE_AND_0759_APPROVAL");
-    expect(source).toContain("BEGIN READ ONLY");
+    expect(source).toContain("BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY");
   });
 
   it("atesta os 11 statements historicos em diagnose sem revelar SQL privado", () => {
@@ -244,7 +244,7 @@ describe("ELUS v1.89: executor produtivo guardado", () => {
       "";
     expect(diagnose).toContain("const historical=await historicalReceiptDiagnostic(c);");
     expect(diagnose).toContain("...historical,");
-    expect(source).toContain("BEGIN READ ONLY");
+    expect(source).toContain("BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY");
     expect(source).toContain("PRODUCTION_APPLY_BLOCKED_PENDING_RESTORE_AND_0759_APPROVAL");
   });
 
@@ -315,7 +315,7 @@ describe("ELUS v1.89: executor produtivo guardado", () => {
     const source = readFileSync(script, "utf8");
     expect(source).toContain("if(mode==='apply'){");
     expect(source).toContain("PRODUCTION_APPLY_BLOCKED_PENDING_RESTORE_AND_0759_APPROVAL");
-    expect(source).toContain("BEGIN READ ONLY");
+    expect(source).toContain("BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY");
     expect(source).toContain("await c.query('ROLLBACK')");
     expect(source).toContain("DB_TARGET_MISMATCH");
     expect(source).toContain("NONPREFIX_LEDGER");
