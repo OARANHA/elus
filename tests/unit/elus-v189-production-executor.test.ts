@@ -220,6 +220,34 @@ describe("ELUS v1.89: executor produtivo guardado", () => {
     expect(source).toContain("BEGIN READ ONLY");
   });
 
+  it("atesta os 11 statements historicos em diagnose sem revelar SQL privado", () => {
+    const source = readFileSync(script, "utf8");
+    const helper =
+      source.split("async function historicalReceiptDiagnostic(c){", 2)[1]?.split(
+        "// Diagnóstico independente do gate de upgrade:", 1,
+      )[0] ?? "";
+    expect(helper).toContain("WHERE version = ANY($1::text[])");
+    expect(helper).toContain("cardinality(statements) AS statement_count");
+    expect(helper).toContain("octet_length(statements[1]) AS first_statement_bytes");
+    expect(helper).toContain("md5(array_to_string(statements,'')) AS md5");
+    expect(helper).toContain("r.statement_count!==1");
+    expect(helper).toContain("HISTORICAL_FINGERPRINTS.get(r.version)");
+    expect(helper).toContain("ELUS_HISTORICAL_FINGERPRINTS.get(r.version)");
+    expect(helper).toContain("digest(Buffer.from(r.md5||'','ascii'),'md5')");
+    expect(helper).toContain("historicalReceiptsMatched:matched");
+    expect(helper).toContain("historicalReceiptsExpected:HISTORY.length");
+    expect(helper).toContain("historicalReceiptsExact:rows.length===HISTORY.length&&matched===HISTORY.length");
+    expect(helper).not.toMatch(/\\b(?:INSERT|UPDATE|DELETE|ALTER|DROP|CREATE)\\b/i);
+    expect(helper).not.toContain("console.log");
+    const diagnose =
+      source.split("async function diagnoseLedger(c){", 2)[1]?.split("async function main(){", 1)[0] ??
+      "";
+    expect(diagnose).toContain("const historical=await historicalReceiptDiagnostic(c);");
+    expect(diagnose).toContain("...historical,");
+    expect(source).toContain("BEGIN READ ONLY");
+    expect(source).toContain("PRODUCTION_APPLY_BLOCKED_PENDING_RESTORE_AND_0759_APPROVAL");
+  });
+
   it("não confunde a guarda histórica 0690 com a condição mais restritiva da 9037", () => {
     const historical = readFileSync(
       "supabase/migrations/20261020120000_0690_org_ai_autonomy_protected.sql",
