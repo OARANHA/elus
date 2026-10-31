@@ -62,6 +62,10 @@ const DEPENDENCY_CHAINS=[
  [
   "20261023160010_0755_codigos_de_recuperacao_so_pelo_servidor.sql",
   "20261023180557_0759_codigos_de_recuperacao_antigos_saem.sql"
+ ],
+ [
+  "20261020000004_0687_responder_caso_pelo_whatsapp_interno.sql",
+  "20261023160008_0753_aviso_de_agendamento_no_whatsapp.sql"
  ]
 ];
 const digest=(data,algo='sha256')=>createHash(algo).update(data).digest('hex');
