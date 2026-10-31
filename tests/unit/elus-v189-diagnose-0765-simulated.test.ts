@@ -11,6 +11,9 @@ type Diagnostic = {
   receipt0765Present: boolean;
   receipt0765Exact: boolean;
   rpc0765Present: boolean;
+  rpc0765SecurityDefiner: boolean;
+  rpc0765PinnedSearchPath: boolean;
+  rpc0765ServiceOnly: boolean;
   receipt0765RpcMismatch: boolean;
   rpc0765NamedFunctionsAnySchema: number;
   external9037Exact: boolean;
@@ -47,6 +50,9 @@ function loadDiagnostic(): (client: Client) => Promise<Diagnostic> {
 
 type Scenario = {
   external9037Exact?: number;
+  rpc0765SecurityDefiner?: boolean;
+  rpc0765PinnedSearchPath?: boolean;
+  rpc0765ServiceOnly?: boolean;
   receipt0690Exact?: number;
   guard9037Strict?: boolean;
   guardTriggerEnabled?: boolean;
@@ -80,6 +86,9 @@ async function evaluate(receipt: number, exact: number, rpcPresent: boolean, sce
         return {
           rows: [{
             rpc_0765_present: rpcPresent,
+            rpc_0765_security_definer: scenario.rpc0765SecurityDefiner ?? rpcPresent,
+            rpc_0765_pinned_search_path: scenario.rpc0765PinnedSearchPath ?? rpcPresent,
+            rpc_0765_service_only: scenario.rpc0765ServiceOnly ?? rpcPresent,
             rpc_0765_any_schema_count: rpcPresent ? "1" : "0",
             guard_9037_strict: scenario.guard9037Strict ?? true,
             guard_trigger_enabled: scenario.guardTriggerEnabled ?? true,
@@ -107,6 +116,9 @@ describe("ELUS v1.89: diagnóstico 0765 simulado, sem acesso ao banco", () => {
     expect(result.receipt0765Present).toBe(true);
     expect(result.receipt0765Exact).toBe(true);
     expect(result.rpc0765Present).toBe(false);
+    expect(result.rpc0765SecurityDefiner).toBe(false);
+    expect(result.rpc0765PinnedSearchPath).toBe(false);
+    expect(result.rpc0765ServiceOnly).toBe(false);
     expect(result.rpc0765NamedFunctionsAnySchema).toBe(0);
     expect(result.receipt0765RpcMismatch).toBe(true);
   });
@@ -115,6 +127,9 @@ describe("ELUS v1.89: diagnóstico 0765 simulado, sem acesso ao banco", () => {
     const installed = await evaluate(1, 1, true);
     expect(installed.receipt0765RpcMismatch).toBe(false);
     expect(installed.rpc0765Present).toBe(true);
+    expect(installed.rpc0765SecurityDefiner).toBe(true);
+    expect(installed.rpc0765PinnedSearchPath).toBe(true);
+    expect(installed.rpc0765ServiceOnly).toBe(true);
 
     const noReceipt = await evaluate(0, 0, false);
     expect(noReceipt.receipt0765Present).toBe(false);
@@ -123,6 +138,20 @@ describe("ELUS v1.89: diagnóstico 0765 simulado, sem acesso ao banco", () => {
     const drifted = await evaluate(1, 0, false);
     expect(drifted.receipt0765Exact).toBe(false);
     expect(drifted.receipt0765RpcMismatch).toBe(true);
+  });
+
+  it("identifica RPC presente mas sem protecoes de privilegio e search_path", async () => {
+    const drifted = await evaluate(1, 1, true, {
+      rpc0765SecurityDefiner: false,
+      rpc0765PinnedSearchPath: false,
+      rpc0765ServiceOnly: false,
+    });
+    expect(drifted.rpc0765Present).toBe(true);
+    expect(drifted.receipt0765Exact).toBe(true);
+    expect(drifted.rpc0765SecurityDefiner).toBe(false);
+    expect(drifted.rpc0765PinnedSearchPath).toBe(false);
+    expect(drifted.rpc0765ServiceOnly).toBe(false);
+    expect(drifted.gate).toBe("DIAGNOSTIC_ONLY_NOT_RELEASE_APPROVAL");
   });
 
   it("separa a coexistência 0690/9037 de recibos ausentes ou divergentes", async () => {
