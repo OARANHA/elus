@@ -22,22 +22,22 @@ const EXTRA='20261026010000_0765_elus_rotacao_atomica_codigos_recuperacao.sql';
 // Impressões públicas dos sete statements históricos privados, já validadas
 // pelo exportador v1.85. Nunca expor o SQL nem tratá-las como prova de replay.
 const HISTORICAL_FINGERPRINTS=new Map([
- ['20261018200431',174,'72db224ba3b80c474d771d66cb593668'],
- ['20261018204508',508044,'a1bfe00566688f95f316e4e37ffeb97c'],
- ['20261018204837',509703,'f7e534e726ec192c1db7fe984cf5c2a3'],
- ['20261018204851',510397,'df7399b2361471a32f6baebb5a51823b'],
- ['20261018204924',510108,'f3a0b9ea9d0cce746c2d403f9a04dd7f'],
- ['20261018204939',509661,'e6038fa04f2faa45f9416dc462beeb52'],
- ['20261018204955',484187,'dab84f1d8332894d78cf737b28488450'],
+ ['20261018200431',[174,'72db224ba3b80c474d771d66cb593668']],
+ ['20261018204508',[508044,'a1bfe00566688f95f316e4e37ffeb97c']],
+ ['20261018204837',[509703,'f7e534e726ec192c1db7fe984cf5c2a3']],
+ ['20261018204851',[510397,'df7399b2361471a32f6baebb5a51823b']],
+ ['20261018204924',[510108,'f3a0b9ea9d0cce746c2d403f9a04dd7f']],
+ ['20261018204939',[509661,'e6038fa04f2faa45f9416dc462beeb52']],
+ ['20261018204955',[484187,'dab84f1d8332894d78cf737b28488450']],
 ]);
 // Os quatro recibos ELUS anteriores ao upgrade são públicos e versionados.
 // Os MD5/tamanhos abaixo foram confrontados com os arquivos SQL da main e
 // com o ledger produtivo por SELECT, sem executar os statements.
 const ELUS_HISTORICAL_FINGERPRINTS=new Map([
- ['20261019204449',13326,'0d76f02a421336ac784a9668e58df143'],
- ['20261021025530',2344,'89178273952e0c2af1174916ab1bf0e4'],
- ['20261021025551',2484,'45c956e88e760a9e853f2b9e319b6f7d'],
- ['20261021025613',7457,'11bee3e8876a69eb515bf962db5dec44'],
+ ['20261019204449',[13326,'0d76f02a421336ac784a9668e58df143']],
+ ['20261021025530',[2344,'89178273952e0c2af1174916ab1bf0e4']],
+ ['20261021025551',[2484,'45c956e88e760a9e853f2b9e319b6f7d']],
+ ['20261021025613',[7457,'11bee3e8876a69eb515bf962db5dec44']],
 ]);
 
 const digest=(data,algo='sha256')=>createHash(algo).update(data).digest('hex');
