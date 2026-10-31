@@ -398,6 +398,24 @@ describe("ELUS v1.89: executor produtivo guardado", () => {
     ];
     expect(result.replayClassification.dependencyChains).toEqual(expectedChains);
     expect(result.replayClassification.dependencyOrderVerified).toBe(true);
+    // A matriz de reconciliação e o executor offline devem declarar as mesmas
+    // dependências: não aceitar uma cadeia nova protegida só de um lado.
+    const matrix = JSON.parse(
+      readFileSync("docs/integracao/elus-v189-ledger-replay-matrix.json", "utf8"),
+    ) as { known_dependency_edges: Array<{ before: string; after: string }> };
+    const edgesFromManifest = (result.replayClassification.dependencyChains as string[][])
+      .flatMap((chain) =>
+        chain.slice(1).map((after, index) => ({
+          before: chain[index]!.split("_")[1]!,
+          after: after.split("_")[1]!,
+        })),
+      );
+    const edgeKey = (edge: { before: string; after: string }) =>
+      `${edge.before}->${edge.after}`;
+    expect(new Set(edgesFromManifest.map(edgeKey)).size).toBe(edgesFromManifest.length);
+    expect(edgesFromManifest.map(edgeKey).sort()).toEqual(
+      matrix.known_dependency_edges.map(edgeKey).sort(),
+    );
     const positions = new Map<string, number>(
       result.files.map(
         (entry: { file: string }, index: number): [string, number] => [entry.file, index],
