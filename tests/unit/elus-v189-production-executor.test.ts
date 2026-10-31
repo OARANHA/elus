@@ -96,7 +96,7 @@ describe("ELUS v1.89: executor produtivo guardado", () => {
     const verifier = readFileSync("scripts/verificar-lotes-v185.mjs", "utf8");
     const historicalBlock =
       source.split("const HISTORICAL_FINGERPRINTS=new Map([", 2)[1]?.split("]);", 1)[0] ?? "";
-    const fromExecutor = [...historicalBlock.matchAll(/\['(\d{14})',(\d+),'([a-f0-9]{32})'\]/g)]
+    const fromExecutor = [...historicalBlock.matchAll(/\['(\d{14})',\[(\d+),'([a-f0-9]{32})'\]\]/g)]
       .map((match) => [match[1], Number(match[2]), match[3]]);
     const fromVerifier = [...verifier.matchAll(/\["(\d{14})", (\d+), "([a-f0-9]{32})"\]/g)]
       .map((match) => [match[1], Number(match[2]), match[3]]);
@@ -120,7 +120,7 @@ describe("ELUS v1.89: executor produtivo guardado", () => {
       ["20261021025551", "20261020120001_0691_chutes_chat_catalog.sql"],
       ["20261021025613", "20261020230000_0692_chutes_catalog_sync.sql"],
     ];
-    const fingerprints = [...block.matchAll(/\['(\d{14})',(\d+),'([a-f0-9]{32})'\]/g)]
+    const fingerprints = [...block.matchAll(/\['(\d{14})',\[(\d+),'([a-f0-9]{32})'\]\]/g)]
       .map((match) => [match[1], Number(match[2]), match[3]] as const);
     expect(fingerprints).toHaveLength(4);
     expect(fingerprints.map((row) => row[0])).toEqual(expected.map((row) => row[0]));
