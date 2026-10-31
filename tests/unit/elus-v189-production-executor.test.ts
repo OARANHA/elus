@@ -390,8 +390,10 @@ describe("ELUS v1.89: executor produtivo guardado", () => {
     ];
     expect(result.replayClassification.dependencyChains).toEqual(expectedChains);
     expect(result.replayClassification.dependencyOrderVerified).toBe(true);
-    const positions = new Map(
-      result.files.map((entry: { file: string }, index: number) => [entry.file, index]),
+    const positions = new Map<string, number>(
+      result.files.map(
+        (entry: { file: string }, index: number): [string, number] => [entry.file, index],
+      ),
     );
     for (const chain of expectedChains) {
       const indices = chain.map((file) => positions.get(file));
