@@ -101,7 +101,7 @@ describe("ELUS v1.89: diagnóstico histórico com recibos simulados", () => {
         query: async (sql, args) => {
           expect(sql.trimStart().startsWith("SELECT")).toBe(true);
           expect(sql).toContain("WHERE version = ANY($1::text[])");
-          expect(sql).not.toMatch(/\\b(?:INSERT|UPDATE|DELETE|ALTER|DROP|CREATE)\\b/i);
+          expect(sql).not.toMatch(/\b(?:INSERT|UPDATE|DELETE|ALTER|DROP|CREATE)\b/i);
           expect(args[0]).toEqual(context.HISTORY.map(([version]) => version));
           return { rows };
         },
