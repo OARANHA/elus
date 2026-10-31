@@ -40,6 +40,26 @@ const ELUS_HISTORICAL_FINGERPRINTS=new Map([
  ['20261021025613',[7457,'11bee3e8876a69eb515bf962db5dec44']],
 ]);
 
+// Dependencias SQL documentadas: guarda de ordem ESTATICA, sem replay nem DB.
+const DEPENDENCY_CHAINS=[
+ [
+  "20261020230856_0716_agendas_de_servicos.sql",
+  "20261021173000_0717_desambigua_calendar_service_professionals.sql",
+  "20261023160008_0753_aviso_de_agendamento_no_whatsapp.sql"
+ ],
+ [
+  "20261020120002_0763_banco_externo_db_type_e_aviso.sql",
+  "20261022120000_0706_banco_externo_receitas.sql"
+ ],
+ [
+  "20261020000001_0684_a_reacao_nao_passa_pelos_gatilhos.sql",
+  "20261023230250_0760_historico_importado_nao_dispara.sql"
+ ],
+ [
+  "20261023160002_0747_mfa_dispositivo_confiavel.sql",
+  "20261023160012_0757_poder_de_plataforma_exige_sessao_confirmada.sql"
+ ]
+];
 const digest=(data,algo='sha256')=>createHash(algo).update(data).digest('hex');
 function need(ok,reason){if(!ok)throw Error(reason);}
 function manifest(){
@@ -58,6 +78,10 @@ function manifest(){
   return {file,version:file.slice(0,14),name:file.slice(15,-4),sql:sql.toString('utf8'),sha256:digest(sql)};
  });
  need(new Set(entries.map(x=>x.version)).size===39,'DUPLICATE_VERSION');
+ const position=new Map(entries.map(({file},i)=>[file,i]));
+ for(const chain of DEPENDENCY_CHAINS){
+  need(chain.every(file=>position.has(file))&&chain.every((file,i)=>i===0||position.get(chain[i-1])<position.get(file)),'DEPENDENCY_ORDER_DRIFT');
+ }
  return entries;
 }
 function sourceGuard(){
@@ -252,6 +276,8 @@ async function main(){
       elusHistoricalVersions:HISTORY.slice(-4).map(x=>x[0]),
       atomicMfaMigration:EXTRA,
       destructiveMigration:'20261023180557_0759_codigos_de_recuperacao_antigos_saem.sql',
+      dependencyChains:DEPENDENCY_CHAINS,
+      dependencyOrderVerified:true, // somente ordem nominal; nao prova seguranca do SQL
       replayApproved:false,
       reason:'RESTORE_AND_FULL_LEDGER_STATEMENTS_NOT_VERIFIED'
     }
