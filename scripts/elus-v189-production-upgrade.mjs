@@ -304,7 +304,7 @@ async function main(){
  const c=new pg.Client(config());
  await c.connect();
  try{
-  await c.query('BEGIN READ ONLY');
+  await c.query('BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY');
   if(mode==='diagnose'){
    console.log(JSON.stringify({mode:'read-only-diagnostic',...await diagnoseLedger(c)}));
    return;
