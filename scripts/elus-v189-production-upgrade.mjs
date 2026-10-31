@@ -209,7 +209,7 @@ async function diagnoseLedger(c){
        AND NOT EXISTS (SELECT 1 FROM pg_catalog.aclexplode(p.proacl) AS acl
          WHERE acl.grantee=0 AND acl.privilege_type='EXECUTE')
        FROM pg_catalog.pg_proc p
-       WHERE p.oid=to_regprocedure('public.fn_elus_rotacionar_codigos_recuperacao(uuid,text[])')),false) AS rpc_0765_service_only,
+       WHERE p.oid=to_regprocedure('public.fn_elus_rotacionar_codigos_recuperacao(uuid,text[])')),false) AS rpc_0765_service_role_clients_denied,
      (SELECT position('current_user = ''service_role'' and auth.role() = ''service_role'''
              in lower(p.prosrc))>0
       FROM pg_catalog.pg_proc p
@@ -263,7 +263,7 @@ async function diagnoseLedger(c){
    // Sinais diagnosticos somente leitura; nunca autorizam apply.
    rpc0765SecurityDefiner:catalog.rpc_0765_security_definer===true,
    rpc0765PinnedSearchPath:catalog.rpc_0765_pinned_search_path===true,
-   rpc0765ServiceOnly:catalog.rpc_0765_service_only===true,
+   rpc0765ServiceRoleClientsDenied:catalog.rpc_0765_service_role_clients_denied===true,
    // Recibo armazenado nao prova que a RPC existe no catalogo atual.
    receipt0765RpcMismatch:Number(ledger.receipt_0765)>0&&catalog.rpc_0765_present!==true,
    guard9037Strict:catalog.guard_9037_strict===true,
