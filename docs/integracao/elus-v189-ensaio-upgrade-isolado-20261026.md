@@ -19,9 +19,9 @@ No snapshot histórico de 25/10/2026, o Supabase ELUS (PostgreSQL 17.11) possuí
 7. **Comparação pós-upgrade:** confrontar esquema efetivo com baseline v1.89 candidata e com invariantes, inclusive presença única da RPC `0765` e o bloco final de varredura de `anon`. Investigar diferenças esperadas de ACL/default privileges. Exigir isolamento multi-tenant, teste negativo `anon/authenticated` para RPC `0765`, permissões de `service_role` e ausência de bypass por funções `SECURITY DEFINER`.
 8. **Critério de aceite:** PG15 e PG17 completos; dados sintéticos preservados ou explicitamente transformados; ledger consistente; rollback restaurado e conferido; lint, TypeScript e unitários pertinentes sem regressões. Evidência de instalação limpa do baseline NÃO substitui upgrade. Só depois propor, em operação separada, decisão sobre aplicação real.
 
-## Bloqueios atuais verificáveis
+## Bloqueios do upgrade completo — estado reconciliado em 01/11/2026
 
-- Não existe evidência de reconstrução dos seis lotes v1.85 no ambiente de ensaio.
+- **Reconstrução parcial v1.85 comprovada:** o workflow privado [40443522122](https://github.com/OARANHA/elus/actions/runs/40443522122) registrou sucesso na reconstrução da baseline histórica em PostgreSQL efêmero, incluindo os sete statements originais. Essa evidência não demonstra o replay completo v1.85→v1.89 em PostgreSQL 15 e 17, equivalência do catálogo final ou restauração de backup produtivo.
 - Replay real do ledger v1.85 → v1.89 não foi executado.
 - `0759` contém DELETE deliberado; contagem previamente observada em produção não elimina risco futuro.
 - No Supabase ativo a RPC `fn_elus_rotacionar_codigos_recuperacao(uuid,text[])` ainda está ausente.
@@ -147,3 +147,18 @@ Consulta única exclusivamente `SELECT` sobre `pg_catalog` e contagem do ledger 
 - **Metadados efetivos:** `SECURITY INVOKER` (`prosecdef=false`), `search_path=pg_catalog, public, pg_temp`, um trigger habilitado vinculado à função em `public.organizations`; `anon` e `authenticated` sem EXECUTE direto, `service_role` com EXECUTE. Os recibos 0690 e 9037 existem (2/2).
 
 **Consequência para o replay:** restaurar somente a baseline ELUS v1.89 candidata, que contém a 0690 original, **não reproduz a condição mais restritiva observada em produção**. A 9037 externa não integra o manifesto autorizado das 39 migrations e não pode ser absorvida implicitamente. A comparação integral de catálogo e os testes negativos por papéis/tenants devem contemplar explicitamente essa diferença; eventual reconciliação do SQL versionado exige mudança separada, revisão e autorização própria. Este achado não comprova exploração, não autoriza alterar 0690/9037 em produção e não elimina os bloqueios 0765, 0759 e replay PG15/17. **NO-GO mantido.**
+
+
+## Matriz estática de divergência da guarda 0690/9037 — 01/11/2026, 12h BRT
+
+**Método:** análise estática das condições da migration versionada 0690 e da definição efetiva 9037 já documentada acima. Não houve execução de função, simulação de identidade de produção, alteração de banco ou teste de isolamento. As expressões são reduzidas a variáveis booleanas: `C = (current_user = 'service_role')`, `R = (auth.role() = 'service_role')`, `P = (current_user = 'postgres' AND auth.uid() IS NULL AND auth.role() IS NULL)`. Assim, **0690 autoriza quando `R OR P`**, enquanto **9037 autoriza quando `(C AND R) OR P`**. A tabela é uma avaliação lógica, não demonstra que cada combinação é alcançável na instalação.
+
+| C | R | P | 0690 | 9037 | Resultado |
+| --- | --- | --- | --- | --- | --- |
+| falso | falso | falso | nega | nega | igual |
+| falso | verdadeiro | falso | permite | **nega** | **divergência** |
+| verdadeiro | falso | falso | nega | nega | igual |
+| verdadeiro | verdadeiro | falso | permite | permite | igual |
+| falso | falso | verdadeiro | permite | permite | exceção `postgres` preservada |
+
+**Critério de reconciliação futuro (não executado):** no replay isolado autorizado, comparar a guarda **antes e depois** da aplicação explícita da 9037 externa, usando identidades e claims sintéticos controlados e verificando as condições reais de invocação, ACL, trigger, RLS e isolamento entre dois tenants. Não inserir 9037 no manifesto das 39 migrations, não reescrever 0690 para esconder a diferença e não tratar a matriz estática como aceite funcional. O `apply` produtivo segue bloqueado independentemente desse ensaio.
