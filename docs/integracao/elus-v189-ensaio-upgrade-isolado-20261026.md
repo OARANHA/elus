@@ -182,3 +182,41 @@ Consulta única exclusivamente `SELECT` sobre `pg_catalog` e contagem do ledger 
 | `0693_motivo_verificacao_manual` | Recria `passagens_de_atendimento_motivo_codigo_check` incluindo `verificacao_manual`. | Conferir constraint anterior e correspondência com vocabulário da aplicação; testar em banco descartável. |
 
 **Resultado da triagem:** 11/11 arquivos anteriores ao corte inventariados estruturalmente; **0/11 aprovados para reexecução** e **0/38 imports aprovados funcionalmente**. A presença de `DROP VIEW` (0763), `DROP FUNCTION` (0687/0764) e alterações extensas de ACL/RLS (0716) exige análise de dependências do catálogo histórico, não uma suposição de idempotência. Os 27 imports posteriores ao corte ainda não receberam esta mesma triagem por arquivo. A revisão manual completa dos 38, o replay v1.85→v1.89 em PG15/17, restauração e aceite permanecem pendentes. **NO-GO**; `apply` bloqueado.
+
+## Triagem estrutural dos 27 imports posteriores ao corte — 01/11/2026, 20h BRT
+
+**Método:** leitura estática, arquivo por arquivo, dos 27 SQLs versionados com carimbo posterior a `20261021025613`, confrontados com `docs/integracao/elus-v189-ledger-replay-matrix.json`. Foram examinados comandos estruturais, DML imediato, funções, grants, triggers, RLS e dependências aparentes. **Não** houve execução de SQL, consulta a banco, inspeção de dados de clientes, replay, Vitest ou E2E. Esta é uma **triagem estrutural**, não auditoria semântica exaustiva nem aprovação de aplicação.
+
+| Import (sufixo) | Sinal observado no SQL | Gate no ensaio descartável autorizado |
+| --- | --- | --- |
+| `0703_catalogo_gemini_4_argon` | `INSERT` no catálogo `ai_models` e em `ai_pricing`. | Verificar conflitos de chave, preços e paridade de catálogo sem alterar oferta ELUS/Chutes. |
+| `0717_desambigua_calendar_service_professionals` | `ALTER TABLE` em tabela criada na 0716. | Conferir FK/constraint e ordem `0716→0717`. |
+| `0726_escopo_da_conversa_uma_vez_por_consulta` | Redefine `fn_conversation_scope` `SECURITY DEFINER` e policy de leitura de conversas. | Comparar claims, grants, RLS e isolamento entre dois tenants. |
+| `0705_prospeccao_saida_configuravel` | Colunas/índice, função privilegiada e trigger em mensagens; grava auditoria. | Conferir FK, transição de estado e efeitos do trigger em dados sintéticos. |
+| `0706_banco_externo_receitas` | Acrescenta `receitas` e recria `external_db_connections_safe` com `security_invoker`. | **Ponto de parada:** dependentes da view, grants, projeção sem `receitas` e ordem `0763→0706`. |
+| `0710_campanha_com_modelo_aprovado` | Altera colunas e substitui CHECKs de campanhas. | Compatibilidade de linhas existentes e modelos aprovados. |
+| `0721_traco_do_turno_do_agente` | Nova `agent_turn_traces`, índices, RLS e grants. | Política de SELECT por organização e retenção/acesso a traces. |
+| `0722_reusar_o_card_aberto_na_captacao` | Coluna opcional em `webhook_sources`, default `false`. | Compatibilidade com captura assinada e não duplicação de negócio. |
+| `0731_crm_lead_attachments` | Nova tabela, RLS, trigger de caminho imutável, função de retenção **e `DELETE` imediato condicional** dentro de bloco `DO`. | **Ponto de parada adicional:** medir em clone quantas linhas preexistentes não atendem à regex de caminho antes de qualquer remoção; validar órfãos de mídia e políticas. |
+| `0734_avaliacao_unica_de_permissoes` | Redefine `fn_user_role_in_org` e `fn_role_at_least` como `SECURITY DEFINER`. | Testes negativos de RBAC, suporte e multi-tenancy; comparar grants. |
+| `0729_ordem_da_resposta_rapida` | `ALTER TABLE` e **`UPDATE` de backfill** de `message_templates.ordem` quando a coluna não existe. | Conferir cardinalidade, ordem por organização e custo/locks em dados sintéticos. |
+| `0738_teto_do_adiamento_do_canal` | Altera `prospecting_campaigns`. | Conferir restrição e valores existentes. |
+| `0743_gatilho_de_data_do_funil_alcanca_a_origem` | Redefine função de resolução de contato e `emit_event`, com `SECURITY DEFINER`. | Verificar escopo de organização e emissão única de eventos. |
+| `0744_telefone_ganho_nos_quatro_caminhos` | Redefine `fn_upsert_wa_contact` privilegiada. | Conferir deduplicação, telefone, escopo e consentimento. |
+| `0747_mfa_dispositivo_confiavel` | Nova tabela com RLS, `fn_session_mfa_proven` e função LGPD redefinida. | Verificar sessão/fator MFA, grants e acesso direto negado. |
+| `0748_vocabulario_paginado` | Redefine RPC de tags paginadas e grants. | Escopo de organização, paginação e ACL. |
+| `0749_router_member_publish_without_direct_channel` | Redefine RPC privilegiada de publicação de agente e atualiza versões/agentes. | Validar permissão de publicação, organização e governança. |
+| `0750_lgpd_marca_de_apagamento` | Nova tabela RLS, trigger de anonimização e RPC de consulta. | Privacidade de identificadores, grants e retenção LGPD. |
+| `0752_channel_sessions_leitura_sem_regra_de_escrita` | Substitui policy ampla por INSERT/UPDATE/DELETE separadas. | Testar escrita/leitura negativa por papel e tenant; não basta conferir nomes. |
+| `0753_aviso_de_agendamento_no_whatsapp` | Tabelas/FKs, funções privilegiadas de configuração e expurgo de avisos. | Ordem `0716→0717→0753`, MFA, canais e expurgo apenas sob invocação autorizada. |
+| `0754_mediana_da_primeira_resposta_e_recorte_por_etiqueta` | **`DROP FUNCTION` imediato** da assinatura antiga de `fn_attendant_metrics`; cria assinatura nova. | **Ponto de parada:** inspecionar dependentes e chamadas de quatro argumentos; validar retorno e grants. |
+| `0755_codigos_de_recuperacao_so_pelo_servidor` | Revoga privilégios e substitui policy de códigos de recuperação. | Confirmar acesso somente servidor e ordem antes da 0759. |
+| `0756_meta_mensal_por_indicador` | Nova `crm_metas` com RLS, FKs, índices e grants. | Isolamento e autorização de escrita por papel. |
+| `0757_poder_de_plataforma_exige_sessao_confirmada` | Redefine `fn_is_platform_admin_full` e função LGPD com exigência MFA. | Ordem `0747→0757`; testes AAL2 e privilégios. |
+| `0759_codigos_de_recuperacao_antigos_saem` | **`DELETE` imediato** de códigos cujo hash não tem 32 bytes. | **Autorização independente obrigatória**, impacto, backup e restauração; nunca executar nesta etapa. |
+| `0760_historico_importado_nao_dispara` | Redefine triggers/funções de mensagens; `GRANT ALL` em função que retorna `trigger` para `anon` e `authenticated`. | Comparar privilégios efetivos e semântica de eventos; não inferir explorabilidade pelo GRANT isolado. |
+| `0761_importacoes_de_historico` | Nova tabela de importações com RLS, leitura autenticada e escrita por `service_role`. | Conferir escopo de tenant e serialização de rodadas/importações. |
+
+**Achados adicionais à classificação anterior:** a 0759 não é o único SQL do lote com `DELETE` imediato: a **0731** também remove linhas preexistentes que não atendam à restrição de caminho, embora a tabela seja apresentada como nova. A **0729** executa backfill de dados, e a **0754** remove uma assinatura de função; a **0706** recria uma view. Essas operações não são necessariamente incorretas, mas impedem classificar o lote como puramente aditivo. Os quatro novos marcadores estáticos de risco (`0731`, `0729`, `0754`, `0760`) foram acrescentados à matriz sem alterar SQL nem liberar `apply`. O `DELETE` presente no corpo da função de expurgo da 0753 **não é executado automaticamente** pela criação da função.
+
+**Resultado:** 27/27 imports posteriores ao corte triados estruturalmente, somando 38/38 com a triagem anterior; **0/38 aprovados para execução**. Revisão semântica integral, catálogo histórico, dependências reais, replay/restauração PostgreSQL 15/17, 0690/9037, 0765, isolamento e autorização da 0759 permanecem pendentes. O ledger mais recente documentado contém 51 recibos; o executor `apply` continua fail-closed. **NO-GO.**
