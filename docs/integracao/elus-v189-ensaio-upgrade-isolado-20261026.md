@@ -136,3 +136,14 @@ Consulta única exclusivamente `SELECT` sobre `pg_catalog` e contagem do ledger 
 - **Controle de divergência:** ledger ainda com 51 recibos; `fn_elus_rotacionar_codigos_recuperacao(uuid,text[])` continua ausente no catálogo. A causa não foi determinada. O limite de 50 recibos e o bloqueio `apply` devem permanecer intactos.
 
 **Limites e próximo gate:** conferência de catálogo não comprova execução histórica de migrations, semântica integral das policies, segurança multi-tenant nem replay v1.85→v1.89. Exigir testes negativos com dois tenants em ambiente isolado autorizado, restauração e replay PG15/17, reconciliação 0690/9037, revisão da RPC 0765 e aprovação independente do DELETE 0759. Nenhum E2E/Playwright, DDL/DML, merge, imagem ou deploy foi realizado nesta conferência.
+
+
+## Divergência semântica 0690/9037 — 01/11/2026, 11h BRT (somente SELECT)
+
+**Fonte de comparação:** arquivo versionado `supabase/migrations/20261020120000_0690_org_ai_autonomy_protected.sql` da PR #62 e definição efetiva obtida de `pg_catalog.pg_get_functiondef` no Supabase ELUS PostgreSQL 17.11. Não foram lidos registros de tenants nem executadas funções mutantes.
+
+- **0690 versionada:** para autorizar mudança em `organizations.ai_autonomy`, a guarda `fn_guard_organizations_ai_autonomy` usa `auth.role() = 'service_role'` **OU** `(current_user = 'postgres' AND auth.uid() IS NULL AND auth.role() IS NULL)`.
+- **Catálogo efetivo após recibo externo 9037:** a primeira condição é **mais restritiva**: `(current_user = 'service_role' AND auth.role() = 'service_role')`. A exceção para `postgres` permanece igual. Esta é uma diferença **semântica**, não apenas cosmética. Na combinação hipotética `auth.role()='service_role'` e `current_user<>'service_role'`, a 0690 permite e a definição efetiva rejeita. Não foi demonstrado que tal combinação seja alcançável por um usuário não autorizado.
+- **Metadados efetivos:** `SECURITY INVOKER` (`prosecdef=false`), `search_path=pg_catalog, public, pg_temp`, um trigger habilitado vinculado à função em `public.organizations`; `anon` e `authenticated` sem EXECUTE direto, `service_role` com EXECUTE. Os recibos 0690 e 9037 existem (2/2).
+
+**Consequência para o replay:** restaurar somente a baseline ELUS v1.89 candidata, que contém a 0690 original, **não reproduz a condição mais restritiva observada em produção**. A 9037 externa não integra o manifesto autorizado das 39 migrations e não pode ser absorvida implicitamente. A comparação integral de catálogo e os testes negativos por papéis/tenants devem contemplar explicitamente essa diferença; eventual reconciliação do SQL versionado exige mudança separada, revisão e autorização própria. Este achado não comprova exploração, não autoriza alterar 0690/9037 em produção e não elimina os bloqueios 0765, 0759 e replay PG15/17. **NO-GO mantido.**
