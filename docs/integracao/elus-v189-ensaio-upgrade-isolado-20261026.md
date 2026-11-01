@@ -116,3 +116,12 @@ Consultas **exclusivamente `SELECT`** no Supabase ELUS (PostgreSQL **17.11**), l
 - Ledger observado: **51 recibos**; 0765 presente como recibo, mas `to_regprocedure('public.fn_elus_rotacionar_codigos_recuperacao(uuid,text[])')` retorna **NULL**. A divergência de catálogo continua sem causa determinada.
 
 **Limite de evidência:** RLS habilitada e ausência de GRANT para papéis de cliente não demonstram que todas as rotas com `service_role` filtram `organization_id`, nem provam isolamento multi-tenant, políticas corretas nas demais 162 tabelas, equivalência da baseline ou replay v1.85→v1.89. Não se deve transformar essa inspeção em aprovação de release. Revisar as rotas de serviço e provar isolamento em gate independente autorizado; **NO-GO** mantido para `apply`, DELETE 0759, merge e deploy.
+
+
+## Triagem dos event triggers na investigação da RPC 0765 — 01/11/2026
+
+Consulta **exclusivamente SELECT** ao catálogo do Supabase ELUS PostgreSQL 17.11, sem ler `statements[]`, definições completas de funções, dados de tenants ou segredos. Na observação desta execução: **51 recibos**, exatamente **um** recibo da 0765 e **zero** funções chamadas `fn_elus_rotacionar_codigos_recuperacao` em `pg_proc` (qualquer schema). A divergência permanece.
+
+A inspeção dos **seis event triggers habilitados** identificou somente handlers no schema `extensions`: `issue_graphql_placeholder` (`sql_drop`), `issue_pg_cron_access`, `issue_pg_graphql_access`, `issue_pg_net_access`, `pgrst_ddl_watch` (`ddl_command_end`) e `pgrst_drop_watch` (`sql_drop`). Nenhum dos seis corpos de handler contém a sequência textual `INSERT INTO`; quatro mencionam `pg_event_trigger_ddl_commands`. Esses sinais **não identificam uma trilha persistente de auditoria DDL** e não permitem reconstruir se, quando ou por quem a função 0765 foi criada/removida. A ocorrência textual genérica de `DROP FUNCTION` no handler `grant_pg_graphql_access` não é evidência de remoção da RPC 0765.
+
+**Conclusão restrita:** os event triggers habilitados não fornecem, nesta inspeção, prova da origem do descompasso entre recibo e catálogo. Não inferir que a 0765 nunca foi executada, nem que houve um DROP. O `pg_stat_statements` anteriormente consultado também não constitui histórico DDL completo. Permanecem obrigatórios o replay fiel em PG15/17 descartável, comparação integral de catálogo, ACL/RLS/tenancy, restauração comprovada e autorização independente da 0759. O executor `apply` continua fail-closed. Nenhuma alteração de banco, E2E/Playwright, merge, imagem ou deploy foi efetuada.
