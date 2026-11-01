@@ -157,7 +157,7 @@ describe("ELUS v1.89 — baseline candidata, contrato lexical offline", () => {
         new URL("../../supabase/migrations/" + nome, import.meta.url), "utf8",
       ));
       expect(parsed.estado, nome).toBe("code");
-      expect(parsed.instrucoes, nome).toHaveLength(contagens[indice]);
+      expect(parsed.instrucoes, nome).toHaveLength(contagens[indice]!);
       return parsed.instrucoes;
     }).flat();
 
