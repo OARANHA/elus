@@ -137,6 +137,7 @@ describe("ELUS v1.89: snapshot fail-closed com ledger sintetico", () => {
       await expect(check.result).rejects.toThrow(error);
       check.assertQueries();
     }
+  });
 
   it("rejeita catalogo inicial e final com numero incorreto de tabelas", async () => {
     const { historical, imported, evaluate } = fixture();
@@ -171,6 +172,5 @@ describe("ELUS v1.89: snapshot fail-closed com ledger sintetico", () => {
     const check = evaluate(rows, 1);
     await expect(check.result).rejects.toThrow("RECEIPT_STATEMENT_LENGTH_DRIFT");
     check.assertQueries();
-  });
   });
 });
