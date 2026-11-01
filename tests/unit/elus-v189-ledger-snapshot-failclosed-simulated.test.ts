@@ -67,7 +67,7 @@ function fixture() {
     { timeout: 1000 },
   ) as Snapshot;
 
-  function evaluate(records: Receipt[], expectedQueries: number) {
+  function evaluate(records: Receipt[], expectedQueries: number, publicTables = 208) {
     let queries = 0;
     const result = snapshot({
       query: async (sql) => {
@@ -77,7 +77,7 @@ function fixture() {
           return { rows: records };
         }
         if (sql.includes("pg_tables")) {
-          return { rows: [{ n: "208" }] };
+          return { rows: [{ n: String(publicTables) }] };
         }
         throw Error("UNEXPECTED_QUERY");
       },
@@ -137,5 +137,40 @@ describe("ELUS v1.89: snapshot fail-closed com ledger sintetico", () => {
       await expect(check.result).rejects.toThrow(error);
       check.assertQueries();
     }
+
+  it("rejeita catalogo inicial e final com numero incorreto de tabelas", async () => {
+    const { historical, imported, evaluate } = fixture();
+    const initial = evaluate(historical, 2, 190);
+    await expect(initial.result).rejects.toThrow("INITIAL_SCHEMA_DRIFT");
+    initial.assertQueries();
+
+    const final = evaluate([...historical, ...imported], 2, 207);
+    await expect(final.result).rejects.toThrow("FINAL_SCHEMA_DRIFT");
+    final.assertQueries();
+  });
+
+  it("recusa nomes incorretos, historico incompleto e recibo importado duplicado", async () => {
+    const { historical, imported, evaluate } = fixture();
+    const cases: Array<[Receipt[], string]> = [
+      [[...historical.slice(0, 10), ...imported], "HISTORY_DRIFT"],
+      [[...historical.map((r, i) => i === 4 ? { ...r, name: "outro_nome" } : r), ...imported], "HISTORY_DRIFT"],
+      [[...historical, ...imported.map((r, i) => i === 5 ? { ...r, name: "outro_nome" } : r)], "UNKNOWN_RECEIPT"],
+      [[...historical, ...imported.map((r, i) => i === 7 ? { ...r, ...imported[6] } : r)], "RECEIPT_DUPLICATE"],
+    ];
+    for (const [rows, error] of cases) {
+      const check = evaluate(rows, 1);
+      await expect(check.result).rejects.toThrow(error);
+      check.assertQueries();
+    }
+  });
+
+  it("recusa tamanho de SQL divergente antes da consulta de catalogo", async () => {
+    const { historical, imported, evaluate } = fixture();
+    const rows = [...historical, ...imported.map((r, i) =>
+      i === 3 ? { ...r, first_statement_bytes: r.first_statement_bytes + 1 } : r)];
+    const check = evaluate(rows, 1);
+    await expect(check.result).rejects.toThrow("RECEIPT_STATEMENT_LENGTH_DRIFT");
+    check.assertQueries();
+  });
   });
 });
