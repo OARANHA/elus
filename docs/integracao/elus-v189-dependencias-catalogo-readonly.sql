@@ -65,6 +65,19 @@ SELECT
   d.objid AS dependent_oid,
   d.objsubid AS dependent_subid,
   d.refobjsubid AS target_column_subid,
+  -- Regra _RETURN interna da propria view nao e dependencia externa.
+  -- Outras dependencias continuam visiveis e exigem revisao manual.
+  CASE
+    WHEN d.objid IS NULL THEN 'NONE_RECORDED'
+    WHEN d.classid = 'pg_catalog.pg_rewrite'::regclass
+      AND d.deptype = 'i'
+      AND EXISTS (
+        SELECT 1 FROM pg_catalog.pg_rewrite rw
+        WHERE rw.oid = d.objid
+          AND rw.ev_class = t.object_oid
+      ) THEN 'OWN_VIEW_RULE_INTERNAL'
+    ELSE 'REVIEW_DEPENDENCY'
+  END AS dependency_scope,
   CASE WHEN d.objid IS NULL THEN NULL
        ELSE pg_catalog.pg_describe_object(d.classid, d.objid, d.objsubid)
   END AS dependent_object
