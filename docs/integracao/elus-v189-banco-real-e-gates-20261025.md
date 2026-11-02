@@ -120,3 +120,21 @@ Fonte: projeto Supabase conectado `elus` (`ACTIVE_HEALTHY`, PostgreSQL 17), por 
 **Gates mantidos:** restauração comprovada e replay histórico separado em PG15/17 descartável; inventário completo de dependências e efeitos das 38 migrations; ACL/RLS e isolamento multi-tenant; reconciliação 0690/9037 e 0765; autorização específica do DELETE 0759. `apply` produtivo permanece fail-closed. Nenhum DDL/DML, migration, E2E/Playwright, merge, publicação ou deploy foi executado.
 
 **CI observado no HEAD anterior `c86bf2bc3d124fd23e1ff5a0249f302022b98a84`:** [run 41481932638](https://github.com/OARANHA/elus/actions/runs/41481932638), 10/10 jobs SUCCESS, incluindo invariantes PostgreSQL 15/17; workflow de imagens [41481932736](https://github.com/OARANHA/elus/actions/runs/41481932736) SUCCESS, mas `build-and-push`, `juntar-manifestos` e `promover-stable` SKIPPED. Isso não aprova upgrade funcional, nem valida este novo registro documental.
+
+## ACL dos códigos de recuperação e impacto da ausência da RPC — 02/11/2026
+
+Inspeção adicional **somente SELECT** no projeto Supabase conectado `elus` (PostgreSQL 17.11). Foram consultados exclusivamente `pg_catalog`, `supabase_migrations.schema_migrations` e metadados de permissões; nenhuma linha de usuário, hash de código ou conteúdo de `statements[]` foi lido.
+
+| Verificação | Resultado observado |
+| --- | --- |
+| Histórico ativo | 51 recibos; 0765 presente, 1 statement de 2.747 bytes, MD5 `add7a7db36db87cd213fd7a7d0f81db7`. |
+| Função `public.fn_elus_rotacionar_codigos_recuperacao(uuid,text[])` | **Ausente** por `to_regprocedure`; `pg_proc` não contém o nome em nenhum schema. |
+| `public.user_recovery_codes` | Tabela presente; RLS habilitada. |
+| Política `user_recovery_codes_ninguem_le` | Uma policy SELECT com expressão `false` encontrada. |
+| Privilégios diretos de `anon` e `authenticated` | Ambos sem SELECT, INSERT, UPDATE ou DELETE na tabela, segundo `has_table_privilege`. |
+
+**Conclusão limitada:** o estado observado preserva as barreiras RLS/ACL inspecionadas da tabela, mas a RPC atômica 0765 continua ausente apesar do recibo. Em `app/actions/settings/regenerateRecoveryCodes.ts`, o código versionado chama exclusivamente `admin.rpc('fn_elus_rotacionar_codigos_recuperacao', ...)` e retorna `rotation_failed` se a chamada falhar, sem DELETE/INSERT alternativos no cliente; há teste simulado de `PGRST202`. Isso é **inferência do código versionado**, não comprovação de qual build está executando nem teste de rotação em produção. O motivo da ausência (registro sem efeito, DROP posterior ou outro desvio) **não foi determinado**. Não reconstruir a função diretamente no banco real nem manipular recibos como atalho.
+
+**CI do HEAD anterior a esta nota:** `09bda847d5a2224f5c9a14173a4ba7bbf83e7dc4`, [run 41490515332](https://github.com/OARANHA/elus/actions/runs/41490515332), **10/10 jobs SUCCESS** (incluindo PostgreSQL 15/17); workflows perf e GHCR também `success`, sem inferência de publicação. Os checks não provam restauração, replay nem funcionalidade da RPC ausente. Novo commit documental ainda exige validação de seu próprio HEAD.
+
+**Próximo gate:** rastrear a origem da discrepância 0765 por evidências auditáveis, verificar replay/restauração PG15/17 descartável e reconciliação independente do recibo externo 9037 e limite de 50. Manter `apply` bloqueado, 0759 sem autorização e E2E somente manual. Nenhum SQL mutante, E2E, merge, imagem ou deploy nesta inspeção.
