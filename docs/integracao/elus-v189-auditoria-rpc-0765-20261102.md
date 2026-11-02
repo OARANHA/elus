@@ -46,3 +46,19 @@ O recibo comprova a existência de uma entrada no histórico, **não** a perman�
 - **Divergência de catálogo persiste:** `to_regprocedure('public.fn_elus_rotacionar_codigos_recuperacao(uuid,text[])')` retornou ausente, apesar de o recibo 0765 coincidir byte a byte com o SQL versionado. A função `fn_guard_organizations_ai_autonomy()` da guarda 9037 está presente. Recibos exatos **não** comprovam que seus efeitos persistem no banco.
 
 **Conclusão operacional:** o bloqueio deixou de ser uma identidade desconhecida dos 51 recibos e passou a exigir investigação de **estado efetivo do catálogo**, causa da ausência da RPC 0765 e plano específico para a migration externa 9037. Nenhum aceite funcional, autorização do DELETE 0759, restauração PG15/17 ou replay histórico foi obtido. Preservar `apply` bloqueado, E2E somente manual e produção NO-GO.
+
+## Complemento forense — proveniência Git e janelas adicionais de logs (02/11/2026, 19h BRT)
+
+**Proveniência versionada:** a consulta ao histórico Git do caminho `supabase/migrations/20261026010000_0765_elus_rotacao_atomica_codigos_recuperacao.sql` retornou o commit de introdução `f9e51b744a0dd62c789818baf0e6caf3ba758db8` (26/10/2026, 03:14:30 UTC), com alteração exclusivamente nesse arquivo. Essa data é do **commit Git**, não comprovação de execução SQL nem horário de criação da RPC no PostgreSQL.
+
+**Busca agregada somente leitura nos logs `postgres_logs` do Supabase `elus`:** consulta ClickHouse `SELECT` sobre `log_attributes`, sem extrair payloads, SQL de usuários ou dados de tenants. Cada intervalo foi consultado uma vez:
+
+| Janela UTC | Eventos | Menções literais à RPC 0765 | `CREATE FUNCTION` | `DROP FUNCTION` |
+| --- | ---: | ---: | ---: | ---: |
+| 27/10 00:00–28/10 00:00 | 49 | 0 | 0 | 0 |
+| 28/10 00:00–29/10 00:00 | 7.782 | 0 | 0 | 1 |
+| 29/10 00:00–30/10 00:00 | 594 | 0 | 0 | 0 |
+
+A única menção genérica a `DROP FUNCTION` em 28/10 **não contém menção literal à RPC 0765** no registro pesquisado; a extração limitada do nome da função não retornou identificador. Portanto, **não há vínculo demonstrado** com a função ausente. O resultado não exclui DDL sem logging, comandos dinâmicos, outras janelas, restauração ou intervenção fora do ledger.
+
+**Estado da conclusão:** recibo 0765 íntegro e arquivo versionado idêntico; catálogo sem a RPC; causa raiz **não determinada**. Não converter indícios de logs em autorização para reparo. Manter `apply` bloqueado, 9037 reconciliada apenas por identidade, replay/restauração PG15/17 pendentes e DELETE 0759 sem autorização. Nenhum SQL mutante, E2E/Playwright, merge, publicação ou deploy nesta inspeção.
