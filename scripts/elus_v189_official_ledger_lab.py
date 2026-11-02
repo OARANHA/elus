@@ -144,13 +144,20 @@ def progress(items: list[tuple[str, str, bytes]]) -> int:
     # statements stored by Supabase with pinned source bytes for each receipt.
     if seen:
         hashes = query(
-            "SELECT version || '|' || coalesce(md5(array_to_string(statements,'')), '') "
+            "SELECT version || '|' || coalesce(cardinality(statements)::text, '') "
+            "|| '|' || coalesce(octet_length(statements[1])::text, '') "
+            "|| '|' || coalesce(md5(array_to_string(statements,'')), '') "
             "FROM supabase_migrations.schema_migrations "
             "WHERE version IN (" + ",".join(sql_literal(v) for v, _ in seen) + ") "
             "ORDER BY version"
         )
-        observed = dict(line.split("|", 1) for line in hashes.splitlines() if line)
-        verified = {name[:14]: hashlib.md5(sql).hexdigest()
+        observed: dict[str, tuple[str, str, str]] = {}
+        for line in hashes.splitlines():
+            parts = line.split("|", 3)
+            if len(parts) != 4 or parts[0] in observed:
+                fail("OFFICIAL_STATEMENTS_DRIFT")
+            observed[parts[0]] = (parts[1], parts[2], parts[3])
+        verified = {name[:14]: ("1", str(len(sql)), hashlib.md5(sql).hexdigest())
                     for name, _, sql in items}
         if set(observed) != {v for v, _ in seen} or any(
             observed[v] != verified[v] for v, _ in seen
