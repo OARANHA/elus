@@ -51,4 +51,12 @@ describe("ELUS v1.89 — preflight de dependencias somente leitura", () => {
       /drop function if exists public\.fn_attendant_metrics\(uuid, timestamptz, timestamptz, uuid\);/i,
     );
   });
+
+  it("nao oculta dependencias por coincidencia de OIDs entre catalogos", () => {
+    expect(sql).not.toMatch(/\bd\.objid\s*<>\s*t\.object_oid\b/i);
+    expect(sql).toContain("d.classid::regclass::text AS dependent_catalog");
+    expect(sql).toContain("d.objid AS dependent_oid");
+    expect(sql).toContain("d.objsubid AS dependent_subid");
+    expect(sql).toContain("d.refobjsubid AS target_column_subid");
+  });
 });
