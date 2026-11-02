@@ -57,4 +57,48 @@ describe("ELUS v189: histórico do ledger oficial no laboratório", () => {
     });
     expect(output.trim()).toBe("OFFICIAL_LEDGER_UNIT_GREEN=14");
   });
+
+  it("recusa drift dos 11 statements historicos sem ler SQL real", () => {
+    const program = [
+      "import importlib.util, sys",
+      "spec = importlib.util.spec_from_file_location('ledger_lab', sys.argv[1])",
+      "m = importlib.util.module_from_spec(spec)",
+      "spec.loader.exec_module(m)",
+      "sqls = [f'SELECT {i}; -- fixture'.encode() for i in range(11)]",
+      "md5s = [m.hashlib.md5(sql).hexdigest() for sql in sqls]",
+      "m.PRIVATE_HISTORICAL_FINGERPRINTS = {v:(len(sqls[i]),m.hashlib.md5(md5s[i].encode('ascii')).hexdigest()) for i,v in enumerate(m.HISTORICAL[:7])}",
+      "m.ELUS_HISTORICAL_FINGERPRINTS = {v:(len(sqls[i+7]),md5s[i+7]) for i,v in enumerate(m.HISTORICAL[7:])}",
+      "lines = [f'{v}|1|{len(sqls[i])}|{md5s[i]}' for i,v in enumerate(m.HISTORICAL)]",
+      "def check(data, expected):",
+      "    def fake_query(sql):",
+      "        assert sql.lstrip().startswith('SELECT ')",
+      "        assert 'FROM supabase_migrations.schema_migrations' in sql",
+      "        return '\\n'.join(data)",
+      "    m.query = fake_query",
+      "    try:",
+      "        m.verify_historical_statements()",
+      "        actual = 'PASS'",
+      "    except SystemExit as exc:",
+      "        actual = str(exc)",
+      "    assert actual == expected, (actual, expected)",
+      "check(lines, 'PASS')",
+      "red = 'GATE_RED=HISTORY_STATEMENT_DRIFT'",
+      "check([lines[0].replace(md5s[0], '0'*32)] + lines[1:], red)",
+      "check(lines[:8] + [lines[8].replace(md5s[8], '0'*32)] + lines[9:], red)",
+      "check([lines[0].replace('|1|', '|2|')] + lines[1:], red)",
+      "check([lines[0].replace(str(len(sqls[0])), '999')] + lines[1:], red)",
+      "check(lines[1:], red)",
+      "check(lines + [lines[0]], red)",
+      "check(lines + ['20990101000000|1|8|' + '0'*32], red)",
+      "check([lines[0].rsplit('|',1)[0] + '|invalid'] + lines[1:], red)",
+      "print('HISTORICAL_STATEMENTS_UNIT_GREEN=9')",
+    ].join("\n");
+    const output = execFileSync("python3", ["-c", program, script], {
+      cwd: process.cwd(),
+      encoding: "utf8",
+      timeout: 15000,
+      env: { PATH: process.env.PATH, NODE_ENV: "test", PYTHONDONTWRITEBYTECODE: "1" },
+    });
+    expect(output.trim()).toBe("HISTORICAL_STATEMENTS_UNIT_GREEN=9");
+  });
 });
