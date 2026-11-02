@@ -60,6 +60,19 @@ describe("ELUS v1.89 — preflight de dependencias somente leitura", () => {
     expect(sql).toContain("ELSE 'PRESENT'");
   });
 
+  it("classifica a regra _RETURN interna da view sem esconder dependencias externas", () => {
+    expect(sql).toContain("WHEN d.objid IS NULL THEN 'NONE_RECORDED'");
+    expect(sql).toContain("d.classid = 'pg_catalog.pg_rewrite'::regclass");
+    expect(sql).toMatch(/d\.deptype\s*=\s*'i'/i);
+    expect(sql).toMatch(
+      /FROM pg_catalog\.pg_rewrite rw[\s\S]*?rw\.oid\s*=\s*d\.objid[\s\S]*?rw\.ev_class\s*=\s*t\.object_oid/i,
+    );
+    expect(sql).toContain("THEN 'OWN_VIEW_RULE_INTERNAL'");
+    expect(sql).toContain("ELSE 'REVIEW_DEPENDENCY'");
+    expect(sql).toContain("END AS dependency_scope");
+    expect(sql).toMatch(/LEFT JOIN pg_catalog\.pg_depend d/i);
+  });
+
   it("nao oculta dependencias por coincidencia de OIDs entre catalogos", () => {
     expect(sql).not.toMatch(/\bd\.objid\s*<>\s*t\.object_oid\b/i);
     expect(sql).toContain("d.classid::regclass::text AS dependent_catalog");
