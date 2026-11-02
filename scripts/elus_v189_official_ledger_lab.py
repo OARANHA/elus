@@ -99,6 +99,69 @@ def guard() -> None:
         fail("WORKTREE_DIRTY")
 
 
+
+def reject_psql_meta_commands(data: bytes) -> None:
+    """Block psql backslash commands outside SQL strings/comments, without running SQL.
+
+    psql -X ignores startup files but does not disable backslash commands.
+    Rejecting unquoted backslashes is deliberately fail-closed for this lab.
+    """
+    sql = data.decode("utf-8")
+    i = 0
+    n = len(sql)
+    while i < n:
+        if sql.startswith("--", i):
+            end = sql.find("\n", i + 2)
+            i = n if end == -1 else end + 1
+            continue
+        if sql.startswith("/*", i):
+            depth = 1
+            i += 2
+            while i < n and depth:
+                if sql.startswith("/*", i):
+                    depth += 1
+                    i += 2
+                elif sql.startswith("*/", i):
+                    depth -= 1
+                    i += 2
+                else:
+                    i += 1
+            if depth:
+                fail("UNTERMINATED_SQL_COMMENT")
+            continue
+        if sql[i] in ("'", '"'):
+            quote = sql[i]
+            escaped = (quote == "'" and i > 0 and sql[i - 1] in "eE"
+                       and (i < 2 or not (sql[i - 2].isalnum() or sql[i - 2] == "_")))
+            i += 1
+            while i < n:
+                if escaped and sql[i] == "\\":
+                    i += 2
+                    continue
+                if sql[i] == quote:
+                    if i + 1 < n and sql[i + 1] == quote:
+                        i += 2
+                        continue
+                    i += 1
+                    break
+                i += 1
+            else:
+                fail("UNTERMINATED_SQL_LITERAL")
+            continue
+        if sql[i] == "$":
+            match = re.match(r"\$(?:[A-Za-z_][A-Za-z_0-9]*)?\$", sql[i:])
+            if match:
+                delimiter = match.group(0)
+                close = sql.find(delimiter, i + len(delimiter))
+                if close == -1:
+                    fail("UNTERMINATED_DOLLAR_QUOTE")
+                i = close + len(delimiter)
+                continue
+        if sql[i] == "\\":
+            fail("PSQL_META_COMMAND")
+        i += 1
+
+
 def manifest() -> list[tuple[str, str, bytes]]:
     source = (REPO / "tests/unit/elus-v189-import-ledger-integrity.test.ts").read_text()
     imported = source.split("const IMPORTADAS:", 1)[1].split("const ELUS_PROPRIAS:", 1)[0]
@@ -114,6 +177,7 @@ def manifest() -> list[tuple[str, str, bytes]]:
             fail("BLOB_MISMATCH")
         if re.search(rb"(?im)^\s*(?:BEGIN\s*;|COMMIT\s*;|ROLLBACK\s*;|START\s+TRANSACTION\b|VACUUM\b|ALTER\s+SYSTEM\b)", content):
             fail("NONTRANSACTIONAL_MIGRATION")
+        reject_psql_meta_commands(content)
         result.append((name, hashlib.sha256(content).hexdigest(), content))
     if len(result) != 39 or len({n[:14] for n, _, _ in result}) != 39:
         fail("VERSION_COLLISION")
