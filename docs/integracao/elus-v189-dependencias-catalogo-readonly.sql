@@ -4,6 +4,8 @@
 -- pg_depend aponta dependencias registradas no catalogo, nao chamadas dinamicas
 -- em codigo TS/PLpgSQL nem prova de compatibilidade funcional.
 -- Um alvo ABSENT nao significa que o replay pode prosseguir.
+-- KIND_MISMATCH sinaliza nome existente com tipo incompatível com DROP VIEW/FUNCTION;
+-- não interpretar PRESENT nem ausência de dependências como aprovação de DROP.
 -- Nao comparar d.objid com o OID do alvo: sao OIDs de catalogos distintos;
 -- coincidencia numerica pode ocultar uma dependencia valida.
 -- Regras internas de views podem aparecer; deptype e catalogo exigem triagem.
@@ -46,7 +48,18 @@ SELECT
   t.migration,
   t.kind,
   t.object_name,
-  CASE WHEN t.object_oid IS NULL THEN 'ABSENT' ELSE 'PRESENT' END AS target_state,
+  CASE
+    WHEN t.object_oid IS NULL THEN 'ABSENT'
+    WHEN t.kind = 'view' AND NOT EXISTS (
+      SELECT 1 FROM pg_catalog.pg_class c
+      WHERE c.oid = t.object_oid AND c.relkind = 'v'
+    ) THEN 'KIND_MISMATCH'
+    WHEN t.kind = 'function' AND NOT EXISTS (
+      SELECT 1 FROM pg_catalog.pg_proc p
+      WHERE p.oid = t.object_oid AND p.prokind = 'f'
+    ) THEN 'KIND_MISMATCH'
+    ELSE 'PRESENT'
+  END AS target_state,
   d.deptype AS dependency_type,
   d.classid::regclass::text AS dependent_catalog,
   d.objid AS dependent_oid,
