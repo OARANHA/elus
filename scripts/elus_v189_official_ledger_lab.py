@@ -162,6 +162,20 @@ def reject_psql_meta_commands(data: bytes) -> None:
         i += 1
 
 
+def reject_nontransactional_migration(data: bytes) -> None:
+    """Fail closed before replay if SQL cannot run inside one transaction."""
+    if re.search(
+        rb"(?im)^\s*(?:BEGIN\s*;|COMMIT\s*;|ROLLBACK\s*;|START\s+TRANSACTION\b"
+        rb"|VACUUM\b|ALTER\s+SYSTEM\b|CREATE\s+DATABASE\b|DROP\s+DATABASE\b"
+        rb"|CREATE\s+TABLESPACE\b|DROP\s+TABLESPACE\b"
+        rb"|CREATE\s+(?:UNIQUE\s+)?INDEX\s+CONCURRENTLY\b"
+        rb"|DROP\s+INDEX\s+CONCURRENTLY\b"
+        rb"|REINDEX\s+(?:INDEX|TABLE|SCHEMA|DATABASE|SYSTEM)\s+CONCURRENTLY\b)",
+        data,
+    ):
+        fail("NONTRANSACTIONAL_MIGRATION")
+
+
 def manifest() -> list[tuple[str, str, bytes]]:
     source = (REPO / "tests/unit/elus-v189-import-ledger-integrity.test.ts").read_text()
     imported = source.split("const IMPORTADAS:", 1)[1].split("const ELUS_PROPRIAS:", 1)[0]
@@ -175,8 +189,7 @@ def manifest() -> list[tuple[str, str, bytes]]:
         observed = hashlib.sha1(b"blob " + str(len(content)).encode() + b"\x00" + content).hexdigest()
         if observed != blob:
             fail("BLOB_MISMATCH")
-        if re.search(rb"(?im)^\s*(?:BEGIN\s*;|COMMIT\s*;|ROLLBACK\s*;|START\s+TRANSACTION\b|VACUUM\b|ALTER\s+SYSTEM\b)", content):
-            fail("NONTRANSACTIONAL_MIGRATION")
+        reject_nontransactional_migration(content)
         reject_psql_meta_commands(content)
         result.append((name, hashlib.sha256(content).hexdigest(), content))
     if len(result) != 39 or len({n[:14] for n, _, _ in result}) != 39:

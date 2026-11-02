@@ -112,4 +112,40 @@ describe("ELUS v189: histórico do ledger oficial no laboratório", () => {
     expect(output.trim()).toBe("PSQL_GUARD_GREEN=12;MANIFEST_GREEN=39");
   });
 
+  it("rejeita SQL incompatível com transação antes do replay oficial", () => {
+    const program = [
+      "import importlib.util, sys",
+      "spec = importlib.util.spec_from_file_location('ledger_lab', sys.argv[1])",
+      "m = importlib.util.module_from_spec(spec)",
+      "spec.loader.exec_module(m)",
+      "allowed = [b'CREATE INDEX idx ON t(id);', b'CREATE UNIQUE INDEX idx ON t(id);', b'REINDEX INDEX idx;', b'SELECT 1;']",
+      "blocked = [",
+      "    b'CREATE INDEX CONCURRENTLY idx ON t(id);',",
+      "    b'CREATE UNIQUE INDEX CONCURRENTLY idx ON t(id);',",
+      "    b'DROP INDEX CONCURRENTLY idx;',",
+      "    b'REINDEX INDEX CONCURRENTLY idx;',",
+      "    b'CREATE DATABASE example;',",
+      "    b'DROP DATABASE example;',",
+      "    b'CREATE TABLESPACE ts LOCATION \\'/tmp\\';',",
+      "    b'DROP TABLESPACE ts;',",
+      "]",
+      "for sql in allowed:",
+      "    m.reject_nontransactional_migration(sql)",
+      "for sql in blocked:",
+      "    try:",
+      "        m.reject_nontransactional_migration(sql)",
+      "    except SystemExit as exc:",
+      "        assert str(exc) == 'GATE_RED=NONTRANSACTIONAL_MIGRATION', str(exc)",
+      "    else:",
+      "        raise AssertionError('UNBLOCKED_NONTRANSACTIONAL_SQL')",
+      "print('TRANSACTION_GUARD_GREEN=12')",
+    ].join("\n");
+    const output = execFileSync("python3", ["-c", program, script], {
+      cwd: process.cwd(),
+      encoding: "utf8",
+      timeout: 15000,
+      env: { PATH: process.env.PATH, NODE_ENV: "test", PYTHONDONTWRITEBYTECODE: "1" },
+    });
+    expect(output.trim()).toBe("TRANSACTION_GUARD_GREEN=12");
+  });
 });
