@@ -101,3 +101,22 @@ No HEAD `a5caafc25541506f4016ab8cd7dd4d3808c7b177`, a consulta única à execuç
 A correção focal, commit [23ebc493](https://github.com/OARANHA/elus/commit/23ebc4930601ee17cf5d978356e3e39f79e15427), substituiu o acesso não protegido ao grupo de captura da expressão regular por `?.[1] ?? ""`. A asserção `toMatch` continua exigindo a projeção esperada: ausência do grupo permanece falha de teste, mas sem erro de tipagem. O blob alterado foi relido e confirmado.
 
 **Validação do novo HEAD ainda pendente:** não houve segunda consulta ao CI, execução local de TypeScript, lint ou unitários nesta rodada. A correção não altera SQL, migrations, runtime, E2E ou deploy. Permanecem os gates independentes de replay sobre o histórico Supabase de 11 versões, segurança das migrations e aceite funcional.
+
+## Reconciliação adicional do catálogo ativo — 02/11/2026 (somente leitura)
+
+Fonte: projeto Supabase conectado `elus` (`ACTIVE_HEALTHY`, PostgreSQL 17), por consultas **SELECT** agregadas em `supabase_migrations.schema_migrations`, `pg_proc`, `pg_trigger`, `pg_namespace` e `pg_class`. Não foram consultados dados de tenants nem o conteúdo de `statements[]`; somente nomes, versões, contagens, comprimentos e MD5 de SQLs registrados.
+
+| Sinal | Evidência observada |
+| --- | --- |
+| Ledger ativo | **51 recibos**, enquanto `scripts/elus-v189-production-upgrade.mjs` exige no máximo 50; `preflight` continua bloqueado. |
+| ELUS 0690 | `20261021025530`, nome `elus_0690_org_ai_autonomy_protected`, 1 statement, 2.344 bytes, MD5 `89178273952e0c2af1174916ab1bf0e4`. |
+| RPC 0765, recibo | `20261026010000`, nome `0765_elus_rotacao_atomica_codigos_recuperacao`, 1 statement, 2.747 bytes, MD5 `add7a7db36db87cd213fd7a7d0f81db7` (identidade esperada no diagnóstico versionado). |
+| RPC 0765, catálogo | `to_regprocedure('public.fn_elus_rotacionar_codigos_recuperacao(uuid,text[])')` retornou **NULL**; busca por nomes de funções de recuperação/rotação não encontrou a função em outros schemas. **Recibo não comprova objeto presente.** |
+| Guarda externa 9037, recibo | `20261029104815`, nome `elus_9037_ai_autonomy_guarded`, 1 statement, 34.985 bytes, MD5 `10df3c797779f8cb4461631cb22676d2`. Este recibo **não** integra o manifesto oficial de 39 migrations. |
+| Guarda externa 9037, catálogo | `public.fn_guard_organizations_ai_autonomy()` existe; trigger `trg_guard_organizations_ai_autonomy` está habilitado em `public.organizations`. A função não é `SECURITY DEFINER`; `search_path=pg_catalog, public, pg_temp`; `anon` e `authenticated` sem EXECUTE, `service_role` com EXECUTE. Isso **não** equivale a teste comportamental da guarda. |
+
+**Implicação:** o banco não está no estado de apenas 11 recibos descrito no snapshot histórico de 25/10. O recibo 0765 registrado, mas sem a RPC correspondente no catálogo, é divergência funcional a investigar antes de qualquer replay. O recibo externo 9037 exige decisão de reconciliação independente, sem excluir histórico nem elevar silenciosamente o limite de 50. A existência da guarda 9037 não resolve a ausência da RPC 0765.
+
+**Gates mantidos:** restauração comprovada e replay histórico separado em PG15/17 descartável; inventário completo de dependências e efeitos das 38 migrations; ACL/RLS e isolamento multi-tenant; reconciliação 0690/9037 e 0765; autorização específica do DELETE 0759. `apply` produtivo permanece fail-closed. Nenhum DDL/DML, migration, E2E/Playwright, merge, publicação ou deploy foi executado.
+
+**CI observado no HEAD anterior `c86bf2bc3d124fd23e1ff5a0249f302022b98a84`:** [run 41481932638](https://github.com/OARANHA/elus/actions/runs/41481932638), 10/10 jobs SUCCESS, incluindo invariantes PostgreSQL 15/17; workflow de imagens [41481932736](https://github.com/OARANHA/elus/actions/runs/41481932736) SUCCESS, mas `build-and-push`, `juntar-manifestos` e `promover-stable` SKIPPED. Isso não aprova upgrade funcional, nem valida este novo registro documental.
