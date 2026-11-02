@@ -120,7 +120,7 @@ describe("ELUS v1.89 — coerencia estatica da matriz de replay", () => {
 
   it("mantem o grafo de dependencias sincronizado com o executor bloqueado", () => {
     const source = read("scripts/elus-v189-production-upgrade.mjs");
-    const match = source.match(/const DEPENDENCY_CHAINS=\\[([\\s\\S]*?)\\];\\s*const digest=/);
+    const match = source.match(/const DEPENDENCY_CHAINS=\[([\s\S]*?)\];\s*const digest=/);
     expect(match, "Cadeias do executor ausentes").not.toBeNull();
     const chains = JSON.parse(`[${match![1]}]`) as string[][];
     expect(chains).toHaveLength(6);
