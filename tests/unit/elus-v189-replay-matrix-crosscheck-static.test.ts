@@ -41,7 +41,7 @@ function pinned(name: "IMPORTADAS" | "ELUS_PROPRIAS"): Record<string, string> {
   );
   expect(block, `Manifesto ${name} ausente`).not.toBeNull();
   return Object.fromEntries(
-    [...block![1]!.matchAll(/"(\\d{14}_\\d{4}_[^"]+\\.sql)": "([a-f0-9]{40})"/g)].map(
+    [...block![1]!.matchAll(/"(\d{14}_\d{4}_[^"]+\.sql)": "([a-f0-9]{40})"/g)].map(
       (match) => [match[1]!, match[2]!],
     ),
   );
