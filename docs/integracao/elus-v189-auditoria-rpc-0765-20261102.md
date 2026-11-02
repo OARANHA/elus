@@ -23,3 +23,14 @@ O recibo comprova a existência de uma entrada no histórico, **não** a perman�
 - Somente após autorização separada: ensaio de replay/restauração em PostgreSQL 15/17 descartável, testes negativos de ACL/RLS/tenancy, revisão 0690/9037 e autorização específica para o DELETE 0759.
 
 **Guardas mantidas:** E2E/Playwright somente manual; sem SQL mutante, migrations, merge, imagens ou deploy nesta inspeção.
+
+## Evidência adicional — identidade integral do recibo 0765 (02/11/2026)
+
+**Método:** consulta exclusivamente `SELECT` no projeto Supabase `elus`, sem exportar `statements[]` ou dados de usuários. O hash Git foi reconstituído diretamente no PostgreSQL com `digest(convert_to('blob ' || octet_length(convert_to(statements[1], 'UTF8'))::text, 'UTF8') || decode('00','hex') || convert_to(statements[1], 'UTF8'), 'sha1')`. O prefixo binário `blob <bytes>\\0` segue a identidade de objeto Git; a comparação usa o blob do arquivo versionado na PR #62.
+
+- Recibo `20261026010000` (`0765_elus_rotacao_atomica_codigos_recuperacao`): **1 statement, 2.747 bytes**.
+- SHA-1 de blob Git calculado sobre os bytes integrais do statement: **`a05333f5b12b78c334181887f089b39398d9aa50`**, idêntico ao blob Git de `supabase/migrations/20261026010000_0765_elus_rotacao_atomica_codigos_recuperacao.sql` no HEAD `4804a555385ec4bcc916c1f7007c03c647b50003`.
+- Catálogo `pg_proc`: **0** funções com nome exato `fn_elus_rotacionar_codigos_recuperacao`. Ledger: **51** recibos.
+- Consulta agregada ao fluxo `postgres_logs` de **26/10/2026 00:00 UTC a 27/10/2026 00:00 UTC**: **133 eventos**, **0** menções textuais à RPC, **0** ocorrências textuais de `CREATE FUNCTION` ou `DROP FUNCTION` nos atributos pesquisados. Esta ausência **não** prova que o DDL não foi executado: logging pode estar desabilitado, filtrado, incompleto ou fora da janela.
+
+**Conclusão limitada:** foi eliminada a hipótese de divergência de conteúdo entre o único statement registrado no recibo 0765 e o arquivo SQL versionado no HEAD analisado. **Não** se demonstrou execução bem-sucedida desse statement, permanência da função após a execução, nem causa do desaparecimento. A divergência recibo/catálogo continua bloqueante; não reparar o banco nem editar o ledger sem gates separados.
