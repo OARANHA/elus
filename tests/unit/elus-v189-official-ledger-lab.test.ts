@@ -51,6 +51,6 @@ describe("ELUS v189: histórico do ledger oficial no laboratório", () => {
       timeout: 15000,
       env: { PATH: process.env.PATH, NODE_ENV: "test", PYTHONDONTWRITEBYTECODE: "1" },
     });
-    expect(output.trim()).toBe("OFFICIAL_LEDGER_UNIT_GREEN=10");
+    expect(output.trim()).toBe("OFFICIAL_LEDGER_UNIT_GREEN=12");
   });
 });
