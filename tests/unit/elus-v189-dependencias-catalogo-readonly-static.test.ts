@@ -52,6 +52,14 @@ describe("ELUS v1.89 — preflight de dependencias somente leitura", () => {
     );
   });
 
+  it("distingue objetos com mesmo nome mas tipo errado para DROP VIEW/FUNCTION", () => {
+    expect(sql).toContain("THEN 'KIND_MISMATCH'");
+    expect(sql).toMatch(/t\.kind\s*=\s*'view'[\s\S]*?FROM pg_catalog\.pg_class c[\s\S]*?c\.relkind\s*=\s*'v'/i);
+    expect(sql).toMatch(/t\.kind\s*=\s*'function'[\s\S]*?FROM pg_catalog\.pg_proc p[\s\S]*?p\.prokind\s*=\s*'f'/i);
+    expect(sql).toContain("END AS target_state");
+    expect(sql).toContain("ELSE 'PRESENT'");
+  });
+
   it("nao oculta dependencias por coincidencia de OIDs entre catalogos", () => {
     expect(sql).not.toMatch(/\bd\.objid\s*<>\s*t\.object_oid\b/i);
     expect(sql).toContain("d.classid::regclass::text AS dependent_catalog");
