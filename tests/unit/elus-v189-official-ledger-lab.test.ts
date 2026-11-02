@@ -101,4 +101,15 @@ describe("ELUS v189: histórico do ledger oficial no laboratório", () => {
     });
     expect(output.trim()).toBe("HISTORICAL_STATEMENTS_UNIT_GREEN=9");
   });
+  it("bloqueia metacomandos psql sem executar SQL e preserva os 39 blobs pinados", () => {
+    const program = "import importlib.util, sys\nspec = importlib.util.spec_from_file_location('ledger_lab', sys.argv[1])\nm = importlib.util.module_from_spec(spec)\nspec.loader.exec_module(m)\nallowed = [\n    b'SELECT 1;',\n    rb\"SELECT '\\!';\",\n    rb\"SELECT E'\\\\!';\",\n    rb\"DO $body$ BEGIN RAISE NOTICE '\\!'; END $body$;\",\n    b'-- \\\\! ignored\\nSELECT 1;',\n    rb'/* \\! ignored /* nested */ */ SELECT 1;',\n    rb'SELECT \"\\field\" FROM t;',\n]\nblocked = [\n    rb'\\! echo foo',\n    rb'SELECT 1 \\gexec',\n    rb'\\copy x from y',\n    rb'SELECT 1; \\connect postgres',\n    rb'/* comment */ \\i /tmp/x.sql',\n]\nfor sql in allowed:\n    m.reject_psql_meta_commands(sql)\nfor sql in blocked:\n    try:\n        m.reject_psql_meta_commands(sql)\n    except SystemExit as exc:\n        assert str(exc) == 'GATE_RED=PSQL_META_COMMAND', str(exc)\n    else:\n        raise AssertionError('PSQL_META_COMMAND_NOT_BLOCKED')\nassert len(m.manifest()) == 39\nprint('PSQL_GUARD_GREEN=12;MANIFEST_GREEN=39')";
+    const output = execFileSync("python3", ["-c", program, script], {
+      cwd: process.cwd(),
+      encoding: "utf8",
+      timeout: 20000,
+      env: { PATH: process.env.PATH, NODE_ENV: "test", PYTHONDONTWRITEBYTECODE: "1" },
+    });
+    expect(output.trim()).toBe("PSQL_GUARD_GREEN=12;MANIFEST_GREEN=39");
+  });
+
 });
