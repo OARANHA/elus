@@ -62,3 +62,16 @@ O recibo comprova a existência de uma entrada no histórico, **não** a perman�
 A única menção genérica a `DROP FUNCTION` em 28/10 **não contém menção literal à RPC 0765** no registro pesquisado; a extração limitada do nome da função não retornou identificador. Portanto, **não há vínculo demonstrado** com a função ausente. O resultado não exclui DDL sem logging, comandos dinâmicos, outras janelas, restauração ou intervenção fora do ledger.
 
 **Estado da conclusão:** recibo 0765 íntegro e arquivo versionado idêntico; catálogo sem a RPC; causa raiz **não determinada**. Não converter indícios de logs em autorização para reparo. Manter `apply` bloqueado, 9037 reconciliada apenas por identidade, replay/restauração PG15/17 pendentes e DELETE 0759 sem autorização. Nenhum SQL mutante, E2E/Playwright, merge, publicação ou deploy nesta inspeção.
+
+## Complemento forense — estatísticas de comandos SQL e logging (02/11/2026, 20h BRT)
+
+**Método:** consultas exclusivamente `SELECT` a `pg_catalog.pg_extension`, `pg_catalog.pg_settings`, `pg_catalog.pg_event_trigger` e `extensions.pg_stat_statements` no Supabase `elus`. As consultas retornaram apenas contagens e metadados de configuração; nenhum texto de query, statement de migration, dado pessoal ou dado de tenant foi exportado.
+
+- `pg_stat_statements` está instalado; `pg_stat_statements.track_utility=on` e `pg_stat_statements.track=top`. O contador informa `stats_reset=2026-10-18 01:44:16.109973+00` e **4.876 entradas distintas** na inspeção.
+- `log_statement=ddl` e `log_min_duration_statement=-1` na configuração observada. Há **seis event triggers habilitados** relacionados a PostgREST/GraphQL/extensões; não foi identificado um event trigger de auditoria específico da RPC 0765 nessa lista. A extensão `pgaudit` não aparece instalada em `pg_extension`, embora conste entre bibliotecas de preload.
+- Na agregação de `pg_stat_statements`, **zero entradas** continham o identificador literal `fn_elus_rotacionar_codigos_recuperacao`. Foram observadas **333 entradas** contendo `CREATE OR REPLACE FUNCTION`, **12 entradas** contendo `DROP FUNCTION` (24 chamadas agregadas) e **51 entradas** contendo a sequência textual `0765`. Essas contagens têm critérios textuais diferentes e **não devem ser somadas nem interpretadas como operações relacionadas entre si**.
+- A busca no catálogo de funções, sem restrição de schema, continua retornando **zero** objetos com o nome exato da RPC.
+
+**Limite da evidência:** `pg_stat_statements` não fornece uma linha temporal de DDL, pode descartar entradas e não comprova que todas as operações foram registradas. `log_statement=ddl` descreve a configuração observada, não garante retenção/cobertura histórica dos logs já consultados. Os 12 padrões `DROP FUNCTION` **não foram vinculados à RPC 0765**. Não é possível afirmar que a RPC nunca existiu, que foi removida por um comando específico ou que a migration foi executada com sucesso.
+
+**Decisão inalterada:** recibo íntegro + RPC ausente = divergência de catálogo ainda bloqueante. `apply` permanece fail-closed; não executar reparo de função, edição de ledger, replay produtivo, E2E, merge, publicação de imagem ou deploy. O diagnóstico não substitui prova de restauração e autorização independente da 0759.
