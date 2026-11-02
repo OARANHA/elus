@@ -118,6 +118,24 @@ describe("ELUS v1.89 — coerencia estatica da matriz de replay", () => {
       .toContain("conditional_data_delete");
   });
 
+  it("mantem o grafo de dependencias sincronizado com o executor bloqueado", () => {
+    const source = read("scripts/elus-v189-production-upgrade.mjs");
+    const match = source.match(/const DEPENDENCY_CHAINS=\\[([\\s\\S]*?)\\];\\s*const digest=/);
+    expect(match, "Cadeias do executor ausentes").not.toBeNull();
+    const chains = JSON.parse(`[${match![1]}]`) as string[][];
+    expect(chains).toHaveLength(6);
+    const executorEdges = chains.flatMap((chain) =>
+      chain.slice(1).map((file, index) =>
+        `${chain[index]!.slice(15, 19)}->${file.slice(15, 19)}`,
+      ),
+    );
+    const matrixEdges = matrix.known_dependency_edges.map(
+      ({ before, after }) => `${before}->${after}`,
+    );
+    expect(executorEdges).toHaveLength(7);
+    expect([...executorEdges].sort()).toEqual([...matrixEdges].sort());
+  });
+
   it("permanece bloqueada ate gates independentes, sem aprovar aplicacao", () => {
     expect(matrix.status).toBe("BLOCKED_FOR_REPLAY");
     expect(matrix.required_gates).toContain("reconcile_11_historical_versions_and_38_imports");
