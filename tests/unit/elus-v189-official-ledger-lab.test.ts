@@ -43,7 +43,11 @@ describe("ELUS v189: histórico do ledger oficial no laboratório", () => {
       "check(historical[:-1], 'GATE_RED=HISTORY_DRIFT')",
       "check(historical + [('20261024000000', 'unknown')], 'GATE_RED=UNKNOWN_OFFICIAL_VERSION')",
       "check(historical + [('20261023000000', 'beta')], 'GATE_RED=NONPREFIX_REPLAY')",
-      "print('OFFICIAL_LEDGER_UNIT_GREEN=12')",
+      "items_39 = [(f'20261022{i:06d}_migration_{i:02d}.sql', '', f'sql-{i}'.encode()) for i in range(39)]",
+      "records_39 = historical + [(name[:14], name[15:-4]) for name, _, _ in items_39]",
+      "check(records_39, '39', desired=items_39)",
+      "check(records_39 + [('20261023999999', 'extra')], 'GATE_RED=LEDGER_COUNT_DRIFT', desired=items_39)",
+      "print('OFFICIAL_LEDGER_UNIT_GREEN=14')",
     ].join("\n");
     const output = execFileSync("python3", ["-c", program, script], {
       cwd: process.cwd(),
@@ -51,6 +55,6 @@ describe("ELUS v189: histórico do ledger oficial no laboratório", () => {
       timeout: 15000,
       env: { PATH: process.env.PATH, NODE_ENV: "test", PYTHONDONTWRITEBYTECODE: "1" },
     });
-    expect(output.trim()).toBe("OFFICIAL_LEDGER_UNIT_GREEN=12");
+    expect(output.trim()).toBe("OFFICIAL_LEDGER_UNIT_GREEN=14");
   });
 });
