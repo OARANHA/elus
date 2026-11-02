@@ -170,7 +170,9 @@ def reject_nontransactional_migration(data: bytes) -> None:
         rb"|CREATE\s+TABLESPACE\b|DROP\s+TABLESPACE\b"
         rb"|CREATE\s+(?:UNIQUE\s+)?INDEX\s+CONCURRENTLY\b"
         rb"|DROP\s+INDEX\s+CONCURRENTLY\b"
-        rb"|REINDEX\s+(?:INDEX|TABLE|SCHEMA|DATABASE|SYSTEM)\s+CONCURRENTLY\b)",
+        rb"|REINDEX\s+(?:INDEX|TABLE|SCHEMA|DATABASE|SYSTEM)\s+CONCURRENTLY\b"
+        rb"|REINDEX\s*\([^)]*\bCONCURRENTLY\b[^)]*\)\s+"
+        rb"(?:INDEX|TABLE|SCHEMA|DATABASE|SYSTEM)\b)",
         data,
     ):
         fail("NONTRANSACTIONAL_MIGRATION")
