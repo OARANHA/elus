@@ -180,6 +180,14 @@ describe("ELUS v1.89: executor produtivo guardado", () => {
       "to_regprocedure('public.fn_elus_rotacionar_codigos_recuperacao(uuid,text[])')",
     );
     expect(diagnostic).toContain("guard_9037_strict");
+    // Compara oito corpos contra o recibo exato, inclusive delimitadores $tag$.
+    // A consulta continua SELECT e não libera apply.
+    expect(diagnostic).toContain("AS guarded_9037_receipt_bodies_exact");
+    expect(diagnostic).toContain("guarded9037ReceiptBodiesExact:guardedReceiptBodies.guarded_9037_receipt_bodies_exact===true");
+    expect(diagnostic).toContain("regexp_split_to_table");
+    expect(diagnostic).toContain("split_part(chunk,delimiter,2)=prosrc");
+    expect(diagnostic).toContain("count(DISTINCT function_name)=8");
+
     expect(diagnostic).toContain("guard_trigger_enabled");
     expect(diagnostic).toContain("guard_trigger_wiring_correct");
     expect(diagnostic).toContain("t.tgfoid=to_regprocedure('public.fn_guard_organizations_ai_autonomy()')");
