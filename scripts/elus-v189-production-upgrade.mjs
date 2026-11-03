@@ -278,6 +278,21 @@ async function diagnoseLedger(c){
         ON p.oid=to_regprocedure(expected.signature)
      ) AS guarded_9037_functions
  `)).rows[0];
+ // Compara o corpo PL/pgSQL da guarda no recibo externo 9037 ao catálogo,
+ // sem exportar statements[] ou SQL de tenant. É evidência, não autorização.
+ const guardReceiptBody=(await c.query(`
+   SELECT COALESCE((
+     SELECT (regexp_match(m.statements[1],
+       'create[[:space:]]+or[[:space:]]+replace[[:space:]]+function[[:space:]]+(public[.])?fn_guard_organizations_ai_autonomy[[:space:]]*[(][[:space:]]*[)][[:space:][:print:]]*?as[[:space:]]+[$][$]([[:space:][:print:]]*?)[$][$]',
+       'i'))[2] = p.prosrc
+     FROM supabase_migrations.schema_migrations m
+     JOIN pg_catalog.pg_proc p
+       ON p.oid=to_regprocedure('public.fn_guard_organizations_ai_autonomy()')
+     WHERE m.version='20261029104815'
+       AND m.name='elus_9037_ai_autonomy_guarded'
+       AND cardinality(m.statements)=1
+   ),false) AS guard_9037_receipt_body_exact
+ `)).rows[0];
  return {
    ...historical,
    ledgerReceipts:Number(ledger.total_receipts),
@@ -296,6 +311,7 @@ async function diagnoseLedger(c){
    // Recibo armazenado nao prova que a RPC existe no catalogo atual.
    receipt0765RpcMismatch:Number(ledger.receipt_0765)>0&&catalog.rpc_0765_present!==true,
    guard9037Strict:catalog.guard_9037_strict===true,
+   guard9037ReceiptBodyExact:guardReceiptBody.guard_9037_receipt_body_exact===true,
    guardTriggerEnabled:catalog.guard_trigger_enabled===true,
    guardTriggerWiringCorrect:catalog.guard_trigger_wiring_correct===true,
    guardFunctionInvoker:catalog.guard_function_invoker===true,
