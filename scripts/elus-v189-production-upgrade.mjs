@@ -253,6 +253,9 @@ async function diagnoseLedger(c){
      (SELECT jsonb_build_object(
        'expected',count(*),
        'present',count(p.oid),
+       -- Fotografia observada do catalogo PG17; nao atesta semantica nem autoriza replay.
+       'observed_definition_matches',count(*) FILTER (WHERE p.oid IS NOT NULL
+         AND md5(pg_get_functiondef(p.oid))=expected.observed_md5),
        'least_privilege',count(*) FILTER (WHERE p.oid IS NOT NULL
          AND NOT p.prosecdef
          AND p.proconfig @> ARRAY['search_path=pg_catalog, public, pg_temp']::text[]
@@ -262,15 +265,15 @@ async function diagnoseLedger(c){
          AND NOT EXISTS (SELECT 1 FROM pg_catalog.aclexplode(p.proacl) a
            WHERE a.grantee=0 AND a.privilege_type='EXECUTE'))
       ) FROM (VALUES
-       ('public.fn_elus_ai_agent_create_guarded(uuid,jsonb,jsonb,boolean)'),
-       ('public.fn_elus_ai_credential_write_guarded(uuid,text,uuid,jsonb,boolean)'),
-       ('public.fn_elus_ai_default_write_guarded(uuid,text,text,jsonb,boolean)'),
-       ('public.fn_elus_ai_draft_save_guarded(uuid,uuid,text,uuid,jsonb,jsonb,jsonb,boolean)'),
-       ('public.fn_elus_ai_purpose_binding_write_guarded(uuid,text,jsonb,jsonb,boolean)'),
-       ('public.fn_elus_ai_version_create_guarded(uuid,uuid,jsonb,boolean)'),
-       ('public.fn_elus_ai_version_patch_guarded(uuid,uuid,uuid,jsonb,jsonb,boolean)'),
-       ('public.fn_guard_organizations_ai_autonomy()')
-      ) AS expected(signature)
+       ('public.fn_elus_ai_agent_create_guarded(uuid,jsonb,jsonb,boolean)','a0424b4d585c5027de87f903e231cde9'),
+       ('public.fn_elus_ai_credential_write_guarded(uuid,text,uuid,jsonb,boolean)','c72d496fa7d210389ff02e0ae9ae2c41'),
+       ('public.fn_elus_ai_default_write_guarded(uuid,text,text,jsonb,boolean)','001cbf53de34e47b39fe6f723e9f8127'),
+       ('public.fn_elus_ai_draft_save_guarded(uuid,uuid,text,uuid,jsonb,jsonb,jsonb,boolean)','2dd75626f1ac9dfcb405f8076e827ff4'),
+       ('public.fn_elus_ai_purpose_binding_write_guarded(uuid,text,jsonb,jsonb,boolean)','be95863e387c572c41ef3b49181cb113'),
+       ('public.fn_elus_ai_version_create_guarded(uuid,uuid,jsonb,boolean)','03a2613bb5695a3f6c8aca9d7c61d9f5'),
+       ('public.fn_elus_ai_version_patch_guarded(uuid,uuid,uuid,jsonb,jsonb,boolean)','4dcb50c9fa0a2bbeb24cadf594dd1e23'),
+       ('public.fn_guard_organizations_ai_autonomy()','1378848e0d9fce3513bba0e660b283fd')
+      ) AS expected(signature,observed_md5)
       LEFT JOIN pg_catalog.pg_proc p
         ON p.oid=to_regprocedure(expected.signature)
      ) AS guarded_9037_functions
@@ -300,6 +303,8 @@ async function diagnoseLedger(c){
    guarded9037FunctionsExpected:8,
    guarded9037FunctionsPresent:Number(catalog.guarded_9037_functions?.present??0),
    guarded9037FunctionsLeastPrivilege:Number(catalog.guarded_9037_functions?.least_privilege??0),
+   guarded9037DefinitionsObservedMatches:Number(catalog.guarded_9037_functions?.observed_definition_matches??0),
+   guarded9037DefinitionsNoDrift:Number(catalog.guarded_9037_functions?.observed_definition_matches)===8,
    guarded9037FunctionsAllSafe:Number(catalog.guarded_9037_functions?.present)===8&&
      Number(catalog.guarded_9037_functions?.least_privilege)===8,
    rpc0765NamedFunctionsAnySchema:Number(catalog.rpc_0765_any_schema_count),
