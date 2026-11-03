@@ -8,7 +8,8 @@
 -- não interpretar PRESENT nem ausência de dependências como aprovação de DROP.
 -- Nao comparar d.objid com o OID do alvo: sao OIDs de catalogos distintos;
 -- coincidencia numerica pode ocultar uma dependencia valida.
--- Regras e tipos compostos proprios de views sao dependencias internas;\n-- deptype, catalogo e vinculo ao OID da view exigem triagem.
+-- Regras e tipos compostos proprios de views sao dependencias internas;
+-- deptype, catalogo e vinculo ao OID da view exigem triagem.
 -- Ref: migrations 0687, 0763/0706, 0764 e 0754.
 
 WITH targets AS (
