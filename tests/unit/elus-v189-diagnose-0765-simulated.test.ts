@@ -21,6 +21,7 @@ type Diagnostic = {
   guard0690And9037Coexist: boolean;
   guard9037Strict: boolean;
   guard9037ReceiptBodyExact: boolean;
+  guarded9037ReceiptBodiesExact: boolean;
   guardTriggerEnabled: boolean;
   guardTriggerWiringCorrect: boolean;
   guardFunctionInvoker: boolean;
@@ -63,6 +64,7 @@ type Scenario = {
   receipt0690Exact?: number;
   guard9037Strict?: boolean;
   guard9037ReceiptBodyExact?: boolean;
+  guarded9037ReceiptBodiesExact?: boolean;
   guardTriggerEnabled?: boolean;
   guardTriggerWiringCorrect?: boolean;
   guardFunctionInvoker?: boolean;
@@ -80,6 +82,9 @@ async function evaluate(receipt: number, exact: number, rpcPresent: boolean, sce
     query: async (sql) => {
       queries.push(sql);
       expect(sql.trimStart()).toMatch(/^SELECT\b/i);
+      if (sql.includes("AS guarded_9037_receipt_bodies_exact")) {
+        return { rows: [{ guarded_9037_receipt_bodies_exact: scenario.guarded9037ReceiptBodiesExact ?? true }] };
+      }
       if (sql.includes("AS guard_9037_receipt_body_exact")) {
         return { rows: [{ guard_9037_receipt_body_exact: scenario.guard9037ReceiptBodyExact ?? true }] };
       }
@@ -122,7 +127,7 @@ async function evaluate(receipt: number, exact: number, rpcPresent: boolean, sce
       throw Error("UNEXPECTED_DIAGNOSTIC_QUERY");
     },
   });
-  expect(queries).toHaveLength(3);
+  expect(queries).toHaveLength(4);
   expect(result.historicalReceiptsExact).toBe(true);
   expect(result.gate).toBe("DIAGNOSTIC_ONLY_NOT_RELEASE_APPROVAL");
   return result;
@@ -197,6 +202,18 @@ describe("ELUS v1.89: diagnóstico 0765 simulado, sem acesso ao banco", () => {
     expect(bodyDrift.guarded9037FunctionsAllSafe).toBe(true);
     expect(bodyDrift.guarded9037DefinitionsNoDrift).toBe(true);
     expect(bodyDrift.gate).toBe("DIAGNOSTIC_ONLY_NOT_RELEASE_APPROVAL");
+  });
+
+  it("compara oito corpos reais com os delimitadores do recibo 9037 e falha fechado", async () => {
+    const intact = await evaluate(1, 1, false);
+    expect(intact.guarded9037ReceiptBodiesExact).toBe(true);
+    expect(intact.guard9037ReceiptBodyExact).toBe(true);
+
+    const drifted = await evaluate(1, 1, false, { guarded9037ReceiptBodiesExact: false });
+    expect(drifted.guarded9037ReceiptBodiesExact).toBe(false);
+    expect(drifted.guard9037ReceiptBodyExact).toBe(true);
+    expect(drifted.guarded9037FunctionsAllSafe).toBe(true);
+    expect(drifted.gate).toBe("DIAGNOSTIC_ONLY_NOT_RELEASE_APPROVAL");
   });
 
   it("atesta as oito assinaturas da 9037 sem confundir recibo com ACL efetiva", async () => {
