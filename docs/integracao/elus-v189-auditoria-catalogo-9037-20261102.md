@@ -40,3 +40,16 @@ A identidade do recibo 9037 e a presença de oito objetos com ACL esperada **nã
 ## Diagnóstico de deriva das definições (03/11/2026)
 
 Consulta exclusivamente `SELECT` confirmou que os oito MD5 de `pg_get_functiondef` acima continuam correspondendo ao catálogo atual (**8/8**, PostgreSQL 17.11). O modo `diagnose` passa a comparar essas oito assinaturas com a fotografia observada e expor `guarded9037DefinitionsObservedMatches` e `guarded9037DefinitionsNoDrift`. O teste simulado diferencia ausência de função, ACL incorreta e alteração de corpo com ACL intacta. **Esta comparação detecta deriva em relação ao catálogo observado, não valida semanticamente o SQL externo, não substitui a comparação 0690/9037 e não é gate de autorização.** `apply` permanece bloqueado; nenhum SQL mutante foi executado.
+
+
+## Confronto direto do corpo da guarda com o recibo externo (03/11/2026)
+
+A consulta **exclusivamente `SELECT`** ao Supabase `elus` comparou o corpo PL/pgSQL da função `public.fn_guard_organizations_ai_autonomy()` extraído do único `statements[1]` do recibo externo `20261029104815 / elus_9037_ai_autonomy_guarded` com `pg_catalog.pg_proc.prosrc`. O extrator usa `regexp_match` delimitado pela assinatura da função e por `AS $$ ... $$`, sem exportar o SQL do recibo nem dados de tenant.
+
+**Evidência obtida:** 1 recibo, 1 função instalada, **603 caracteres em ambos os corpos e igualdade textual exata** (`raw_body_equal=true`), além de igualdade após normalização de espaços. Isso avança a comparação para além dos hashes da fotografia do catálogo: o corpo atualmente instalado dessa **única função** coincide com o corpo registrado no recibo 9037. Não prova que a migration foi executada integralmente, não atesta os outros sete corpos, nem comprova semântica de autorização, RLS, trigger ou ordem histórica.
+
+O modo `diagnose` agora expõe `guard9037ReceiptBodyExact` com uma terceira consulta `SELECT` que retorna somente booleano. Se o recibo, a função ou o corpo não corresponder, retorna `false` (ou falha fechada em caso de ambiguidade). O teste simulado cobre correspondência e deriva mantendo `gate=DIAGNOSTIC_ONLY_NOT_RELEASE_APPROVAL`; **nenhum caminho de `apply` foi desbloqueado**.
+
+A execução `ci` [41572312535](https://github.com/OARANHA/elus/actions/runs/41572312535) passou **10/10 jobs** no HEAD anterior `30adbe89`, incluindo matrizes PostgreSQL 15/17; workflows `perf` e GHCR também concluíram com sucesso, sem publicação ou promoção solicitada nesta investigação. Os novos commits desta seção **ainda não tiveram CI reconsultado nesta execução**. Simulação JavaScript do `diagnoseLedger` com três consultas exclusivamente `SELECT`: 2/2 cenários (corpo igual/divergente) aprovados. Lint, TypeScript e Vitest locais não foram executados.
+
+**NO-GO inalterado:** 0765 sem RPC, 51 recibos diante do limite 50, reconciliação e ordenação 0690/9037, replay e restauração PostgreSQL 15/17 descartável, ACL/RLS multi-tenant e autorização específica do DELETE 0759. Nenhum SQL mutante, migration, E2E/Playwright, merge, publicação de imagem ou deploy.
