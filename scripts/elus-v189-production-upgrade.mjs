@@ -104,9 +104,11 @@ function guardParity(){
   const at=sql.toLowerCase().indexOf(marker);
   if(at<0)return '';
   const tail=sql.slice(at);
-  const begin=tail.toLowerCase().indexOf('as $');
-  const end=tail.indexOf('$;',begin+5);
-  return begin>=0&&end>begin?tail.slice(begin+5,end):'';
+  const delimiter=String.fromCharCode(36,36);
+  const begin=tail.toLowerCase().indexOf('as '+delimiter);
+  const start=begin+3+delimiter.length;
+  const end=tail.indexOf(delimiter+';',start);
+  return begin>=0&&end>start?tail.slice(start,end):'';
  };
  const ownBody=body(own),baselineBody=body(baseline);
  const strict=/current_user\s*=\s*'service_role'\s+and\s+auth\.role\(\)\s*=\s*'service_role'/i;
