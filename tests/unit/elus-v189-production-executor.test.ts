@@ -208,9 +208,17 @@ describe("ELUS v1.89: executor produtivo guardado", () => {
     expect(diagnostic).toContain("pol.polname='user_recovery_codes_ninguem_le'");
     expect(diagnostic).toContain("recoveryCodesDenySelectPolicy:catalog.recovery_codes_deny_select_policy===true");
     expect(diagnostic).toContain("DIAGNOSTIC_ONLY_NOT_RELEASE_APPROVAL");
-    // Os nomes de privilégios aparecem em has_table_privilege(), não como DML executável.
-    const withoutPrivilegeChecks = diagnostic.replace(/has_table_privilege\([^)]*\)/g, "has_table_privilege()");
-    expect(withoutPrivilegeChecks).not.toMatch(/\b(?:INSERT|UPDATE|DELETE|ALTER|DROP|CREATE)\b/i);
+    // Analisa apenas o início de cada query, não palavras DDL em regex/literais
+    // dentro de SELECT (ex.: "create or replace function" no recibo 9037).
+    const calls = [...diagnostic.matchAll(/\bc\.query\s*\(/g)];
+    const literalQueries = [
+      ...diagnostic.matchAll(/\bc\.query\s*\(\s*(`|'|")([\s\S]*?)\1\s*\)/g),
+    ];
+    expect(literalQueries.length).toBeGreaterThan(0);
+    expect(literalQueries).toHaveLength(calls.length); // rejeita SQL dinâmico não inspecionado
+    for (const [, , sql] of literalQueries) {
+      expect(sql.trimStart()).toMatch(/^SELECT\b/i);
+    }
     expect(source).toContain("if(mode==='diagnose'){");
     expect(source.indexOf("if(mode==='diagnose'){")).toBeLessThan(
       source.indexOf("const state=await snapshot(c,items)"),
