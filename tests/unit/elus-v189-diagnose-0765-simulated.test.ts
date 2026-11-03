@@ -24,6 +24,10 @@ type Diagnostic = {
   guardTriggerWiringCorrect: boolean;
   guardFunctionInvoker: boolean;
   guardFunctionExecuteRestricted: boolean;
+  guarded9037FunctionsExpected: number;
+  guarded9037FunctionsPresent: number;
+  guarded9037FunctionsLeastPrivilege: number;
+  guarded9037FunctionsAllSafe: boolean;
   recoveryCodesRls: boolean;
   recoveryCodesClientDmlDenied: boolean;
   recoveryCodesDenySelectPolicy: boolean;
@@ -59,6 +63,7 @@ type Scenario = {
   guardTriggerWiringCorrect?: boolean;
   guardFunctionInvoker?: boolean;
   guardFunctionExecuteRestricted?: boolean;
+  guarded9037Functions?: { expected: number; present: number; least_privilege: number };
   recoveryCodesRls?: boolean;
   recoveryCodesClientDmlDenied?: boolean;
   recoveryCodesDenySelectPolicy?: boolean;
@@ -95,6 +100,7 @@ async function evaluate(receipt: number, exact: number, rpcPresent: boolean, sce
             guard_trigger_wiring_correct: scenario.guardTriggerWiringCorrect ?? true,
             guard_function_invoker: scenario.guardFunctionInvoker ?? true,
             guard_function_execute_restricted: scenario.guardFunctionExecuteRestricted ?? true,
+            guarded_9037_functions: scenario.guarded9037Functions ?? { expected: 8, present: 8, least_privilege: 8 },
             recovery_codes_rls: scenario.recoveryCodesRls ?? true,
             recovery_codes_client_dml_denied: scenario.recoveryCodesClientDmlDenied ?? true,
             recovery_codes_deny_select_policy: scenario.recoveryCodesDenySelectPolicy ?? true,
@@ -167,6 +173,27 @@ describe("ELUS v1.89: diagnóstico 0765 simulado, sem acesso ao banco", () => {
     const no0690 = await evaluate(1, 1, false, { receipt0690Exact: 0 });
     expect(no0690.receipt0690Exact).toBe(false);
     expect(no0690.guard0690And9037Coexist).toBe(false);
+  });
+
+  it("atesta as oito assinaturas da 9037 sem confundir recibo com ACL efetiva", async () => {
+    const intact = await evaluate(1, 1, false);
+    expect(intact.guarded9037FunctionsExpected).toBe(8);
+    expect(intact.guarded9037FunctionsPresent).toBe(8);
+    expect(intact.guarded9037FunctionsLeastPrivilege).toBe(8);
+    expect(intact.guarded9037FunctionsAllSafe).toBe(true);
+
+    const missing = await evaluate(1, 1, false, {
+      guarded9037Functions: { expected: 8, present: 7, least_privilege: 7 },
+    });
+    expect(missing.guarded9037FunctionsPresent).toBe(7);
+    expect(missing.guarded9037FunctionsAllSafe).toBe(false);
+
+    const exposed = await evaluate(1, 1, false, {
+      guarded9037Functions: { expected: 8, present: 8, least_privilege: 7 },
+    });
+    expect(exposed.guarded9037FunctionsLeastPrivilege).toBe(7);
+    expect(exposed.guarded9037FunctionsAllSafe).toBe(false);
+    expect(exposed.gate).toBe("DIAGNOSTIC_ONLY_NOT_RELEASE_APPROVAL");
   });
 
   it("não mascara desvios da guarda 9037, ACL ou isolamento dos códigos", async () => {
