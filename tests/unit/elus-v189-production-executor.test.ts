@@ -217,6 +217,10 @@ describe("ELUS v1.89: executor produtivo guardado", () => {
     expect(literalQueries.length).toBeGreaterThan(0);
     expect(literalQueries).toHaveLength(calls.length); // rejeita SQL dinâmico não inspecionado
     for (const [, , sql] of literalQueries) {
+      // matchAll captura grupos opcionais: rejeitar ausência em vez de assumir string.
+      if (sql === undefined) {
+        throw new Error("NON_LITERAL_QUERY");
+      }
       expect(sql.trimStart()).toMatch(/^SELECT\b/i);
     }
     expect(source).toContain("if(mode==='diagnose'){");
