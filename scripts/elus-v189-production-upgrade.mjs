@@ -293,6 +293,45 @@ async function diagnoseLedger(c){
        AND cardinality(m.statements)=1
    ),false) AS guard_9037_receipt_body_exact
  `)).rows[0];
+ // Compara todos os oito corpos da 9037 ao recibo EXATO, inclusive
+ // delimitadores $tag$ distintos. Não retorna o SQL nem dados de tenant.
+ const guardedReceiptBodies=(await c.query(`
+   SELECT (
+     WITH receipt AS (
+       SELECT statements[1] AS sql
+       FROM supabase_migrations.schema_migrations
+       WHERE version='20261029104815'
+         AND name='elus_9037_ai_autonomy_guarded'
+         AND cardinality(statements)=1
+         AND octet_length(statements[1])=34985
+         AND md5(statements[1])='10df3c797779f8cb4461631cb22676d2'
+     ), chunks AS (
+       SELECT chunk FROM receipt CROSS JOIN LATERAL
+       regexp_split_to_table(sql,
+         'create[[:space:]]+or[[:space:]]+replace[[:space:]]+function[[:space:]]+', 'i') AS chunk
+     ), parsed AS (
+       SELECT (regexp_match(chunk,
+         '^[[:space:]]*(?:public[.])?([a-z_][a-z0-9_]*)','i'))[1] AS function_name,
+         (regexp_match(chunk,
+         '[[:space:]]+as[[:space:]]+([$][a-z0-9_]*[$])','i'))[1] AS delimiter,
+         chunk FROM chunks
+     ), matched AS (
+       SELECT parsed.function_name, parsed.delimiter, parsed.chunk, p.prosrc
+       FROM parsed
+       JOIN pg_catalog.pg_proc p ON p.proname=parsed.function_name
+       JOIN pg_catalog.pg_namespace n ON n.oid=p.pronamespace AND n.nspname='public'
+       WHERE parsed.function_name IN (
+         'fn_elus_ai_agent_create_guarded','fn_elus_ai_credential_write_guarded',
+         'fn_elus_ai_default_write_guarded','fn_elus_ai_draft_save_guarded',
+         'fn_elus_ai_purpose_binding_write_guarded','fn_elus_ai_version_create_guarded',
+         'fn_elus_ai_version_patch_guarded','fn_guard_organizations_ai_autonomy')
+     )
+     SELECT count(*)=8 AND count(DISTINCT function_name)=8
+       AND count(*) FILTER (WHERE delimiter IS NOT NULL
+         AND split_part(chunk,delimiter,2)=prosrc)=8
+     FROM matched
+   ) AS guarded_9037_receipt_bodies_exact
+ `)).rows[0];
  return {
    ...historical,
    ledgerReceipts:Number(ledger.total_receipts),
@@ -312,6 +351,7 @@ async function diagnoseLedger(c){
    receipt0765RpcMismatch:Number(ledger.receipt_0765)>0&&catalog.rpc_0765_present!==true,
    guard9037Strict:catalog.guard_9037_strict===true,
    guard9037ReceiptBodyExact:guardReceiptBody.guard_9037_receipt_body_exact===true,
+   guarded9037ReceiptBodiesExact:guardedReceiptBodies.guarded_9037_receipt_bodies_exact===true,
    guardTriggerEnabled:catalog.guard_trigger_enabled===true,
    guardTriggerWiringCorrect:catalog.guard_trigger_wiring_correct===true,
    guardFunctionInvoker:catalog.guard_function_invoker===true,
