@@ -247,7 +247,33 @@ async function diagnoseLedger(c){
             WHERE pol.polrelid=to_regclass('public.user_recovery_codes')
               AND pol.polcmd='r'
               AND pol.polname='user_recovery_codes_ninguem_le'
-              AND pg_get_expr(pol.polqual,pol.polrelid)='false') AS recovery_codes_deny_select_policy
+              AND pg_get_expr(pol.polqual,pol.polrelid)='false') AS recovery_codes_deny_select_policy,
+     -- O recibo externo 9037 declara oito funcoes. Atestar assinatura,
+     -- invoker, search_path e EXECUTE efetivo; somente catalogo, sem dados.
+     (SELECT jsonb_build_object(
+       'expected',count(*),
+       'present',count(p.oid),
+       'least_privilege',count(*) FILTER (WHERE p.oid IS NOT NULL
+         AND NOT p.prosecdef
+         AND p.proconfig @> ARRAY['search_path=pg_catalog, public, pg_temp']::text[]
+         AND has_function_privilege('service_role',p.oid,'EXECUTE')
+         AND NOT has_function_privilege('anon',p.oid,'EXECUTE')
+         AND NOT has_function_privilege('authenticated',p.oid,'EXECUTE')
+         AND NOT EXISTS (SELECT 1 FROM pg_catalog.aclexplode(p.proacl) a
+           WHERE a.grantee=0 AND a.privilege_type='EXECUTE'))
+      ) FROM (VALUES
+       ('public.fn_elus_ai_agent_create_guarded(uuid,jsonb,jsonb,boolean)'),
+       ('public.fn_elus_ai_credential_write_guarded(uuid,text,uuid,jsonb,boolean)'),
+       ('public.fn_elus_ai_default_write_guarded(uuid,text,text,jsonb,boolean)'),
+       ('public.fn_elus_ai_draft_save_guarded(uuid,uuid,text,uuid,jsonb,jsonb,jsonb,boolean)'),
+       ('public.fn_elus_ai_purpose_binding_write_guarded(uuid,text,jsonb,jsonb,boolean)'),
+       ('public.fn_elus_ai_version_create_guarded(uuid,uuid,jsonb,boolean)'),
+       ('public.fn_elus_ai_version_patch_guarded(uuid,uuid,uuid,jsonb,jsonb,boolean)'),
+       ('public.fn_guard_organizations_ai_autonomy()')
+      ) AS expected(signature)
+      LEFT JOIN pg_catalog.pg_proc p
+        ON p.oid=to_regprocedure(expected.signature)
+     ) AS guarded_9037_functions
  `)).rows[0];
  return {
    ...historical,
@@ -271,6 +297,11 @@ async function diagnoseLedger(c){
    guardTriggerWiringCorrect:catalog.guard_trigger_wiring_correct===true,
    guardFunctionInvoker:catalog.guard_function_invoker===true,
    guardFunctionExecuteRestricted:catalog.guard_function_execute_restricted===true,
+   guarded9037FunctionsExpected:8,
+   guarded9037FunctionsPresent:Number(catalog.guarded_9037_functions?.present??0),
+   guarded9037FunctionsLeastPrivilege:Number(catalog.guarded_9037_functions?.least_privilege??0),
+   guarded9037FunctionsAllSafe:Number(catalog.guarded_9037_functions?.present)===8&&
+     Number(catalog.guarded_9037_functions?.least_privilege)===8,
    rpc0765NamedFunctionsAnySchema:Number(catalog.rpc_0765_any_schema_count),
    recoveryCodesRls:catalog.recovery_codes_rls===true,
    recoveryCodesClientDmlDenied:catalog.recovery_codes_client_dml_denied===true,
