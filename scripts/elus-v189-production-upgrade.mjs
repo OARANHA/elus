@@ -124,6 +124,13 @@ function guardParity(){
   /^create\b/i.test(triggerActions.at(-1)?.[0]??'');
  const functionDrops=[...baselineActive.matchAll(/\bdrop\s+function\s+(?:if\s+exists\s+)?public\.fn_guard_organizations_ai_autonomy\s*\(\s*\)/gi)];
  const baselineGuardFunctionNotDropped=(functionDrops.at(-1)?.index??-1)<baselineActive.toLowerCase().lastIndexOf(marker);
+ // Alteracoes posteriores de estado/identidade do trigger nao sao cobertas
+ // pelo CREATE inicial. Rejeitar mesmo que uma reativacao posterior exista:
+ // sem interpretar a sequencia SQL, nao ha prova de paridade.
+ const afterGuardTrigger=baselineActive.slice(triggerCreates[0]?.index??baselineActive.length);
+ const baselineGuardTriggerUnaltered=
+  !/\balter\s+table\s+(?:if\s+exists\s+)?(?:only\s+)?(?:public\.)?organizations\b[^;]*\b(?:disable\s+trigger|enable\s+(?:replica|always)\s+trigger)\s+(?:trg_guard_organizations_ai_autonomy|all|user)\b/i.test(afterGuardTrigger)&&
+  !/\balter\s+trigger\s+trg_guard_organizations_ai_autonomy\s+on\s+(?:public\.)?organizations\s+rename\s+to\b/i.test(afterGuardTrigger);
  const strict=/current_user\s*=\s*'service_role'\s+and\s+auth\.role\(\)\s*=\s*'service_role'/i;
  const jwtOnly=/auth\.role\(\)\s*=\s*'service_role'/i;
  const admin=/current_user\s*=\s*'postgres'\s+and\s+auth\.uid\(\)\s+is\s+null\s+and\s+auth\.role\(\)\s+is\s+null/i;
@@ -136,7 +143,7 @@ function guardParity(){
  const weaker=baselineIncludes0690Verbatim&&count===1&&migration0690ServiceRoleJwtOnly&&
   Boolean(baselineBody)&&!baselineServiceRoleDbAndJwtRequired&&
   adminExceptionPreserved&&denialBranchPreserved&&
-  baselineGuardTriggerWired&&baselineGuardFunctionNotDropped;
+  baselineGuardTriggerWired&&baselineGuardFunctionNotDropped&&baselineGuardTriggerUnaltered;
  return {
   baselineIncludes0690Verbatim,
   baselineGuardDefinitionCount:count,
@@ -146,6 +153,7 @@ function guardParity(){
   denialBranchPreserved,
   baselineGuardTriggerWired,
   baselineGuardFunctionNotDropped,
+  baselineGuardTriggerUnaltered,
   external9037Reference:'2026-11-03: current_user=service_role AND auth.role()=service_role',
   comparison:weaker?'BASELINE_0690_WEAKER_THAN_OBSERVED_9037':'UNVERIFIED_DO_NOT_RELEASE',
   replayApproved:false,
