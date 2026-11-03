@@ -31,20 +31,20 @@ function readOwn(file: string): string {
 function gitBlobSha(content: string): string {
   const bytes = Buffer.from(content, "utf8");
   return createHash("sha1")
-    .update(`blob ${bytes.length}\\0`)
+    .update(`blob ${bytes.length}\0`)
     .update(bytes)
     .digest("hex");
 }
 
 function localBlock(): string {
   const four = OWN_FILES.slice(0, 4)
-    .map((file) => `-- ELUS exclusivo: ${file}\\n${readOwn(file)}\\n`)
+    .map((file) => `-- ELUS exclusivo: ${file}\n${readOwn(file)}\n`)
     .join("");
   return (
     four +
-    "\\n-- ---- ELUS 0765: complemento local de rotacao MFA (fora do lote upstream v1.89) ----\\n" +
+    "\n-- ---- ELUS 0765: complemento local de rotacao MFA (fora do lote upstream v1.89) ----\n" +
     readOwn(OWN_FILES[4]) +
-    "\\n"
+    "\n"
   );
 }
 
