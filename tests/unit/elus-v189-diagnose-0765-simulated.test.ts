@@ -20,6 +20,7 @@ type Diagnostic = {
   receipt0690Exact: boolean;
   guard0690And9037Coexist: boolean;
   guard9037Strict: boolean;
+  guard9037ReceiptBodyExact: boolean;
   guardTriggerEnabled: boolean;
   guardTriggerWiringCorrect: boolean;
   guardFunctionInvoker: boolean;
@@ -61,6 +62,7 @@ type Scenario = {
   rpc0765ServiceRoleClientsDenied?: boolean;
   receipt0690Exact?: number;
   guard9037Strict?: boolean;
+  guard9037ReceiptBodyExact?: boolean;
   guardTriggerEnabled?: boolean;
   guardTriggerWiringCorrect?: boolean;
   guardFunctionInvoker?: boolean;
@@ -78,6 +80,9 @@ async function evaluate(receipt: number, exact: number, rpcPresent: boolean, sce
     query: async (sql) => {
       queries.push(sql);
       expect(sql.trimStart()).toMatch(/^SELECT\b/i);
+      if (sql.includes("AS guard_9037_receipt_body_exact")) {
+        return { rows: [{ guard_9037_receipt_body_exact: scenario.guard9037ReceiptBodyExact ?? true }] };
+      }
       if (sql.includes("FROM supabase_migrations.schema_migrations")) {
         return {
           rows: [{
@@ -117,7 +122,7 @@ async function evaluate(receipt: number, exact: number, rpcPresent: boolean, sce
       throw Error("UNEXPECTED_DIAGNOSTIC_QUERY");
     },
   });
-  expect(queries).toHaveLength(2);
+  expect(queries).toHaveLength(3);
   expect(result.historicalReceiptsExact).toBe(true);
   expect(result.gate).toBe("DIAGNOSTIC_ONLY_NOT_RELEASE_APPROVAL");
   return result;
@@ -172,6 +177,7 @@ describe("ELUS v1.89: diagnóstico 0765 simulado, sem acesso ao banco", () => {
     expect(complete.external9037Exact).toBe(true);
     expect(complete.receipt0690Exact).toBe(true);
     expect(complete.guard0690And9037Coexist).toBe(true);
+    expect(complete.guard9037ReceiptBodyExact).toBe(true);
 
     const no9037 = await evaluate(1, 1, false, { external9037Exact: 0 });
     expect(no9037.external9037Exact).toBe(false);
@@ -180,6 +186,17 @@ describe("ELUS v1.89: diagnóstico 0765 simulado, sem acesso ao banco", () => {
     const no0690 = await evaluate(1, 1, false, { receipt0690Exact: 0 });
     expect(no0690.receipt0690Exact).toBe(false);
     expect(no0690.guard0690And9037Coexist).toBe(false);
+  });
+
+  it("compara o corpo real da guarda 9037 ao recibo, independentemente de ACL e hashes observados", async () => {
+    const exact = await evaluate(1, 1, false);
+    expect(exact.guard9037ReceiptBodyExact).toBe(true);
+
+    const bodyDrift = await evaluate(1, 1, false, { guard9037ReceiptBodyExact: false });
+    expect(bodyDrift.guard9037ReceiptBodyExact).toBe(false);
+    expect(bodyDrift.guarded9037FunctionsAllSafe).toBe(true);
+    expect(bodyDrift.guarded9037DefinitionsNoDrift).toBe(true);
+    expect(bodyDrift.gate).toBe("DIAGNOSTIC_ONLY_NOT_RELEASE_APPROVAL");
   });
 
   it("atesta as oito assinaturas da 9037 sem confundir recibo com ACL efetiva", async () => {
