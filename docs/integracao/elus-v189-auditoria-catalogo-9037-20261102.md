@@ -63,3 +63,16 @@ Consulta **exclusivamente SELECT** ao Supabase `elus` (PostgreSQL 17.11), condic
 A PR #62 acrescenta `guarded9037ReceiptBodiesExact` ao modo `diagnose`, sem modificar `apply`, que continua bloqueado antes da conexão. A inspeção estática confirmou quatro consultas literais começando por `SELECT`; simulação JavaScript da função real passou em **2/2 cenários** (igualdade integral e divergência) com `gate=DIAGNOSTIC_ONLY_NOT_RELEASE_APPROVAL`. CI do HEAD anterior `e5d01166`: [run 41589533299](https://github.com/OARANHA/elus/actions/runs/41589533299), concluído com sucesso; CI dos commits novos **não foi consultado** nesta execução. Lint, TypeScript e Vitest locais não foram executados.
 
 **Limite:** igualdade de `prosrc` não prova que a 9037 foi aplicada historicamente por inteiro, nem equivale a teste funcional de permissões, transações, RLS, trigger, ordenação 0690/9037 ou compatibilidade de replay. Os bloqueios 0765, ledger 51/50, restauração/replay PostgreSQL 15/17, multi-tenancy e autorização independente do DELETE 0759 permanecem. Nenhuma migration, SQL mutante, E2E/Playwright, merge, publicação de imagem ou deploy foi executado.
+
+## Divergência comprovada na baseline candidata — 03/11/2026, 05h BRT
+
+Auditoria **exclusivamente offline** da baseline candidata (blob Git `0269eee11299e0492f489ab6d690eb88b91e30b1`) e da migration ELUS `20261020120000_0690_org_ai_autonomy_protected.sql` (blob `4ad880adf0a8e294e20a1b50dae1fb9dbed1db65`):
+
+- A baseline inclui **verbatim** a migration 0690 e contém **uma** definição de `public.fn_guard_organizations_ai_autonomy()`.
+- O corpo da guarda nessa baseline aceita `auth.role() = 'service_role'` sem exigir `current_user = 'service_role'` conjuntamente.
+- O catálogo ativo anteriormente observado, associado ao recibo externo 9037, exige **ambas** as condições; os oito corpos da 9037 foram confrontados com o recibo por consultas `SELECT` na execução anterior.
+- Portanto, a baseline candidata **não possui paridade estática** com a guarda 9037 observada. Um provisionamento novo a partir dessa baseline ou replay da 0690 após a 9037 **pode produzir a guarda menos restritiva**. Não se afirma exploração nem comportamento funcional sem ensaio isolado.
+
+O modo offline `manifest` do executor agora expõe `replayClassification.guard0690Vs9037` com `comparison=BASELINE_0690_WEAKER_THAN_OBSERVED_9037`, `replayApproved=false` e `freshInstallParityApproved=false`. Caso a baseline mude, o resultado passa a `UNVERIFIED_DO_NOT_RELEASE`, **nunca** a aceite automático. O teste unitário `tests/unit/elus-v189-guard-0690-9037-parity.test.ts` cobre a divergência presente, uma variante com predicado reforçado e a ausência da função.
+
+**Escopo e limite:** apenas leitura de arquivos locais e avaliação JavaScript isolada; não foram executados SQL, migrations, E2E/Playwright ou deploy. O executor `apply` permanece bloqueado antes da conexão. A correção da baseline exige plano e validação separados, sem alterar as quatro migrations históricas ELUS nem reexecutar 0690/9037 no banco real. CI do novo HEAD ainda não verificado nesta execução.
