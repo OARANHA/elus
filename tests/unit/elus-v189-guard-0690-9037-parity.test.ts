@@ -78,8 +78,8 @@ describe("ELUS v1.89: divergencia estatica 0690/9037, sem banco", () => {
   it("ignora um predicado estrito escrito somente em comentario SQL", () => {
     const migration = readFileSync(migrationPath, "utf8");
     const injected = migration.replace(
-      "auth.role() = 'service_role'\\n      or",
-      "auth.role() = 'service_role' -- current_user = 'service_role' and auth.role() = 'service_role'\\n      or",
+      "auth.role() = 'service_role'\n      or",
+      "auth.role() = 'service_role' -- current_user = 'service_role' and auth.role() = 'service_role'\n      or",
     );
     expect(injected).not.toBe(migration);
     const result = audit(() => injected);
