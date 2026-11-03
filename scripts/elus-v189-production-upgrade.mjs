@@ -114,6 +114,16 @@ function guardParity(){
  // Nao e parser SQL nem prova de equivalencia funcional.
  const active=(sql)=>sql.replace(/\/\*[\s\S]*?\*\//g,'').replace(/--[^\r\n]*/g,'');
  const ownBody=active(body(own)),baselineBody=active(body(baseline));
+ // A presenca textual da 0690 nao basta: DDL posterior pode remover a
+ // funcao/trigger ou trocar o alvo. Falhar fechado sem interpretar SQL.
+ const baselineActive=active(baseline);
+ const triggerActions=[...baselineActive.matchAll(/\b(?:create|drop)\s+trigger\s+(?:if\s+exists\s+)?trg_guard_organizations_ai_autonomy\b/gi)];
+ const triggerCreates=triggerActions.filter(x=>/^create\b/i.test(x[0]));
+ const baselineGuardTriggerWired=triggerCreates.length===1&&
+  /\bcreate\s+trigger\s+trg_guard_organizations_ai_autonomy\s+before\s+insert\s+or\s+update\s+on\s+public\.organizations\s+for\s+each\s+row\s+execute\s+function\s+public\.fn_guard_organizations_ai_autonomy\(\)\s*;/i.test(baselineActive)&&
+  /^create\b/i.test(triggerActions.at(-1)?.[0]??'');
+ const functionDrops=[...baselineActive.matchAll(/\bdrop\s+function\s+(?:if\s+exists\s+)?public\.fn_guard_organizations_ai_autonomy\s*\(\s*\)/gi)];
+ const baselineGuardFunctionNotDropped=(functionDrops.at(-1)?.index??-1)<baselineActive.toLowerCase().lastIndexOf(marker);
  const strict=/current_user\s*=\s*'service_role'\s+and\s+auth\.role\(\)\s*=\s*'service_role'/i;
  const jwtOnly=/auth\.role\(\)\s*=\s*'service_role'/i;
  const admin=/current_user\s*=\s*'postgres'\s+and\s+auth\.uid\(\)\s+is\s+null\s+and\s+auth\.role\(\)\s+is\s+null/i;
@@ -125,7 +135,8 @@ function guardParity(){
  const denialBranchPreserved=deny.test(ownBody)&&deny.test(baselineBody);
  const weaker=baselineIncludes0690Verbatim&&count===1&&migration0690ServiceRoleJwtOnly&&
   Boolean(baselineBody)&&!baselineServiceRoleDbAndJwtRequired&&
-  adminExceptionPreserved&&denialBranchPreserved;
+  adminExceptionPreserved&&denialBranchPreserved&&
+  baselineGuardTriggerWired&&baselineGuardFunctionNotDropped;
  return {
   baselineIncludes0690Verbatim,
   baselineGuardDefinitionCount:count,
@@ -133,6 +144,8 @@ function guardParity(){
   baselineServiceRoleDbAndJwtRequired,
   adminExceptionPreserved,
   denialBranchPreserved,
+  baselineGuardTriggerWired,
+  baselineGuardFunctionNotDropped,
   external9037Reference:'2026-11-03: current_user=service_role AND auth.role()=service_role',
   comparison:weaker?'BASELINE_0690_WEAKER_THAN_OBSERVED_9037':'UNVERIFIED_DO_NOT_RELEASE',
   replayApproved:false,
