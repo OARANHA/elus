@@ -12,6 +12,8 @@ type GuardParity = {
   baselineServiceRoleDbAndJwtRequired: boolean;
   adminExceptionPreserved: boolean;
   denialBranchPreserved: boolean;
+  baselineGuardTriggerWired: boolean;
+  baselineGuardFunctionNotDropped: boolean;
   external9037Reference: string;
   comparison: string;
   replayApproved: boolean;
@@ -45,6 +47,8 @@ describe("ELUS v1.89: divergencia estatica 0690/9037, sem banco", () => {
     expect(result.baselineServiceRoleDbAndJwtRequired).toBe(false);
     expect(result.adminExceptionPreserved).toBe(true);
     expect(result.denialBranchPreserved).toBe(true);
+    expect(result.baselineGuardTriggerWired).toBe(true);
+    expect(result.baselineGuardFunctionNotDropped).toBe(true);
     expect(result.comparison).toBe("BASELINE_0690_WEAKER_THAN_OBSERVED_9037");
     expect(result.replayApproved).toBe(false);
     expect(result.freshInstallParityApproved).toBe(false);
@@ -113,6 +117,33 @@ describe("ELUS v1.89: divergencia estatica 0690/9037, sem banco", () => {
     expect(result.denialBranchPreserved).toBe(false);
     expect(result.comparison).toBe("UNVERIFIED_DO_NOT_RELEASE");
     expect(result.replayApproved).toBe(false);
+  });
+
+  it("falha fechado se DDL posterior remove ou redireciona a guarda da baseline", () => {
+    const migration = readFileSync(migrationPath, "utf8");
+    const mutations = [
+      {
+        suffix: "\nDROP TRIGGER IF EXISTS trg_guard_organizations_ai_autonomy ON public.organizations;",
+        field: "baselineGuardTriggerWired",
+      },
+      {
+        suffix: "\nCREATE TRIGGER trg_guard_organizations_ai_autonomy BEFORE INSERT OR UPDATE ON public.organizations FOR EACH ROW EXECUTE FUNCTION public.fn_other_guard();",
+        field: "baselineGuardTriggerWired",
+      },
+      {
+        suffix: "\nDROP FUNCTION IF EXISTS public.fn_guard_organizations_ai_autonomy();",
+        field: "baselineGuardFunctionNotDropped",
+      },
+    ] as const;
+    for (const { suffix, field } of mutations) {
+      const result = audit((path) => path === baselinePath ? migration + suffix : migration);
+      expect(result.baselineIncludes0690Verbatim).toBe(true);
+      expect(result.baselineGuardDefinitionCount).toBe(1);
+      expect(result[field]).toBe(false);
+      expect(result.comparison).toBe("UNVERIFIED_DO_NOT_RELEASE");
+      expect(result.replayApproved).toBe(false);
+      expect(result.freshInstallParityApproved).toBe(false);
+    }
   });
 
 });
