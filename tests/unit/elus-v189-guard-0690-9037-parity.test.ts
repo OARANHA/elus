@@ -14,6 +14,7 @@ type GuardParity = {
   denialBranchPreserved: boolean;
   baselineGuardTriggerWired: boolean;
   baselineGuardFunctionNotDropped: boolean;
+  baselineGuardTriggerUnaltered: boolean;
   external9037Reference: string;
   comparison: string;
   replayApproved: boolean;
@@ -49,6 +50,7 @@ describe("ELUS v1.89: divergencia estatica 0690/9037, sem banco", () => {
     expect(result.denialBranchPreserved).toBe(true);
     expect(result.baselineGuardTriggerWired).toBe(true);
     expect(result.baselineGuardFunctionNotDropped).toBe(true);
+    expect(result.baselineGuardTriggerUnaltered).toBe(true);
     expect(result.comparison).toBe("BASELINE_0690_WEAKER_THAN_OBSERVED_9037");
     expect(result.replayApproved).toBe(false);
     expect(result.freshInstallParityApproved).toBe(false);
@@ -144,6 +146,32 @@ describe("ELUS v1.89: divergencia estatica 0690/9037, sem banco", () => {
       expect(result.replayApproved).toBe(false);
       expect(result.freshInstallParityApproved).toBe(false);
     }
+  });
+
+  it("falha fechado quando DDL posterior desativa, limita ou renomeia o trigger", () => {
+    const migration = readFileSync(migrationPath, "utf8");
+    const changes = [
+      "ALTER TABLE public.organizations DISABLE TRIGGER trg_guard_organizations_ai_autonomy;",
+      "ALTER TABLE ONLY public.organizations DISABLE TRIGGER ALL;",
+      "ALTER TABLE public.organizations DISABLE TRIGGER USER;",
+      "ALTER TABLE public.organizations ENABLE REPLICA TRIGGER trg_guard_organizations_ai_autonomy;",
+      "ALTER TRIGGER trg_guard_organizations_ai_autonomy ON public.organizations RENAME TO trg_guard_removed;",
+    ];
+    for (const change of changes) {
+      const result = audit((path) => path === baselinePath ? migration + "\n" + change : migration);
+      expect(result.baselineGuardTriggerWired).toBe(true);
+      expect(result.baselineGuardTriggerUnaltered).toBe(false);
+      expect(result.comparison).toBe("UNVERIFIED_DO_NOT_RELEASE");
+      expect(result.replayApproved).toBe(false);
+      expect(result.freshInstallParityApproved).toBe(false);
+    }
+    const commented = audit((path) =>
+      path === baselinePath
+        ? migration + "\n-- ALTER TABLE public.organizations DISABLE TRIGGER ALL;"
+        : migration,
+    );
+    expect(commented.baselineGuardTriggerUnaltered).toBe(true);
+    expect(commented.comparison).toBe("BASELINE_0690_WEAKER_THAN_OBSERVED_9037");
   });
 
 });
