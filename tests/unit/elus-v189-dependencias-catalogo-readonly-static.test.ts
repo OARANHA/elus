@@ -75,9 +75,9 @@ describe("ELUS v1.89 — preflight de dependencias somente leitura", () => {
 
   it("reconhece somente o tipo composto interno da propria view", () => {
     expect(sql).toContain("THEN 'OWN_VIEW_ROWTYPE_INTERNAL'");
-    expect(sql).toMatch(/t\\.kind\\s*=\\s*'view'[\\s\\S]*?d\\.classid\\s*=\\s*'pg_catalog\\.pg_type'::regclass[\\s\\S]*?d\\.deptype\\s*=\\s*'i'/i);
-    expect(sql).toMatch(/d\\.objsubid\\s*=\\s*0/i);
-    expect(sql).toMatch(/d\\.refobjsubid\\s*=\\s*0/i);
+    expect(sql).toMatch(/t\.kind\s*=\s*'view'[\s\S]*?d\.classid\s*=\s*'pg_catalog\.pg_type'::regclass[\s\S]*?d\.deptype\s*=\s*'i'/i);
+    expect(sql).toMatch(/d\.objsubid\s*=\s*0/i);
+    expect(sql).toMatch(/d\.refobjsubid\s*=\s*0/i);
     expect(sql).toContain("ty.oid = d.objid");
     expect(sql).toContain("ty.typrelid = t.object_oid");
     expect(sql).toContain("ELSE 'REVIEW_DEPENDENCY'");
