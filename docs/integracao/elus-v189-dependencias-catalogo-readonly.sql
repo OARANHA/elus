@@ -8,7 +8,7 @@
 -- não interpretar PRESENT nem ausência de dependências como aprovação de DROP.
 -- Nao comparar d.objid com o OID do alvo: sao OIDs de catalogos distintos;
 -- coincidencia numerica pode ocultar uma dependencia valida.
--- Regras internas de views podem aparecer; deptype e catalogo exigem triagem.
+-- Regras e tipos compostos proprios de views sao dependencias internas;\n-- deptype, catalogo e vinculo ao OID da view exigem triagem.
 -- Ref: migrations 0687, 0763/0706, 0764 e 0754.
 
 WITH targets AS (
@@ -69,13 +69,26 @@ SELECT
   -- Outras dependencias continuam visiveis e exigem revisao manual.
   CASE
     WHEN d.objid IS NULL THEN 'NONE_RECORDED'
-    WHEN d.classid = 'pg_catalog.pg_rewrite'::regclass
+    WHEN t.kind = 'view'
+      AND d.classid = 'pg_catalog.pg_rewrite'::regclass
       AND d.deptype = 'i'
       AND EXISTS (
         SELECT 1 FROM pg_catalog.pg_rewrite rw
         WHERE rw.oid = d.objid
           AND rw.ev_class = t.object_oid
       ) THEN 'OWN_VIEW_RULE_INTERNAL'
+    -- Tipo composto da propria view: dependencia interna, nao externa.
+    -- Nao dispensar revisao de outros pg_type ou dependencias nao-internas.
+    WHEN t.kind = 'view'
+      AND d.classid = 'pg_catalog.pg_type'::regclass
+      AND d.deptype = 'i'
+      AND d.objsubid = 0
+      AND d.refobjsubid = 0
+      AND EXISTS (
+        SELECT 1 FROM pg_catalog.pg_type ty
+        WHERE ty.oid = d.objid
+          AND ty.typrelid = t.object_oid
+      ) THEN 'OWN_VIEW_ROWTYPE_INTERNAL'
     ELSE 'REVIEW_DEPENDENCY'
   END AS dependency_scope,
   CASE WHEN d.objid IS NULL THEN NULL
