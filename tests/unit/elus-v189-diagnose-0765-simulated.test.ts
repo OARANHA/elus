@@ -27,6 +27,8 @@ type Diagnostic = {
   guarded9037FunctionsExpected: number;
   guarded9037FunctionsPresent: number;
   guarded9037FunctionsLeastPrivilege: number;
+  guarded9037DefinitionsObservedMatches: number;
+  guarded9037DefinitionsNoDrift: boolean;
   guarded9037FunctionsAllSafe: boolean;
   recoveryCodesRls: boolean;
   recoveryCodesClientDmlDenied: boolean;
@@ -63,7 +65,7 @@ type Scenario = {
   guardTriggerWiringCorrect?: boolean;
   guardFunctionInvoker?: boolean;
   guardFunctionExecuteRestricted?: boolean;
-  guarded9037Functions?: { expected: number; present: number; least_privilege: number };
+  guarded9037Functions?: { expected: number; present: number; least_privilege: number; observed_definition_matches?: number };
   recoveryCodesRls?: boolean;
   recoveryCodesClientDmlDenied?: boolean;
   recoveryCodesDenySelectPolicy?: boolean;
@@ -100,7 +102,12 @@ async function evaluate(receipt: number, exact: number, rpcPresent: boolean, sce
             guard_trigger_wiring_correct: scenario.guardTriggerWiringCorrect ?? true,
             guard_function_invoker: scenario.guardFunctionInvoker ?? true,
             guard_function_execute_restricted: scenario.guardFunctionExecuteRestricted ?? true,
-            guarded_9037_functions: scenario.guarded9037Functions ?? { expected: 8, present: 8, least_privilege: 8 },
+            guarded_9037_functions: {
+              expected: scenario.guarded9037Functions?.expected ?? 8,
+              present: scenario.guarded9037Functions?.present ?? 8,
+              least_privilege: scenario.guarded9037Functions?.least_privilege ?? 8,
+              observed_definition_matches: scenario.guarded9037Functions?.observed_definition_matches ?? scenario.guarded9037Functions?.present ?? 8,
+            },
             recovery_codes_rls: scenario.recoveryCodesRls ?? true,
             recovery_codes_client_dml_denied: scenario.recoveryCodesClientDmlDenied ?? true,
             recovery_codes_deny_select_policy: scenario.recoveryCodesDenySelectPolicy ?? true,
@@ -181,12 +188,15 @@ describe("ELUS v1.89: diagnóstico 0765 simulado, sem acesso ao banco", () => {
     expect(intact.guarded9037FunctionsPresent).toBe(8);
     expect(intact.guarded9037FunctionsLeastPrivilege).toBe(8);
     expect(intact.guarded9037FunctionsAllSafe).toBe(true);
+    expect(intact.guarded9037DefinitionsObservedMatches).toBe(8);
+    expect(intact.guarded9037DefinitionsNoDrift).toBe(true);
 
     const missing = await evaluate(1, 1, false, {
       guarded9037Functions: { expected: 8, present: 7, least_privilege: 7 },
     });
     expect(missing.guarded9037FunctionsPresent).toBe(7);
     expect(missing.guarded9037FunctionsAllSafe).toBe(false);
+    expect(missing.guarded9037DefinitionsNoDrift).toBe(false);
 
     const exposed = await evaluate(1, 1, false, {
       guarded9037Functions: { expected: 8, present: 8, least_privilege: 7 },
@@ -194,6 +204,15 @@ describe("ELUS v1.89: diagnóstico 0765 simulado, sem acesso ao banco", () => {
     expect(exposed.guarded9037FunctionsLeastPrivilege).toBe(7);
     expect(exposed.guarded9037FunctionsAllSafe).toBe(false);
     expect(exposed.gate).toBe("DIAGNOSTIC_ONLY_NOT_RELEASE_APPROVAL");
+
+    // ACL correta nao comprova identidade do corpo SQL instalado.
+    const bodyDrift = await evaluate(1, 1, false, {
+      guarded9037Functions: { expected: 8, present: 8, least_privilege: 8, observed_definition_matches: 7 },
+    });
+    expect(bodyDrift.guarded9037FunctionsAllSafe).toBe(true);
+    expect(bodyDrift.guarded9037DefinitionsObservedMatches).toBe(7);
+    expect(bodyDrift.guarded9037DefinitionsNoDrift).toBe(false);
+    expect(bodyDrift.gate).toBe("DIAGNOSTIC_ONLY_NOT_RELEASE_APPROVAL");
   });
 
   it("não mascara desvios da guarda 9037, ACL ou isolamento dos códigos", async () => {
