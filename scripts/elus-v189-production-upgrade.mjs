@@ -92,6 +92,41 @@ function manifest(){
  }
  return entries;
 }
+// Auditoria estatica da divergencia entre a baseline candidata e a guarda
+// mais restritiva observada no recibo externo 9037 (03/11/2026).
+// Nao consulta o banco, nao prova equivalencia funcional e nunca libera replay.
+function guardParity(){
+ const own=readFileSync('supabase/migrations/20261020120000_0690_org_ai_autonomy_protected.sql','utf8');
+ const baseline=readFileSync('supabase/baseline.sql','utf8');
+ const marker='create or replace function public.fn_guard_organizations_ai_autonomy()';
+ const count=baseline.toLowerCase().split(marker).length-1;
+ const body=(sql)=>{
+  const at=sql.toLowerCase().indexOf(marker);
+  if(at<0)return '';
+  const tail=sql.slice(at);
+  const begin=tail.toLowerCase().indexOf('as $');
+  const end=tail.indexOf('$;',begin+5);
+  return begin>=0&&end>begin?tail.slice(begin+5,end):'';
+ };
+ const ownBody=body(own),baselineBody=body(baseline);
+ const strict=/current_user\s*=\s*'service_role'\s+and\s+auth\.role\(\)\s*=\s*'service_role'/i;
+ const jwtOnly=/auth\.role\(\)\s*=\s*'service_role'/i;
+ const baselineIncludes0690Verbatim=baseline.includes(own);
+ const migration0690ServiceRoleJwtOnly=Boolean(ownBody)&&jwtOnly.test(ownBody)&&!strict.test(ownBody);
+ const baselineServiceRoleDbAndJwtRequired=Boolean(baselineBody)&&strict.test(baselineBody);
+ const weaker=baselineIncludes0690Verbatim&&count===1&&migration0690ServiceRoleJwtOnly&&
+  Boolean(baselineBody)&&!baselineServiceRoleDbAndJwtRequired;
+ return {
+  baselineIncludes0690Verbatim,
+  baselineGuardDefinitionCount:count,
+  migration0690ServiceRoleJwtOnly,
+  baselineServiceRoleDbAndJwtRequired,
+  external9037Reference:'2026-11-03: current_user=service_role AND auth.role()=service_role',
+  comparison:weaker?'BASELINE_0690_WEAKER_THAN_OBSERVED_9037':'UNVERIFIED_DO_NOT_RELEASE',
+  replayApproved:false,
+  freshInstallParityApproved:false
+ };
+}
 function sourceGuard(){
  try{execFileSync('git',['merge-base','--is-ancestor',BASE,'HEAD'],{stdio:'ignore'});}
  catch{throw Error('RELEASE_ANCESTRY_DRIFT');}
@@ -394,6 +429,7 @@ async function main(){
       destructiveMigration:'20261023180557_0759_codigos_de_recuperacao_antigos_saem.sql',
       dependencyChains:DEPENDENCY_CHAINS,
       dependencyOrderVerified:true, // somente ordem nominal; nao prova seguranca do SQL
+      guard0690Vs9037:guardParity(),
       replayApproved:false,
       reason:'RESTORE_AND_FULL_LEDGER_STATEMENTS_NOT_VERIFIED'
     }
