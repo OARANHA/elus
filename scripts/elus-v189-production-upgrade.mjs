@@ -110,19 +110,29 @@ function guardParity(){
   const end=tail.indexOf(delimiter+';',start);
   return begin>=0&&end>start?tail.slice(start,end):'';
  };
- const ownBody=body(own),baselineBody=body(baseline);
+ // Apenas analise lexical: comentarios nao podem simular uma guarda estrita.
+ // Nao e parser SQL nem prova de equivalencia funcional.
+ const active=(sql)=>sql.replace(/\/\*[\s\S]*?\*\//g,'').replace(/--[^\r\n]*/g,'');
+ const ownBody=active(body(own)),baselineBody=active(body(baseline));
  const strict=/current_user\s*=\s*'service_role'\s+and\s+auth\.role\(\)\s*=\s*'service_role'/i;
  const jwtOnly=/auth\.role\(\)\s*=\s*'service_role'/i;
+ const admin=/current_user\s*=\s*'postgres'\s+and\s+auth\.uid\(\)\s+is\s+null\s+and\s+auth\.role\(\)\s+is\s+null/i;
+ const deny=/if\s+not\s+coalesce\(\s*v_privileged\s*,\s*false\s*\)\s+then\s+raise\s+exception\s+'elus_ai_autonomy_restricted'/i;
  const baselineIncludes0690Verbatim=baseline.includes(own);
  const migration0690ServiceRoleJwtOnly=Boolean(ownBody)&&jwtOnly.test(ownBody)&&!strict.test(ownBody);
  const baselineServiceRoleDbAndJwtRequired=Boolean(baselineBody)&&strict.test(baselineBody);
+ const adminExceptionPreserved=admin.test(ownBody)&&admin.test(baselineBody);
+ const denialBranchPreserved=deny.test(ownBody)&&deny.test(baselineBody);
  const weaker=baselineIncludes0690Verbatim&&count===1&&migration0690ServiceRoleJwtOnly&&
-  Boolean(baselineBody)&&!baselineServiceRoleDbAndJwtRequired;
+  Boolean(baselineBody)&&!baselineServiceRoleDbAndJwtRequired&&
+  adminExceptionPreserved&&denialBranchPreserved;
  return {
   baselineIncludes0690Verbatim,
   baselineGuardDefinitionCount:count,
   migration0690ServiceRoleJwtOnly,
   baselineServiceRoleDbAndJwtRequired,
+  adminExceptionPreserved,
+  denialBranchPreserved,
   external9037Reference:'2026-11-03: current_user=service_role AND auth.role()=service_role',
   comparison:weaker?'BASELINE_0690_WEAKER_THAN_OBSERVED_9037':'UNVERIFIED_DO_NOT_RELEASE',
   replayApproved:false,
