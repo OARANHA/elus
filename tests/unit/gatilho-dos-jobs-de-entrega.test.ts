@@ -204,6 +204,18 @@ const GATILHO_ESPERADO: Record<string, { condicao: string | null; efeito: string
       "três dias atrás mergeado com número duplicado, e a descoberta vira o `db push` de um " +
       "self-hoster.",
   },
+  "elus-upstream-integrator.yml::verify": {
+    condicao: "github.event_name == 'pull_request'",
+    efeito:
+      "Valida o integrador em repositorios Git descartaveis nos PRs que alteram seu codigo. " +
+      "Se for pulado, o plano e a preparacao podem falhar sem sinalizar o erro.",
+  },
+  "elus-upstream-integrator.yml::run-integrator": {
+    condicao: "github.event_name == 'workflow_dispatch'",
+    efeito:
+      "Executa o modo manual do integrador na main. Sem ele, a preparacao e " +
+      "a publicacao de branches de revisao nao acontecem.",
+  },
   "elus-v189-baseline-isolada.yml::baseline-efemera": {
     condicao: null,
     efeito:
