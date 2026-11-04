@@ -1,0 +1,141 @@
+name: ELUS upstream integrator - isolated GitHub runner
+
+# pull_request = validação sem escrita. workflow_dispatch = operação manual,
+# somente na main, após revisão/merge do integrador. Sem E2E nem SQL.
+on:
+  pull_request:
+    paths:
+      - 'scripts/elus-upstream-integrator.mjs'
+      - 'tests/unit/elus-upstream-integrator.test.ts'
+      - '.github/workflows/elus-upstream-integrator.yml'
+      - 'docs/integracao/elus-upstream-integrator.md'
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: 'plan (somente leitura) ou publish (cria branch de revisão)'
+        required: true
+        type: choice
+        options:
+          - plan
+          - publish
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/preparar-node
+        timeout-minutes: 6
+      - name: Unitários do integrador em repositórios Git descartáveis
+        run: pnpm exec vitest run tests/unit/elus-upstream-integrator.test.ts
+      - name: Verificar sintaxe do executor
+        run: node --check scripts/elus-upstream-integrator.mjs
+
+  run-integrator:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: write
+    env:
+      BASE_SHA: 83aeac8f78aa076f3adfaf3e773c8616229e5cd9
+      TARGET_SHA: 6540929d5ef7a951531dda550db0bf54affa516a
+      TARGET_VERSION: v1.89.0
+    steps:
+      - name: Exigir branch main e evento manual
+        env:
+          REQUESTED_MODE: ${{ inputs.mode }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "${GITHUB_REF}" = "refs/heads/main"
+          test "${GITHUB_EVENT_NAME}" = "workflow_dispatch"
+          case "${REQUESTED_MODE}" in plan|publish) ;; *) exit 1 ;; esac
+
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Conferir SHA e origem das tags oficiais
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --no-tags https://github.com/melgarafael/DeskcommCRM.git \
+            '+refs/tags/v1.85.0:refs/tags/elus-verify-v1.85.0' \
+            '+refs/tags/v1.89.0:refs/tags/elus-verify-v1.89.0'
+          test "$(git rev-parse 'refs/tags/elus-verify-v1.85.0^{commit}')" = "$BASE_SHA"
+          test "$(git rev-parse 'refs/tags/elus-verify-v1.89.0^{commit}')" = "$TARGET_SHA"
+
+      - name: Planejar alterações seguras
+        shell: bash
+        run: |
+          set -euo pipefail
+          node scripts/elus-upstream-integrator.mjs plan \
+            --base "$BASE_SHA" --target "$TARGET_SHA" > "$RUNNER_TEMP/elus-plan.json"
+          node - "$RUNNER_TEMP/elus-plan.json" <<'NODE'
+          const fs = require('node:fs');
+          const p = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
+          console.log(JSON.stringify({ base:p.base, target:p.target, counts:p.totals }));
+          NODE
+
+      - name: Testar CLI antes de preparar alterações
+        shell: bash
+        run: node --check scripts/elus-upstream-integrator.mjs
+
+      - name: Criar worktree e publicar branch SOMENTE no modo publish
+        if: inputs.mode == 'publish'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/elus-v189-candidate"
+          node scripts/elus-upstream-integrator.mjs prepare \
+            --base "$BASE_SHA" --target "$TARGET_SHA" --out "$out"
+          cd "$out"
+          node - <<'NODE'
+          const fs = require('node:fs');
+          const report = JSON.parse(fs.readFileSync('.elus-integrator/report.json', 'utf8'));
+          const unsafe = report.preparedFiles.filter(p => !/^(app\/|lib\/|components\/|workers\/|tests\/unit\/)/.test(p));
+          if (unsafe.length) process.exit(1);
+          fs.writeFileSync('/tmp/elus-integrator-staged-paths.txt', report.preparedFiles.join('\0')+'\0');
+          NODE
+          git add -- app lib components workers tests/unit
+          # Um arquivo de relatório não é código de produção e não será commitado.
+          git diff --cached --name-only -z > "$RUNNER_TEMP/staged-paths"
+          python3 - "$RUNNER_TEMP/staged-paths" <<'PY'
+          import sys
+          names=[x.decode() for x in open(sys.argv[1],'rb').read().split(b'\0') if x]
+          if not all(x.startswith(('app/','lib/','components/','workers/','tests/unit/')) for x in names):
+              raise SystemExit('STAGED_PATH_DENIED')
+          PY
+          if git diff --cached --quiet; then
+            echo "NO_SAFE_CHANGES: sem branch ou push" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          branch="integrator/v189-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git switch -c "$branch"
+          git commit -m "chore(elus): prepare safe DeskcommCRM v1.89.0 source updates"
+          git push origin "HEAD:refs/heads/$branch"
+          echo "Branch preparada: \`$branch\` (requer revisão/PR, sem merge)" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Anexar plano (sem segredos nem SQL)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: elus-upstream-plan-${{ github.run_id }}
+          path: ${{ runner.temp }}/elus-plan.json
+          if-no-files-found: ignore
+          retention-days: 7
