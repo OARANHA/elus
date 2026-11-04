@@ -228,7 +228,8 @@ async function historicalReceiptDiagnostic(c){
    WHERE version = ANY($1::text[])
    ORDER BY version
  `,[HISTORY.map(([version])=>version)])).rows;
- const matched=rows.filter(r=>{
+ // Contar versoes distintas: recibos duplicados nao substituem versoes ausentes.
+ const matchedVersions=new Set(rows.filter(r=>{
   const expected=HISTORY.find(([version])=>version===r.version);
   if(!expected||r.name!==expected[1]||r.statement_count!==1)return false;
   const privateFp=HISTORICAL_FINGERPRINTS.get(r.version);
@@ -236,7 +237,8 @@ async function historicalReceiptDiagnostic(c){
     digest(Buffer.from(r.md5||'','ascii'),'md5')===privateFp[1];
   const elusFp=ELUS_HISTORICAL_FINGERPRINTS.get(r.version);
   return Boolean(elusFp&&r.first_statement_bytes===elusFp[0]&&r.md5===elusFp[1]);
- }).length;
+ }).map(r=>r.version));
+ const matched=matchedVersions.size;
  return {historicalReceiptsMatched:matched,historicalReceiptsExpected:HISTORY.length,
    historicalReceiptsExact:rows.length===HISTORY.length&&matched===HISTORY.length};
 }
