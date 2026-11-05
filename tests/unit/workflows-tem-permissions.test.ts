@@ -52,6 +52,9 @@ const DIR = join(process.cwd(), ".github/workflows");
  * acrescente, e acrescentar sem razão é visível em code review.
  */
 const ESCRITA_JUSTIFICADA: Record<string, string> = {
+  "elus-upstream-integrator.yml::contents: write":
+    "Somente o job manual run-integrator pode publicar uma branch isolada de revisao " +
+    "quando mode=publish; nao modifica main, nao abre PR nem publica imagem/deploy.",
   "publish-image.yml::packages: write":
     "publica a imagem do app no GHCR — é o artefato que o self-hoster instala",
   "vigia-de-colisao.yml::pull-requests: write":
