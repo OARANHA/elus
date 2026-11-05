@@ -40,6 +40,24 @@ HISTORICAL_NAMES = (
     "elus_0692_chutes_catalog_sync",
 )
 
+# Fingerprints publicos do ledger historico; os sete privados usam MD5(MD5(SQL)).
+# Sao metadados de verificacao, nunca statements[] nem prova de replay.
+PRIVATE_HISTORICAL_FINGERPRINTS = {
+    "20261018200431": (174, "72db224ba3b80c474d771d66cb593668"),
+    "20261018204508": (508044, "a1bfe00566688f95f316e4e37ffeb97c"),
+    "20261018204837": (509703, "f7e534e726ec192c1db7fe984cf5c2a3"),
+    "20261018204851": (510397, "df7399b2361471a32f6baebb5a51823b"),
+    "20261018204924": (510108, "f3a0b9ea9d0cce746c2d403f9a04dd7f"),
+    "20261018204939": (509661, "e6038fa04f2faa45f9416dc462beeb52"),
+    "20261018204955": (484187, "dab84f1d8332894d78cf737b28488450"),
+}
+ELUS_HISTORICAL_FINGERPRINTS = {
+    "20261019204449": (13326, "0d76f02a421336ac784a9668e58df143"),
+    "20261021025530": (2344, "89178273952e0c2af1174916ab1bf0e4"),
+    "20261021025551": (2484, "45c956e88e760a9e853f2b9e319b6f7d"),
+    "20261021025613": (7457, "11bee3e8876a69eb515bf962db5dec44"),
+}
+
 EXTRA = "20261026010000_0765_elus_rotacao_atomica_codigos_recuperacao.sql"
 EXTRA_BLOB = "a05333f5b12b78c334181887f089b39398d9aa50"
 
@@ -81,6 +99,85 @@ def guard() -> None:
         fail("WORKTREE_DIRTY")
 
 
+
+def reject_psql_meta_commands(data: bytes) -> None:
+    """Block psql backslash commands outside SQL strings/comments, without running SQL.
+
+    psql -X ignores startup files but does not disable backslash commands.
+    Rejecting unquoted backslashes is deliberately fail-closed for this lab.
+    """
+    sql = data.decode("utf-8")
+    i = 0
+    n = len(sql)
+    while i < n:
+        if sql.startswith("--", i):
+            end = sql.find("\n", i + 2)
+            i = n if end == -1 else end + 1
+            continue
+        if sql.startswith("/*", i):
+            depth = 1
+            i += 2
+            while i < n and depth:
+                if sql.startswith("/*", i):
+                    depth += 1
+                    i += 2
+                elif sql.startswith("*/", i):
+                    depth -= 1
+                    i += 2
+                else:
+                    i += 1
+            if depth:
+                fail("UNTERMINATED_SQL_COMMENT")
+            continue
+        if sql[i] in ("'", '"'):
+            quote = sql[i]
+            escaped = (quote == "'" and i > 0 and sql[i - 1] in "eE"
+                       and (i < 2 or not (sql[i - 2].isalnum() or sql[i - 2] == "_")))
+            i += 1
+            while i < n:
+                if escaped and sql[i] == "\\":
+                    i += 2
+                    continue
+                if sql[i] == quote:
+                    if i + 1 < n and sql[i + 1] == quote:
+                        i += 2
+                        continue
+                    i += 1
+                    break
+                i += 1
+            else:
+                fail("UNTERMINATED_SQL_LITERAL")
+            continue
+        if sql[i] == "$":
+            match = re.match(r"\$(?:[A-Za-z_][A-Za-z_0-9]*)?\$", sql[i:])
+            if match:
+                delimiter = match.group(0)
+                close = sql.find(delimiter, i + len(delimiter))
+                if close == -1:
+                    fail("UNTERMINATED_DOLLAR_QUOTE")
+                i = close + len(delimiter)
+                continue
+        if sql[i] == "\\":
+            fail("PSQL_META_COMMAND")
+        i += 1
+
+
+def reject_nontransactional_migration(data: bytes) -> None:
+    """Fail closed before replay if SQL cannot run inside one transaction."""
+    if re.search(
+        rb"(?im)^\s*(?:BEGIN\s*;|COMMIT\s*;|ROLLBACK\s*;|START\s+TRANSACTION\b"
+        rb"|VACUUM\b|ALTER\s+SYSTEM\b|CREATE\s+DATABASE\b|DROP\s+DATABASE\b"
+        rb"|CREATE\s+TABLESPACE\b|DROP\s+TABLESPACE\b"
+        rb"|CREATE\s+(?:UNIQUE\s+)?INDEX\s+CONCURRENTLY\b"
+        rb"|DROP\s+INDEX\s+CONCURRENTLY\b"
+        rb"|REINDEX\s+(?:INDEX|TABLE|SCHEMA|DATABASE|SYSTEM)\s+CONCURRENTLY\b"
+        rb"|REINDEX\s*\([^)]*\bCONCURRENTLY\b[^)]*\)\s+"
+        rb"(?:INDEX|TABLE|SCHEMA|DATABASE|SYSTEM)\b)",
+        data,
+    ):
+        fail("NONTRANSACTIONAL_MIGRATION")
+
+
 def manifest() -> list[tuple[str, str, bytes]]:
     source = (REPO / "tests/unit/elus-v189-import-ledger-integrity.test.ts").read_text()
     imported = source.split("const IMPORTADAS:", 1)[1].split("const ELUS_PROPRIAS:", 1)[0]
@@ -94,8 +191,8 @@ def manifest() -> list[tuple[str, str, bytes]]:
         observed = hashlib.sha1(b"blob " + str(len(content)).encode() + b"\x00" + content).hexdigest()
         if observed != blob:
             fail("BLOB_MISMATCH")
-        if re.search(rb"(?im)^\s*(?:BEGIN\s*;|COMMIT\s*;|ROLLBACK\s*;|START\s+TRANSACTION\b|VACUUM\b|ALTER\s+SYSTEM\b)", content):
-            fail("NONTRANSACTIONAL_MIGRATION")
+        reject_nontransactional_migration(content)
+        reject_psql_meta_commands(content)
         result.append((name, hashlib.sha256(content).hexdigest(), content))
     if len(result) != 39 or len({n[:14] for n, _, _ in result}) != 39:
         fail("VERSION_COLLISION")
@@ -117,6 +214,40 @@ def clone_if_absent() -> None:
 def rows() -> list[tuple[str, str]]:
     records = query("SELECT version || '|' || coalesce(name,'') FROM supabase_migrations.schema_migrations ORDER BY version")
     return [tuple(line.split("|", 1)) for line in records.splitlines() if line]
+
+
+def verify_historical_statements() -> None:
+    """Falha fechada se qualquer dos 11 recibos tiver SQL distinto do fixado.
+
+    Consulta apenas cardinalidade, tamanho e MD5; nao exporta statements[].
+    A identidade do recibo nao substitui a prova do efeito no catalogo.
+    """
+    versions = ",".join(sql_literal(v) for v in HISTORICAL)
+    fingerprints = query(
+        "SELECT version || '|' || coalesce(cardinality(statements)::text, '') "
+        "|| '|' || coalesce(octet_length(statements[1])::text, '') "
+        "|| '|' || coalesce(md5(array_to_string(statements,'')), '') "
+        "FROM supabase_migrations.schema_migrations "
+        "WHERE version IN (" + versions + ") ORDER BY version"
+    )
+    observed: dict[str, tuple[str, str, str]] = {}
+    for line in fingerprints.splitlines():
+        parts = line.split("|", 3)
+        if len(parts) != 4 or parts[0] in observed:
+            fail("HISTORY_STATEMENT_DRIFT")
+        observed[parts[0]] = (parts[1], parts[2], parts[3])
+    if set(observed) != set(HISTORICAL):
+        fail("HISTORY_STATEMENT_DRIFT")
+    for version in HISTORICAL:
+        count, size, md5 = observed[version]
+        private = version in PRIVATE_HISTORICAL_FINGERPRINTS
+        expected = (PRIVATE_HISTORICAL_FINGERPRINTS if private
+                    else ELUS_HISTORICAL_FINGERPRINTS)[version]
+        if count != "1" or size != str(expected[0]) or not re.fullmatch(r"[a-f0-9]{32}", md5):
+            fail("HISTORY_STATEMENT_DRIFT")
+        actual = hashlib.md5(md5.encode("ascii")).hexdigest() if private else md5
+        if actual != expected[1]:
+            fail("HISTORY_STATEMENT_DRIFT")
 
 
 def progress(items: list[tuple[str, str, bytes]]) -> int:
@@ -144,13 +275,20 @@ def progress(items: list[tuple[str, str, bytes]]) -> int:
     # statements stored by Supabase with pinned source bytes for each receipt.
     if seen:
         hashes = query(
-            "SELECT version || '|' || coalesce(md5(array_to_string(statements,'')), '') "
+            "SELECT version || '|' || coalesce(cardinality(statements)::text, '') "
+            "|| '|' || coalesce(octet_length(statements[1])::text, '') "
+            "|| '|' || coalesce(md5(array_to_string(statements,'')), '') "
             "FROM supabase_migrations.schema_migrations "
             "WHERE version IN (" + ",".join(sql_literal(v) for v, _ in seen) + ") "
             "ORDER BY version"
         )
-        observed = dict(line.split("|", 1) for line in hashes.splitlines() if line)
-        verified = {name[:14]: hashlib.md5(sql).hexdigest()
+        observed: dict[str, tuple[str, str, str]] = {}
+        for line in hashes.splitlines():
+            parts = line.split("|", 3)
+            if len(parts) != 4 or parts[0] in observed:
+                fail("OFFICIAL_STATEMENTS_DRIFT")
+            observed[parts[0]] = (parts[1], parts[2], parts[3])
+        verified = {name[:14]: ("1", str(len(sql)), hashlib.md5(sql).hexdigest())
                     for name, _, sql in items}
         if set(observed) != {v for v, _ in seen} or any(
             observed[v] != verified[v] for v, _ in seen
@@ -173,6 +311,7 @@ def main() -> None:
             fail("ACK_REQUIRED")
         clone_if_absent()
     done = progress(items)
+    verify_historical_statements()
     if done == 0:
         # Existing schema without official receipts must never be replayed.
         tables = query("SELECT count(*) FROM pg_tables WHERE schemaname='public';")

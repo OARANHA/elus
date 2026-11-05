@@ -101,3 +101,71 @@ No HEAD `a5caafc25541506f4016ab8cd7dd4d3808c7b177`, a consulta única à execuç
 A correção focal, commit [23ebc493](https://github.com/OARANHA/elus/commit/23ebc4930601ee17cf5d978356e3e39f79e15427), substituiu o acesso não protegido ao grupo de captura da expressão regular por `?.[1] ?? ""`. A asserção `toMatch` continua exigindo a projeção esperada: ausência do grupo permanece falha de teste, mas sem erro de tipagem. O blob alterado foi relido e confirmado.
 
 **Validação do novo HEAD ainda pendente:** não houve segunda consulta ao CI, execução local de TypeScript, lint ou unitários nesta rodada. A correção não altera SQL, migrations, runtime, E2E ou deploy. Permanecem os gates independentes de replay sobre o histórico Supabase de 11 versões, segurança das migrations e aceite funcional.
+
+## Reconciliação adicional do catálogo ativo — 02/11/2026 (somente leitura)
+
+Fonte: projeto Supabase conectado `elus` (`ACTIVE_HEALTHY`, PostgreSQL 17), por consultas **SELECT** agregadas em `supabase_migrations.schema_migrations`, `pg_proc`, `pg_trigger`, `pg_namespace` e `pg_class`. Não foram consultados dados de tenants nem o conteúdo de `statements[]`; somente nomes, versões, contagens, comprimentos e MD5 de SQLs registrados.
+
+| Sinal | Evidência observada |
+| --- | --- |
+| Ledger ativo | **51 recibos**, enquanto `scripts/elus-v189-production-upgrade.mjs` exige no máximo 50; `preflight` continua bloqueado. |
+| ELUS 0690 | `20261021025530`, nome `elus_0690_org_ai_autonomy_protected`, 1 statement, 2.344 bytes, MD5 `89178273952e0c2af1174916ab1bf0e4`. |
+| RPC 0765, recibo | `20261026010000`, nome `0765_elus_rotacao_atomica_codigos_recuperacao`, 1 statement, 2.747 bytes, MD5 `add7a7db36db87cd213fd7a7d0f81db7` (identidade esperada no diagnóstico versionado). |
+| RPC 0765, catálogo | `to_regprocedure('public.fn_elus_rotacionar_codigos_recuperacao(uuid,text[])')` retornou **NULL**; busca por nomes de funções de recuperação/rotação não encontrou a função em outros schemas. **Recibo não comprova objeto presente.** |
+| Guarda externa 9037, recibo | `20261029104815`, nome `elus_9037_ai_autonomy_guarded`, 1 statement, 34.985 bytes, MD5 `10df3c797779f8cb4461631cb22676d2`. Este recibo **não** integra o manifesto oficial de 39 migrations. |
+| Guarda externa 9037, catálogo | `public.fn_guard_organizations_ai_autonomy()` existe; trigger `trg_guard_organizations_ai_autonomy` está habilitado em `public.organizations`. A função não é `SECURITY DEFINER`; `search_path=pg_catalog, public, pg_temp`; `anon` e `authenticated` sem EXECUTE, `service_role` com EXECUTE. Isso **não** equivale a teste comportamental da guarda. |
+
+**Implicação:** o banco não está no estado de apenas 11 recibos descrito no snapshot histórico de 25/10. O recibo 0765 registrado, mas sem a RPC correspondente no catálogo, é divergência funcional a investigar antes de qualquer replay. O recibo externo 9037 exige decisão de reconciliação independente, sem excluir histórico nem elevar silenciosamente o limite de 50. A existência da guarda 9037 não resolve a ausência da RPC 0765.
+
+**Gates mantidos:** restauração comprovada e replay histórico separado em PG15/17 descartável; inventário completo de dependências e efeitos das 38 migrations; ACL/RLS e isolamento multi-tenant; reconciliação 0690/9037 e 0765; autorização específica do DELETE 0759. `apply` produtivo permanece fail-closed. Nenhum DDL/DML, migration, E2E/Playwright, merge, publicação ou deploy foi executado.
+
+**CI observado no HEAD anterior `c86bf2bc3d124fd23e1ff5a0249f302022b98a84`:** [run 41481932638](https://github.com/OARANHA/elus/actions/runs/41481932638), 10/10 jobs SUCCESS, incluindo invariantes PostgreSQL 15/17; workflow de imagens [41481932736](https://github.com/OARANHA/elus/actions/runs/41481932736) SUCCESS, mas `build-and-push`, `juntar-manifestos` e `promover-stable` SKIPPED. Isso não aprova upgrade funcional, nem valida este novo registro documental.
+
+## ACL dos códigos de recuperação e impacto da ausência da RPC — 02/11/2026
+
+Inspeção adicional **somente SELECT** no projeto Supabase conectado `elus` (PostgreSQL 17.11). Foram consultados exclusivamente `pg_catalog`, `supabase_migrations.schema_migrations` e metadados de permissões; nenhuma linha de usuário, hash de código ou conteúdo de `statements[]` foi lido.
+
+| Verificação | Resultado observado |
+| --- | --- |
+| Histórico ativo | 51 recibos; 0765 presente, 1 statement de 2.747 bytes, MD5 `add7a7db36db87cd213fd7a7d0f81db7`. |
+| Função `public.fn_elus_rotacionar_codigos_recuperacao(uuid,text[])` | **Ausente** por `to_regprocedure`; `pg_proc` não contém o nome em nenhum schema. |
+| `public.user_recovery_codes` | Tabela presente; RLS habilitada. |
+| Política `user_recovery_codes_ninguem_le` | Uma policy SELECT com expressão `false` encontrada. |
+| Privilégios diretos de `anon` e `authenticated` | Ambos sem SELECT, INSERT, UPDATE ou DELETE na tabela, segundo `has_table_privilege`. |
+
+**Conclusão limitada:** o estado observado preserva as barreiras RLS/ACL inspecionadas da tabela, mas a RPC atômica 0765 continua ausente apesar do recibo. Em `app/actions/settings/regenerateRecoveryCodes.ts`, o código versionado chama exclusivamente `admin.rpc('fn_elus_rotacionar_codigos_recuperacao', ...)` e retorna `rotation_failed` se a chamada falhar, sem DELETE/INSERT alternativos no cliente; há teste simulado de `PGRST202`. Isso é **inferência do código versionado**, não comprovação de qual build está executando nem teste de rotação em produção. O motivo da ausência (registro sem efeito, DROP posterior ou outro desvio) **não foi determinado**. Não reconstruir a função diretamente no banco real nem manipular recibos como atalho.
+
+**CI do HEAD anterior a esta nota:** `09bda847d5a2224f5c9a14173a4ba7bbf83e7dc4`, [run 41490515332](https://github.com/OARANHA/elus/actions/runs/41490515332), **10/10 jobs SUCCESS** (incluindo PostgreSQL 15/17); workflows perf e GHCR também `success`, sem inferência de publicação. Os checks não provam restauração, replay nem funcionalidade da RPC ausente. Novo commit documental ainda exige validação de seu próprio HEAD.
+
+**Próximo gate:** rastrear a origem da discrepância 0765 por evidências auditáveis, verificar replay/restauração PG15/17 descartável e reconciliação independente do recibo externo 9037 e limite de 50. Manter `apply` bloqueado, 0759 sem autorização e E2E somente manual. Nenhum SQL mutante, E2E, merge, imagem ou deploy nesta inspeção.
+
+
+## Auditoria cruzada 0690/9037 e limites de pg_stat_statements — 02/11/2026, 21h BRT
+
+**Escopo e método:** consultas exclusivamente `SELECT` no projeto Supabase conectado `elus` (PostgreSQL 17.11) e leitura da migration versionada `20261020120000_0690_org_ai_autonomy_protected.sql`. Foram retornados apenas metadados, fingerprints e marcadores booleanos; não foram exportados os 34.985 bytes da migration externa 9037, conteúdo de tenants nem dados pessoais.
+
+- **Ledger 0690:** recibo `20261021025530`, `elus_0690_org_ai_autonomy_protected`, um statement de 2.344 bytes, MD5 `89178273952e0c2af1174916ab1bf0e4`.
+- **Ledger externo 9037:** recibo `20261029104815`, `elus_9037_ai_autonomy_guarded`, um statement de 34.985 bytes, MD5 `10df3c797779f8cb4461631cb22676d2`.
+- **Sobreposição textual demonstrada:** os statements registrados de **ambas** as migrations mencionam literalmente `fn_guard_organizations_ai_autonomy`, `trg_guard_organizations_ai_autonomy`, `ai_autonomy`, `DROP TRIGGER` e `CREATE TRIGGER`. Portanto, a 9037 **não é independente da superfície protegida pela 0690**. A presença desses padrões não prova equivalência de DDL nem determina a ordem/resultado de cada operação.
+- **Catálogo atual:** `public.fn_guard_organizations_ai_autonomy()` existe, com `SECURITY DEFINER=false` (invoker), MD5 de `pg_get_functiondef` igual a `1378848e0d9fce3513bba0e660b283fd`; `trg_guard_organizations_ai_autonomy` existe em `public.organizations` e está habilitado (`tgenabled='O'`). Os três textos inspecionados (0690, 9037 e definição atual) contêm os marcadores `service_role`, `current_user`, `auth.uid() is null`, `elus_ai_autonomy_restricted` e `IS DISTINCT FROM`. Esses marcadores **não** demonstram identidade semântica, segurança ou resultado de testes negativos.
+- **Limite forense da RPC 0765:** `pg_stat_statements_info.dealloc=27` desde `stats_reset=2026-10-18 01:44:16.109973+00`; `pg_stat_statements.max=5000`, com 4.877 entradas observadas nesta consulta. Houve desalocação de entradas das estatísticas; a ausência do identificador literal da RPC no conjunto atual **não permite concluir que o DDL nunca foi executado**. `pg_proc` continua sem `fn_elus_rotacionar_codigos_recuperacao` em qualquer schema.
+
+**Gate novo e explícito:** antes de qualquer replay/merge/deploy, comparar estruturalmente as definições e efeitos da 0690 e da 9037 em ambiente isolado, inclusive a precedência da guarda, triggers, ACL/RLS e testes negativos de tenant. A 9037 continua externa ao manifesto oficial e exige tratamento individual no ledger de 51 recibos (limite do executor: 50); não elevar o teto, apagar recibos ou reexecutar DDL em produção. A RPC 0765 permanece ausente no catálogo e sua causa não foi determinada. O DELETE 0759 continua sem autorização específica.
+
+**CI consultado uma vez nesta execução:** HEAD `b3a6e1e015db62fe837c208e17a8d9a9cdc37e01`, workflow `ci` [41546240208](https://github.com/OARANHA/elus/actions/runs/41546240208) concluído `success` com **10/10 jobs**; workflows `perf` e GHCR também `success`, sem prova de publicação de imagens. O workflow `.github/workflows/e2e.yml` permanece exclusivamente `workflow_dispatch`. CI GREEN **não** constitui aceite funcional nem validação de replay.
+
+**Operações proibidas não realizadas:** nenhum SQL mutante, migration, E2E/Playwright, merge, publicação de imagem ou deploy. Lint, TypeScript e unitários locais não foram executados nesta inspeção documental; o CI anterior inclui suas partições, mas o novo HEAD documental não foi consultado.
+
+
+## Diferença estrutural confirmada 0690/9037 — 02/11/2026, 22h BRT
+
+**Método:** leitura da migration versionada `20261020120000_0690_org_ai_autonomy_protected.sql` na PR #62 e consultas exclusivamente `SELECT` ao texto do recibo externo 9037 e ao catálogo `pg_catalog` no Supabase `elus`. Não houve leitura de dados de tenants, aplicação de SQL ou exportação integral do statement externo.
+
+1. **0690 e 9037 NÃO são textualmente equivalentes na guarda.** A 0690 aceita `auth.role() = 'service_role'` (ou a exceção técnica de `postgres`). A definição contida na 9037 exige conjuntamente `current_user = 'service_role' and auth.role() = 'service_role'` (preservando a exceção técnica de `postgres`). Trata-se de **endurecimento textual do predicado**; a equivalência comportamental, inclusive efeitos de roles assumidos e SECURITY INVOKER, **não foi testada**.
+2. **A 9037 tem escopo maior que a 0690.** Uma extração estrutural do statement de 34.985 bytes encontrou **oito** declarações `CREATE OR REPLACE FUNCTION public.*`: `fn_guard_organizations_ai_autonomy`, `fn_elus_ai_agent_create_guarded`, `fn_elus_ai_credential_write_guarded`, `fn_elus_ai_default_write_guarded`, `fn_elus_ai_draft_save_guarded`, `fn_elus_ai_purpose_binding_write_guarded`, `fn_elus_ai_version_create_guarded` e `fn_elus_ai_version_patch_guarded`. Os oito nomes resolvem atualmente por `to_regproc('public.' || nome)`. Isso comprova **presença nominal**, não identidade integral de assinaturas, corpos, grants ou comportamento.
+3. **Catálogo atual:** `public.fn_guard_organizations_ai_autonomy()` é `SECURITY INVOKER`, seu `pg_get_functiondef` contém o predicado duplo `current_user = 'service_role' and auth.role() = 'service_role'`, e `trg_guard_organizations_ai_autonomy` permanece habilitado (`tgenabled='O'`). Essa observação é compatível com o texto da 9037, mas **não demonstra causalidade histórica**, replay seguro ou autorização para substituir uma migration pela outra.
+4. **Risco de replay:** aplicar cegamente a 0690 sobre um estado que contém a guarda mais estrita da 9037 pode reintroduzir o predicado menos restritivo. Não reexecutar a 0690, a 9037 ou reparos no ambiente real. Exigir plano explícito de ordenação/estado final, comparação completa de funções/ACL/triggers e testes negativos de papéis e tenants em ambiente isolado. O recibo externo 9037 permanece fora do manifesto oficial, e o teto 50 do executor não deve ser elevado para acomodar os 51 recibos.
+
+**CI do HEAD anterior a esta nota:** `a5c50e9374dd9a69c8f9225d8844397c44dbc506`, [ci #41552385137](https://github.com/OARANHA/elus/actions/runs/41552385137) `success` (10 jobs de CI aprovados); `perf` e GHCR também `success`, com etapas de publicação/promoção `skipped`. Nenhum lint, TypeScript ou Vitest local executado nesta rodada; a ausência local de `@next/eslint-plugin-next` não foi reavaliada. E2E continua `workflow_dispatch` e não foi acionado. O novo HEAD documental ainda requer verificação futura.
+
+**NO-GO preservado:** RPC 0765 ausente apesar do recibo, replay histórico e restauração PG15/17 sem prova, testes ACL/RLS multi-tenant e autorização específica do DELETE 0759 pendentes. Nenhum SQL mutante, E2E/Playwright, merge, imagem ou deploy executado.

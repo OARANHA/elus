@@ -4,7 +4,7 @@
 
 ## Problema preciso
 
-O Supabase ELUS (PostgreSQL 17.11) possui 11 registros no ledger: preparação, seis lotes da baseline v1.85 e quatro migrations ELUS. As 38 migrations upstream v1.89 têm 11 arquivos com timestamp anterior ou igual ao último registro e 27 posteriores. Timestamps e nomes das quatro migrations ELUS locais não correspondem aos seus registros reais. Uma lista cronológica não é plano de replay e `supabase db push` não pode ser considerado seguro.
+No snapshot histórico de 25/10/2026, o Supabase ELUS (PostgreSQL 17.11) possuía 11 registros no ledger: preparação, seis lotes da baseline v1.85 e quatro migrations ELUS. **Esta contagem não descreve o estado observado em 31/10/2026: o ledger passou a 51 recibos.** As 38 migrations upstream v1.89 têm 11 arquivos com timestamp anterior ou igual ao último registro e 27 posteriores. Timestamps e nomes das quatro migrations ELUS locais não correspondem aos seus registros reais. Uma lista cronológica não é plano de replay e `supabase db push` não pode ser considerado seguro.
 
 `scripts/test-db.sh` já aplica `supabase/baseline.sql` em modo instalação e atualização sobre PostgreSQL efêmero (matriz pg15/pg17). Esse teste **não é** um ensaio de upgrade com ledger v1.85 existente. O teste `tests/invariants/elus-mfa-0765-rotacao-atomica.test.ts` comprova aspectos da RPC em banco efêmero, não a migração de uma instalação existente.
 
@@ -19,9 +19,9 @@ O Supabase ELUS (PostgreSQL 17.11) possui 11 registros no ledger: preparação, 
 7. **Comparação pós-upgrade:** confrontar esquema efetivo com baseline v1.89 candidata e com invariantes, inclusive presença única da RPC `0765` e o bloco final de varredura de `anon`. Investigar diferenças esperadas de ACL/default privileges. Exigir isolamento multi-tenant, teste negativo `anon/authenticated` para RPC `0765`, permissões de `service_role` e ausência de bypass por funções `SECURITY DEFINER`.
 8. **Critério de aceite:** PG15 e PG17 completos; dados sintéticos preservados ou explicitamente transformados; ledger consistente; rollback restaurado e conferido; lint, TypeScript e unitários pertinentes sem regressões. Evidência de instalação limpa do baseline NÃO substitui upgrade. Só depois propor, em operação separada, decisão sobre aplicação real.
 
-## Bloqueios atuais verificáveis
+## Bloqueios do upgrade completo — estado reconciliado em 01/11/2026
 
-- Não existe evidência de reconstrução dos seis lotes v1.85 no ambiente de ensaio.
+- **Reconstrução parcial v1.85 comprovada:** o workflow privado [40443522122](https://github.com/OARANHA/elus/actions/runs/40443522122) registrou sucesso na reconstrução da baseline histórica em PostgreSQL efêmero, incluindo os sete statements originais. Essa evidência não demonstra o replay completo v1.85→v1.89 em PostgreSQL 15 e 17, equivalência do catálogo final ou restauração de backup produtivo.
 - Replay real do ledger v1.85 → v1.89 não foi executado.
 - `0759` contém DELETE deliberado; contagem previamente observada em produção não elimina risco futuro.
 - No Supabase ativo a RPC `fn_elus_rotacionar_codigos_recuperacao(uuid,text[])` ainda está ausente.
@@ -62,3 +62,161 @@ O exportador `scripts/exportar-lotes-v185-privado.mjs` foi reforçado para rejei
 O script `scripts/verificar-lotes-v185.mjs` continua **somente leitura** e sem acesso a banco. Agora exige caminho absoluto e diretório real (não symlink) fora do checkout, permissões privadas e **exatamente os sete nomes esperados**, sem arquivos adicionais. Mantém comparação por tamanho e impressão digital MD5 agregada do ledger; erros de filesystem não imprimem caminhos privados e resultados parciais não são anunciados como sucesso.
 
 O teste `tests/unit/elus-v185-verificacao-privada.test.ts` usa apenas sentinelas sintéticas inválidas e cobre arquivo inesperado, symlink de diretório, arquivo público/symlink e falha de filesystem sem vazamento do caminho. O workflow de baseline efêmera executa esses testes juntamente com os contratos do exportador. **Não foram exportados nem executados statements reais**; isso não valida a restauração ou o replay v1.85→v1.89, nem elimina a decisão pendente sobre `0759`.
+
+## Reconciliação observada em 31/10/2026 — somente leitura, NO-GO
+
+Esta seção atualiza **a observação do banco**, não altera o corte histórico de 11 versões nem autoriza replay. O projeto Supabase ELUS (PostgreSQL 17.11) foi consultado exclusivamente com `SELECT` agregados e consultas ao catálogo, sem retornar SQL privado, hashes de usuários ou dados de tenants.
+
+- **Ledger atual: 51 recibos** = 11 históricos (sete v1.85 e quatro ELUS), 39 v1.89/0765 e um externo 9037. Os 11 históricos preservam cardinalidade, tamanho e fingerprints esperados; isso comprova a identidade dos recibos, **não** a execução/reprodução dos seus efeitos.
+- **Anomalia 0765:** o recibo `20261026010000` contém um único statement, 2.747 bytes, MD5 `add7a7db36db87cd213fd7a7d0f81db7`, e o texto armazenado menciona a declaração `CREATE OR REPLACE FUNCTION public.fn_elus_rotacionar_codigos_recuperacao`. Porém `to_regprocedure('public.fn_elus_rotacionar_codigos_recuperacao(uuid,text[])')` é NULL e não existe função com esse nome em nenhum schema de `pg_proc`. **Recibo íntegro não significa RPC instalada.**
+- **Escopo da investigação:** a única migration registrada após 0765 é a 9037; seu statement não menciona a RPC 0765 e não contém a expressão `DROP FUNCTION`. Isso **não** demonstra que a função foi criada ou exclui uma alteração fora do ledger. A causa da divergência continua desconhecida.
+- **Canários positivos:** existem `public.crm_lead_attachments`, `public.mfa_trusted_devices`, `public.importacoes_de_historico`, `public.automation_rodizio_atribuicoes`, `public.fn_session_mfa_proven()` e `public.fn_automation_rodizio_atribuir(uuid,uuid,uuid,uuid)`. Esses seis canários não substituem a comparação integral de catálogo.
+- **Contrato da aplicação:** `app/actions/settings/regenerateRecoveryCodes.test.ts` verifica que a rotação depende da RPC 0765 e que erro `PGRST202` retorna `rotation_failed`, sem sucesso falso. Teste com mocks não prova execução real.
+- **Barreira preservada:** o executor mantém limite de 50 recibos e `apply` bloqueado. Não ampliar a allowlist para aceitar 51, não regravar recibos nem executar `CREATE FUNCTION` em produção para encobrir a discrepância. Exigir restauração/replay fiel em PostgreSQL 15/17 isolado, comparação de catálogo/ACL/RLS e autorização independente do `DELETE` 0759.
+
+Evidências anteriores: [PR #62, auditoria do ledger](https://github.com/OARANHA/elus/pull/62#issuecomment-6546054684). Esta atualização documental não executa migrations, não corrige a RPC e não constitui aceite funcional.
+
+## Triagem complementar da ausência da RPC 0765 — 31/10/2026, 15h BRT (somente leitura)
+
+Consulta agregada ao Supabase ELUS PostgreSQL 17.11, sem retornar texto de SQL histórico, dados de tenants ou identificadores pessoais, confirmou novamente: recibo 0765 exato (um statement, 2.747 bytes, MD5 `add7a7db36db87cd213fd7a7d0f81db7`) e **zero** funções com o nome `fn_elus_rotacionar_codigos_recuperacao` em `pg_proc`.
+
+O diagnóstico de observabilidade encontrou `pg_stat_statements` instalado, `track_utility=on`, `track=top`, `stats_reset=2026-10-18 01:44:16 UTC`, 4.835 entradas de 5.000 possíveis e 27 desalocações. Na janela de estatísticas disponível, filtros por instruções `CREATE [OR REPLACE] FUNCTION` registraram **zero entradas** para a RPC 0765 e **zero entradas** de `DROP FUNCTION` com esse nome. Controles positivos do mesmo catálogo: duas entradas de criação para `fn_session_mfa_proven` e uma para `fn_automation_rodizio_atribuir`. Foram observados seis event triggers DDL habilitados; `pgaudit` não está instalado. Não foi inspecionado conteúdo de consultas ou logs.
+
+**Interpretação restrita:** esses contadores são evidência circunstancial, **não prova** de que a 0765 nunca foi executada ou de que não houve `DROP`. `pg_stat_statements` não é trilha histórica exaustiva: houve desalocações, a captura é `top`, há limites de normalização e de retenção. Os event triggers habilitados não foram validados como trilha de auditoria. A discrepância recibo-versus-catálogo permanece sem causa demonstrada. Não corrigir por reaplicação direta, alteração de ledger ou liberação do executor. Continuam obrigatórios restauração/replay em PG15/17 isolado, reconciliação 0690/9037, testes de ACL/RLS/tenancy e autorização específica para o DELETE 0759.
+
+
+## Reconciliação independente de 51 recibos — 01/11/2026
+
+**Observação nova, exclusivamente SELECT no Supabase PostgreSQL 17.11.** A verificação não exportou `statements[]`, dados de tenants, hashes de usuários ou segredos; não executou SQL mutante nem modificou o ledger.
+
+- **11/11 recibos históricos** encontrados e comparados por versão, nome, cardinalidade unitária, tamanho em bytes e fingerprint fixada. Para os sete SQLs privados v1.85 foi comparado `md5(md5(statements[1]))` aos fingerprints já documentados; para as quatro migrations ELUS, `md5(statements[1])`. Resultado: **11 correspondências exatas**. Os SQLs privados não foram exportados nesta auditoria. Há evidência histórica independente de reconstrução privada da baseline v1.85 em PostgreSQL efêmero (run [40443522122](https://github.com/OARANHA/elus/actions/runs/40443522122), job `reconstruir-v185`, passos de exportação/verificação, reconstrução e limpeza concluídos com success em 27/10/2026); isso não demonstra replay completo v1.85→v1.89 em PG15/17 nem restauração do backup produtivo.
+- **39/39 recibos v1.89 + 0765** encontrados com nome e cardinalidade unitária corretos. Para cada um, o banco calculou a identidade do objeto Git diretamente dos bytes do statement armazenado: `encode(extensions.digest(convert_to('blob ' || octet_length(statements[1])::text, 'UTF8') || decode('00','hex') || convert_to(statements[1],'UTF8'), 'sha1'), 'hex')`. Os 38 hashes fixados em `tests/unit/elus-v189-import-ledger-integrity.test.ts` e o hash da 0765 (`a05333f5b12b78c334181887f089b39398d9aa50`) coincidiram **39/39**, sem divergência. A comparação independente dos 11 imports anteriores ao corte, por nome, bytes e MD5 contra os arquivos de `main`, também coincidiu **11/11**.
+- **Recibo externo 9037:** identidade previamente fixada conferida (um statement, 34.985 bytes, MD5 `10df3c797779f8cb4461631cb22676d2`). **Total: 51 = 11 históricos + 39 v1.89/0765 + 1 externo.** Não ampliar o manifesto de 50 nem absorver 9037 por suposição.
+- **Anomalia persistente:** o recibo 0765 corresponde exatamente ao SQL versionado, mas `to_regprocedure('public.fn_elus_rotacionar_codigos_recuperacao(uuid,text[])')` continua `NULL`, e `pg_proc` retorna zero funções com esse nome em qualquer schema. **Identidade do recibo não comprova execução nem permanência do objeto.** A causa da divergência continua indeterminada.
+
+**Limites:** os 39 hashes Git de conteúdo e os 11 fingerprints históricos conferem com os recibos registrados; isso **não** prova execução das instruções, equivalência do catálogo, isolamento tenant, ACL/RLS ou replay de upgrade. O executor da PR #62 permanece bloqueado; nesta auditoria não houve restauração, replay PG15/17, aprovação específica da exclusão 0759, E2E/Playwright, merge, imagem ou deploy. Próximo gate: revisar a evidência privada já produzida pelo workflow v1.85, completar o replay v1.85→v1.89 em PG15/17 descartável com autorização própria e comparar catálogos para localizar a divergência da RPC 0765.
+
+
+## Verificação pontual de catálogo e impacto 0759 — 01/11/2026, 06h BRT
+
+Consultas **exclusivamente `SELECT`** no Supabase ELUS (PostgreSQL **17.11**), limitadas a contagens e metadados de `pg_catalog`, sem retorno de SQL histórico, dados de tenants ou hashes de usuários:
+
+- O ledger contém **51 recibos**. As versões de 0690, 0765 e 9037 estão presentes (uma ocorrência de cada). A RPC `public.fn_elus_rotacionar_codigos_recuperacao(uuid,text[])` continua **ausente**; `pg_proc` retornou **zero** funções com o nome exato e zero nomes semelhantes que correspondam ao padrão `%rotacion%recuper%`. A presença do recibo não prova execução da função.
+- A guarda da 9037 possui **um trigger** não interno em `public.organizations`, com `tgenabled='O'`, apontando para `public.fn_guard_organizations_ai_autonomy()`. A função é `SECURITY INVOKER` (`prosecdef=false`), possui configuração própria e seu corpo contém a condição textual para `current_user` e `auth.role()` serem `service_role`. Os papéis `anon` e `authenticated` não têm `EXECUTE` direto na função, segundo `has_function_privilege`.
+- `public.user_recovery_codes` está com **RLS habilitada** e **uma policy** no catálogo. A contagem agregada de registros com `octet_length(code_hash) <> 32` retornou **zero no instante da consulta**. Isso **não** aprova o `DELETE` da 0759: não valida backup, restauração, concorrência, novos registros futuros nem impacto em uma instalação diferente.
+
+**Limite da evidência:** os sinais da guarda 9037 são verificações pontuais de catálogo/condição textual, não teste funcional de ACL/RLS/isolamento ou reconciliação semântica 0690/9037. A causa da ausência da RPC 0765 permanece indeterminada. O ledger com 51 recibos continua incompatível com o limite de 50 do executor, que deve permanecer **fail-closed**. Continuam pendentes a exportação privada controlada dos sete statements, replay fiel v1.85→v1.89 em PG15/17 descartável, comparação integral de catálogos, restauração comprovada e autorização independente da 0759. Nenhuma alteração de banco, E2E/Playwright, merge ou deploy foi realizada nesta verificação.
+
+## Auditoria de metadados RLS por tabela tenant-aware — 01/11/2026 (somente SELECT)
+
+**Fonte:** Supabase ELUS, PostgreSQL 17.11, projeto de produção identificado no executor v1.89. Inspeção exclusivamente por consultas `SELECT` a `pg_catalog.pg_class`, `pg_namespace`, `pg_attribute`, `pg_policy`, `has_table_privilege` e contagem do ledger. Nenhum registro de usuário, dado de organização, SQL privado de `statements[]` ou segredo foi retornado.
+
+- Tabelas públicas ordinárias/particionadas que possuem coluna `organization_id`: **186**; com `relrowsecurity=false`: **0**. O critério não inclui views, outras schemas, tabelas sem essa coluna nem testes efetivos entre dois tenants.
+- Dentre as 186, **24** têm RLS habilitada mas **nenhuma política** em `pg_policy`. Nessas 24, `anon` e `authenticated` têm **zero** concessões diretas de `SELECT`; `authenticated` também tem **zero** concessões diretas de `INSERT`, `UPDATE` ou `DELETE`. `service_role` tem `SELECT` nas 24. Isso pode ser uma configuração intencional de acesso exclusivamente servidor, não um defeito comprovado.
+- Ledger observado: **51 recibos**; 0765 presente como recibo, mas `to_regprocedure('public.fn_elus_rotacionar_codigos_recuperacao(uuid,text[])')` retorna **NULL**. A divergência de catálogo continua sem causa determinada.
+
+**Limite de evidência:** RLS habilitada e ausência de GRANT para papéis de cliente não demonstram que todas as rotas com `service_role` filtram `organization_id`, nem provam isolamento multi-tenant, políticas corretas nas demais 162 tabelas, equivalência da baseline ou replay v1.85→v1.89. Não se deve transformar essa inspeção em aprovação de release. Revisar as rotas de serviço e provar isolamento em gate independente autorizado; **NO-GO** mantido para `apply`, DELETE 0759, merge e deploy.
+
+
+## Triagem dos event triggers na investigação da RPC 0765 — 01/11/2026
+
+Consulta **exclusivamente SELECT** ao catálogo do Supabase ELUS PostgreSQL 17.11, sem ler `statements[]`, definições completas de funções, dados de tenants ou segredos. Na observação desta execução: **51 recibos**, exatamente **um** recibo da 0765 e **zero** funções chamadas `fn_elus_rotacionar_codigos_recuperacao` em `pg_proc` (qualquer schema). A divergência permanece.
+
+A inspeção dos **seis event triggers habilitados** identificou somente handlers no schema `extensions`: `issue_graphql_placeholder` (`sql_drop`), `issue_pg_cron_access`, `issue_pg_graphql_access`, `issue_pg_net_access`, `pgrst_ddl_watch` (`ddl_command_end`) e `pgrst_drop_watch` (`sql_drop`). Nenhum dos seis corpos de handler contém a sequência textual `INSERT INTO`; quatro mencionam `pg_event_trigger_ddl_commands`. Esses sinais **não identificam uma trilha persistente de auditoria DDL** e não permitem reconstruir se, quando ou por quem a função 0765 foi criada/removida. A ocorrência textual genérica de `DROP FUNCTION` no handler `grant_pg_graphql_access` não é evidência de remoção da RPC 0765.
+
+**Conclusão restrita:** os event triggers habilitados não fornecem, nesta inspeção, prova da origem do descompasso entre recibo e catálogo. Não inferir que a 0765 nunca foi executada, nem que houve um DROP. O `pg_stat_statements` anteriormente consultado também não constitui histórico DDL completo. Permanecem obrigatórios o replay fiel em PG15/17 descartável, comparação integral de catálogo, ACL/RLS/tenancy, restauração comprovada e autorização independente da 0759. O executor `apply` continua fail-closed. Nenhuma alteração de banco, E2E/Playwright, merge, imagem ou deploy foi efetuada.
+
+
+## Conferência pontual 0752/0747 — 01/11/2026, 10h BRT (somente leitura)
+
+Consulta única exclusivamente `SELECT` sobre `pg_catalog` e contagem do ledger no Supabase ELUS PostgreSQL 17.11; nenhum SQL histórico, dado de tenant ou segredo retornado. Comparação com as migrations versionadas `0752_channel_sessions_leitura_sem_regra_de_escrita.sql` e `0747_mfa_dispositivo_confiavel.sql`:
+
+- **0752 — `channel_sessions`:** RLS habilitada; policy legada `channel_sessions_tenant_write` ausente (0); três policies de escrita `channel_sessions_tenant_insert/update/delete` presentes (3/3); policy `channel_sessions_tenant_select` presente (1). A estrutura nominal corresponde ao desmembramento esperado pela 0752. **Não foram testadas expressões de policy, papéis efetivos, desempenho ou isolamento entre organizações.**
+- **0747 — `mfa_trusted_devices`:** RLS habilitada; zero policies; `anon` e `authenticated` sem privilégios diretos SELECT/INSERT/UPDATE/DELETE conforme `has_table_privilege`. As RPCs `fn_session_mfa_proven()` e `fn_is_platform_admin_full()` existem. Isso confirma sinais estruturais esperados, **não** o comportamento de MFA/AAL2 ou segurança de funções `SECURITY DEFINER`.
+- **Controle de divergência:** ledger ainda com 51 recibos; `fn_elus_rotacionar_codigos_recuperacao(uuid,text[])` continua ausente no catálogo. A causa não foi determinada. O limite de 50 recibos e o bloqueio `apply` devem permanecer intactos.
+
+**Limites e próximo gate:** conferência de catálogo não comprova execução histórica de migrations, semântica integral das policies, segurança multi-tenant nem replay v1.85→v1.89. Exigir testes negativos com dois tenants em ambiente isolado autorizado, restauração e replay PG15/17, reconciliação 0690/9037, revisão da RPC 0765 e aprovação independente do DELETE 0759. Nenhum E2E/Playwright, DDL/DML, merge, imagem ou deploy foi realizado nesta conferência.
+
+
+## Divergência semântica 0690/9037 — 01/11/2026, 11h BRT (somente SELECT)
+
+**Fonte de comparação:** arquivo versionado `supabase/migrations/20261020120000_0690_org_ai_autonomy_protected.sql` da PR #62 e definição efetiva obtida de `pg_catalog.pg_get_functiondef` no Supabase ELUS PostgreSQL 17.11. Não foram lidos registros de tenants nem executadas funções mutantes.
+
+- **0690 versionada:** para autorizar mudança em `organizations.ai_autonomy`, a guarda `fn_guard_organizations_ai_autonomy` usa `auth.role() = 'service_role'` **OU** `(current_user = 'postgres' AND auth.uid() IS NULL AND auth.role() IS NULL)`.
+- **Catálogo efetivo após recibo externo 9037:** a primeira condição é **mais restritiva**: `(current_user = 'service_role' AND auth.role() = 'service_role')`. A exceção para `postgres` permanece igual. Esta é uma diferença **semântica**, não apenas cosmética. Na combinação hipotética `auth.role()='service_role'` e `current_user<>'service_role'`, a 0690 permite e a definição efetiva rejeita. Não foi demonstrado que tal combinação seja alcançável por um usuário não autorizado.
+- **Metadados efetivos:** `SECURITY INVOKER` (`prosecdef=false`), `search_path=pg_catalog, public, pg_temp`, um trigger habilitado vinculado à função em `public.organizations`; `anon` e `authenticated` sem EXECUTE direto, `service_role` com EXECUTE. Os recibos 0690 e 9037 existem (2/2).
+
+**Consequência para o replay:** restaurar somente a baseline ELUS v1.89 candidata, que contém a 0690 original, **não reproduz a condição mais restritiva observada em produção**. A 9037 externa não integra o manifesto autorizado das 39 migrations e não pode ser absorvida implicitamente. A comparação integral de catálogo e os testes negativos por papéis/tenants devem contemplar explicitamente essa diferença; eventual reconciliação do SQL versionado exige mudança separada, revisão e autorização própria. Este achado não comprova exploração, não autoriza alterar 0690/9037 em produção e não elimina os bloqueios 0765, 0759 e replay PG15/17. **NO-GO mantido.**
+
+
+## Matriz estática de divergência da guarda 0690/9037 — 01/11/2026, 12h BRT
+
+**Método:** análise estática das condições da migration versionada 0690 e da definição efetiva 9037 já documentada acima. Não houve execução de função, simulação de identidade de produção, alteração de banco ou teste de isolamento. As expressões são reduzidas a variáveis booleanas: `C = (current_user = 'service_role')`, `R = (auth.role() = 'service_role')`, `P = (current_user = 'postgres' AND auth.uid() IS NULL AND auth.role() IS NULL)`. Assim, **0690 autoriza quando `R OR P`**, enquanto **9037 autoriza quando `(C AND R) OR P`**. A tabela é uma avaliação lógica, não demonstra que cada combinação é alcançável na instalação.
+
+| C | R | P | 0690 | 9037 | Resultado |
+| --- | --- | --- | --- | --- | --- |
+| falso | falso | falso | nega | nega | igual |
+| falso | verdadeiro | falso | permite | **nega** | **divergência** |
+| verdadeiro | falso | falso | nega | nega | igual |
+| verdadeiro | verdadeiro | falso | permite | permite | igual |
+| falso | falso | verdadeiro | permite | permite | exceção `postgres` preservada |
+
+**Critério de reconciliação futuro (não executado):** no replay isolado autorizado, comparar a guarda **antes e depois** da aplicação explícita da 9037 externa, usando identidades e claims sintéticos controlados e verificando as condições reais de invocação, ACL, trigger, RLS e isolamento entre dois tenants. Não inserir 9037 no manifesto das 39 migrations, não reescrever 0690 para esconder a diferença e não tratar a matriz estática como aceite funcional. O `apply` produtivo segue bloqueado independentemente desse ensaio.
+
+## Triagem estrutural dos 11 imports anteriores ao corte — 01/11/2026, 19h BRT
+
+**Método:** leitura estática dos onze SQLs versionados em `supabase/migrations/` com carimbo até `20261021025613`, comparados à classificação do `manifest` do executor. Este é o conjunto de **11 imports upstream anteriores ao corte**, não os onze recibos históricos da instalação (sete v1.85 e quatro ELUS). A triagem identifica dependências e pontos de falha de replay; **não atesta que esses SQLs foram ou devem ser executados novamente**. Nenhum banco foi consultado ou modificado nesta etapa.
+
+| Import upstream (sufixo) | Alteração estática observada | Risco/pré-condição a comprovar no clone |
+| --- | --- | --- |
+| `0593_nome_da_agenda` | Colunas `contacts.address_book_name`/`name_lookup_at`, índice parcial, função e trigger de anonimização. | Verificar colunas e trigger já existentes no catálogo v1.85 reconstruído; não assumir que `CREATE OR REPLACE FUNCTION` significa replay sem efeitos. |
+| `0657_rotulo_opaco_e_external_id_na_cascata` | Substitui funções de LGPD, incluindo `SECURITY DEFINER` com atualizações e enfileiramento de redação no corpo. | Comparar assinatura, grants e escopo de tenant; testar efeitos somente com dados sintéticos e invocação autorizada no clone. |
+| `0669_o_endereco_do_servidor_aceita_sublinhado` | Substitui `CHECK` de `platform_smtp_settings.host` num bloco `DO`. | Conferir constraint anterior e linhas existentes antes de validar o novo `CHECK`. |
+| `0655_avisos_de_tarefa_na_central` | Recria `agent_inbox_items_kind_check` para `task_due`/`task_overdue`. | Conferir constraint vigente e vocabulário anterior; a recriação não equivale a ausência de risco de incompatibilidade. |
+| `0684_a_reacao_nao_passa_pelos_gatilhos` | Substitui funções ligadas aos triggers de mensagens e à revisão de resposta; há função `SECURITY DEFINER` e grants. | Comparar triggers ativos, privilégios e fluxo de eventos; não executar triggers sobre mensagens reais. |
+| `0687_responder_caso_pelo_whatsapp_interno` | Adiciona coluna/índice, duas RPCs `SECURITY DEFINER`, escreve eventos/jobs dentro da função e remove assinatura antiga de `fn_definir_aviso_de_caso`. | Inspecionar dependências da assinatura removida e grants de `authenticated`; verificar isolamento e idempotência no clone. |
+| `0762_aviso_da_central_com_destinatario` | Adiciona `agent_inbox_items.para_user_id` opcional com FK para `auth.users`. | Verificar existência da coluna/FK e efeitos de `ON DELETE CASCADE`; checar filtro por destinatário em código, sem dados reais. |
+| `0763_banco_externo_db_type_e_aviso` | Adiciona `db_type`/`last_test_aviso`, troca constraints e faz `DROP VIEW IF EXISTS external_db_connections_safe` seguido de `CREATE VIEW`. | **Ponto de parada:** listar dependências da view no catálogo isolado; `DROP VIEW` pode falhar se houver objetos dependentes. Preservar exclusão de `receitas` na view recriada. |
+| `0764_rodizio_na_acao_atribuir` | Cria histórico de rodízio com RLS/índices, remove assinatura antiga de RPC e cria `fn_automation_rodizio_atribuir(uuid,uuid,uuid,uuid)` `SECURITY DEFINER`. | **Ponto de parada:** inspecionar dependências da função de três argumentos, permissões, fila e idempotência por `event_id` antes do replay. |
+| `0716_agendas_de_servicos` | Amplia agenda com tabelas, FKs compostas, índices, policies, triggers e RPCs `SECURITY DEFINER`; contém remoção/recriação de índices e constraints. | **Alto escopo:** confrontar catálogo, ACL/RLS, FKs e dados sintéticos de dois tenants; preservar a ordem `0716→0717→0753`. |
+| `0693_motivo_verificacao_manual` | Recria `passagens_de_atendimento_motivo_codigo_check` incluindo `verificacao_manual`. | Conferir constraint anterior e correspondência com vocabulário da aplicação; testar em banco descartável. |
+
+**Resultado da triagem:** 11/11 arquivos anteriores ao corte inventariados estruturalmente; **0/11 aprovados para reexecução** e **0/38 imports aprovados funcionalmente**. A presença de `DROP VIEW` (0763), `DROP FUNCTION` (0687/0764) e alterações extensas de ACL/RLS (0716) exige análise de dependências do catálogo histórico, não uma suposição de idempotência. Os 27 imports posteriores ao corte ainda não receberam esta mesma triagem por arquivo. A revisão manual completa dos 38, o replay v1.85→v1.89 em PG15/17, restauração e aceite permanecem pendentes. **NO-GO**; `apply` bloqueado.
+
+## Triagem estrutural dos 27 imports posteriores ao corte — 01/11/2026, 20h BRT
+
+**Método:** leitura estática, arquivo por arquivo, dos 27 SQLs versionados com carimbo posterior a `20261021025613`, confrontados com `docs/integracao/elus-v189-ledger-replay-matrix.json`. Foram examinados comandos estruturais, DML imediato, funções, grants, triggers, RLS e dependências aparentes. **Não** houve execução de SQL, consulta a banco, inspeção de dados de clientes, replay, Vitest ou E2E. Esta é uma **triagem estrutural**, não auditoria semântica exaustiva nem aprovação de aplicação.
+
+| Import (sufixo) | Sinal observado no SQL | Gate no ensaio descartável autorizado |
+| --- | --- | --- |
+| `0703_catalogo_gemini_4_argon` | `INSERT` no catálogo `ai_models` e em `ai_pricing`. | Verificar conflitos de chave, preços e paridade de catálogo sem alterar oferta ELUS/Chutes. |
+| `0717_desambigua_calendar_service_professionals` | `ALTER TABLE` em tabela criada na 0716. | Conferir FK/constraint e ordem `0716→0717`. |
+| `0726_escopo_da_conversa_uma_vez_por_consulta` | Redefine `fn_conversation_scope` `SECURITY DEFINER` e policy de leitura de conversas. | Comparar claims, grants, RLS e isolamento entre dois tenants. |
+| `0705_prospeccao_saida_configuravel` | Colunas/índice, função privilegiada e trigger em mensagens; grava auditoria. | Conferir FK, transição de estado e efeitos do trigger em dados sintéticos. |
+| `0706_banco_externo_receitas` | Acrescenta `receitas` e recria `external_db_connections_safe` com `security_invoker`. | **Ponto de parada:** dependentes da view, grants, projeção sem `receitas` e ordem `0763→0706`. |
+| `0710_campanha_com_modelo_aprovado` | Altera colunas e substitui CHECKs de campanhas. | Compatibilidade de linhas existentes e modelos aprovados. |
+| `0721_traco_do_turno_do_agente` | Nova `agent_turn_traces`, índices, RLS e grants. | Política de SELECT por organização e retenção/acesso a traces. |
+| `0722_reusar_o_card_aberto_na_captacao` | Coluna opcional em `webhook_sources`, default `false`. | Compatibilidade com captura assinada e não duplicação de negócio. |
+| `0731_crm_lead_attachments` | Nova tabela, RLS, trigger de caminho imutável, função de retenção **e `DELETE` imediato condicional** dentro de bloco `DO`. | **Ponto de parada adicional:** medir em clone quantas linhas preexistentes não atendem à regex de caminho antes de qualquer remoção; validar órfãos de mídia e políticas. |
+| `0734_avaliacao_unica_de_permissoes` | Redefine `fn_user_role_in_org` e `fn_role_at_least` como `SECURITY DEFINER`. | Testes negativos de RBAC, suporte e multi-tenancy; comparar grants. |
+| `0729_ordem_da_resposta_rapida` | `ALTER TABLE` e **`UPDATE` de backfill** de `message_templates.ordem` quando a coluna não existe. | Conferir cardinalidade, ordem por organização e custo/locks em dados sintéticos. |
+| `0738_teto_do_adiamento_do_canal` | Altera `prospecting_campaigns`. | Conferir restrição e valores existentes. |
+| `0743_gatilho_de_data_do_funil_alcanca_a_origem` | Redefine função de resolução de contato e `emit_event`, com `SECURITY DEFINER`. | Verificar escopo de organização e emissão única de eventos. |
+| `0744_telefone_ganho_nos_quatro_caminhos` | Redefine `fn_upsert_wa_contact` privilegiada. | Conferir deduplicação, telefone, escopo e consentimento. |
+| `0747_mfa_dispositivo_confiavel` | Nova tabela com RLS, `fn_session_mfa_proven` e função LGPD redefinida. | Verificar sessão/fator MFA, grants e acesso direto negado. |
+| `0748_vocabulario_paginado` | Redefine RPC de tags paginadas e grants. | Escopo de organização, paginação e ACL. |
+| `0749_router_member_publish_without_direct_channel` | Redefine RPC privilegiada de publicação de agente e atualiza versões/agentes. | Validar permissão de publicação, organização e governança. |
+| `0750_lgpd_marca_de_apagamento` | Nova tabela RLS, trigger de anonimização e RPC de consulta. | Privacidade de identificadores, grants e retenção LGPD. |
+| `0752_channel_sessions_leitura_sem_regra_de_escrita` | Substitui policy ampla por INSERT/UPDATE/DELETE separadas. | Testar escrita/leitura negativa por papel e tenant; não basta conferir nomes. |
+| `0753_aviso_de_agendamento_no_whatsapp` | Tabelas/FKs, funções privilegiadas de configuração e expurgo de avisos. | Ordem `0716→0717→0753`, MFA, canais e expurgo apenas sob invocação autorizada. |
+| `0754_mediana_da_primeira_resposta_e_recorte_por_etiqueta` | **`DROP FUNCTION` imediato** da assinatura antiga de `fn_attendant_metrics`; cria assinatura nova. | **Ponto de parada:** inspecionar dependentes e chamadas de quatro argumentos; validar retorno e grants. |
+| `0755_codigos_de_recuperacao_so_pelo_servidor` | Revoga privilégios e substitui policy de códigos de recuperação. | Confirmar acesso somente servidor e ordem antes da 0759. |
+| `0756_meta_mensal_por_indicador` | Nova `crm_metas` com RLS, FKs, índices e grants. | Isolamento e autorização de escrita por papel. |
+| `0757_poder_de_plataforma_exige_sessao_confirmada` | Redefine `fn_is_platform_admin_full` e função LGPD com exigência MFA. | Ordem `0747→0757`; testes AAL2 e privilégios. |
+| `0759_codigos_de_recuperacao_antigos_saem` | **`DELETE` imediato** de códigos cujo hash não tem 32 bytes. | **Autorização independente obrigatória**, impacto, backup e restauração; nunca executar nesta etapa. |
+| `0760_historico_importado_nao_dispara` | Redefine triggers/funções de mensagens; `GRANT ALL` em função que retorna `trigger` para `anon` e `authenticated`. | Comparar privilégios efetivos e semântica de eventos; não inferir explorabilidade pelo GRANT isolado. |
+| `0761_importacoes_de_historico` | Nova tabela de importações com RLS, leitura autenticada e escrita por `service_role`. | Conferir escopo de tenant e serialização de rodadas/importações. |
+
+**Achados adicionais à classificação anterior:** a 0759 não é o único SQL do lote com `DELETE` imediato: a **0731** também remove linhas preexistentes que não atendam à restrição de caminho, embora a tabela seja apresentada como nova. A **0729** executa backfill de dados, e a **0754** remove uma assinatura de função; a **0706** recria uma view. Essas operações não são necessariamente incorretas, mas impedem classificar o lote como puramente aditivo. Os quatro novos marcadores estáticos de risco (`0731`, `0729`, `0754`, `0760`) foram acrescentados à matriz sem alterar SQL nem liberar `apply`. O `DELETE` presente no corpo da função de expurgo da 0753 **não é executado automaticamente** pela criação da função.
+
+**Resultado:** 27/27 imports posteriores ao corte triados estruturalmente, somando 38/38 com a triagem anterior; **0/38 aprovados para execução**. Revisão semântica integral, catálogo histórico, dependências reais, replay/restauração PostgreSQL 15/17, 0690/9037, 0765, isolamento e autorização da 0759 permanecem pendentes. O ledger mais recente documentado contém 51 recibos; o executor `apply` continua fail-closed. **NO-GO.**

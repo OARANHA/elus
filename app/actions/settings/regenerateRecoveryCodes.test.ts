@@ -114,6 +114,21 @@ describe("regenerateRecoveryCodes — contrato da rotação atômica", () => {
     expect(mocks.audit).not.toHaveBeenCalled();
   });
 
+  it("falha fechado quando a RPC 0765 ausente do catálogo retorna PGRST202", async () => {
+    const from = vi.fn();
+    mocks.createAdminClient.mockReturnValue({ rpc: mocks.rpc, from });
+    mocks.rpc.mockResolvedValue({
+      data: null,
+      error: { code: "PGRST202", message: "function not found in schema cache" },
+    });
+
+    expect(await regenerateRecoveryCodes()).toEqual({ ok: false, error: "rotation_failed" });
+    expect(mocks.rpc).toHaveBeenCalledOnce();
+    expect(mocks.rpc).toHaveBeenCalledWith(rpcName, rpcArgs);
+    expect(from).not.toHaveBeenCalled();
+    expect(mocks.audit).not.toHaveBeenCalled();
+  });
+
   it.each([null, 0, 9, 11])("se RPC retorna contagem %s, não revela os códigos", async (data) => {
     mocks.rpc.mockResolvedValue({ data, error: null });
     expect(await regenerateRecoveryCodes()).toEqual({ ok: false, error: "rotation_failed" });

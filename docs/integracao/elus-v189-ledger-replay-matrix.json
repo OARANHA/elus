@@ -255,7 +255,9 @@
       "logical_number": "0731",
       "cutoff_group": "AFTER_LEDGER_CUTOFF",
       "review_state": "REQUIRES_MANUAL_REVIEW",
-      "risk_flags": []
+      "risk_flags": [
+        "conditional_data_delete"
+      ]
     },
     {
       "file": "20261023120002_0734_avaliacao_unica_de_permissoes.sql",
@@ -275,7 +277,9 @@
       "logical_number": "0729",
       "cutoff_group": "AFTER_LEDGER_CUTOFF",
       "review_state": "REQUIRES_MANUAL_REVIEW",
-      "risk_flags": []
+      "risk_flags": [
+        "data_backfill"
+      ]
     },
     {
       "file": "20261023120006_0738_teto_do_adiamento_do_canal.sql",
@@ -373,7 +377,9 @@
       "logical_number": "0754",
       "cutoff_group": "AFTER_LEDGER_CUTOFF",
       "review_state": "REQUIRES_MANUAL_REVIEW",
-      "risk_flags": []
+      "risk_flags": [
+        "drops_legacy_function_signature"
+      ]
     },
     {
       "file": "20261023160010_0755_codigos_de_recuperacao_so_pelo_servidor.sql",
@@ -425,7 +431,8 @@
       "cutoff_group": "AFTER_LEDGER_CUTOFF",
       "review_state": "REQUIRES_MANUAL_REVIEW",
       "risk_flags": [
-        "event_triggers"
+        "event_triggers",
+        "trigger_function_execute_grants"
       ]
     },
     {

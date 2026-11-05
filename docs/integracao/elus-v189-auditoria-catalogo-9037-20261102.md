@@ -1,0 +1,110 @@
+# ELUS v1.89 — atestação somente leitura do catálogo externo 9037
+
+**Observação:** 02/11/2026, ~23h BRT. **Escopo:** Supabase `elus` (PostgreSQL 17.11), PR #62. **Decisão:** NO-GO. Esta atestação não aprova replay, aplicação de SQL, merge ou deploy.
+
+## Origem e método
+
+- A migration externa `20261029104815 / elus_9037_ai_autonomy_guarded` tem um recibo com **1 statement**, **34.985 bytes**, MD5 `10df3c797779f8cb4461631cb22676d2`. O SQL do recibo contém **8 declarações `CREATE OR REPLACE FUNCTION`**, **1 `DROP TRIGGER`** e **1 `CREATE TRIGGER`** (contagem textual; não prova execução).
+- Consulta exclusivamente `SELECT` sobre `supabase_migrations.schema_migrations`, `pg_catalog.pg_proc` e `pg_catalog.pg_trigger`. Foram extraídos apenas nomes/assinaturas, hashes de definições, flags de ACL e metadados; nenhum `statements[]`, segredo ou dado de tenant foi exportado.
+- A migration ELUS versionada `supabase/migrations/20261020120000_0690_org_ai_autonomy_protected.sql` tem blob Git `4ad880adf0a8e294e20a1b50dae1fb9dbed1db65`.
+
+## Objetos atualmente presentes
+
+As oito assinaturas extraídas do recibo externo foram encontradas **8/8** no catálogo, cada uma com exatamente uma correspondência. Para todas: `SECURITY INVOKER`, `search_path=pg_catalog, public, pg_temp`, `EXECUTE` efetivo para `service_role` e ausência de `EXECUTE` para `anon` e `authenticated` e de concessão explícita a `PUBLIC`.
+
+| Função (schema public) | MD5 de `pg_get_functiondef` |
+| --- | --- |
+| `fn_elus_ai_agent_create_guarded(uuid,jsonb,jsonb,boolean)` | `a0424b4d585c5027de87f903e231cde9` |
+| `fn_elus_ai_credential_write_guarded(uuid,text,uuid,jsonb,boolean)` | `c72d496fa7d210389ff02e0ae9ae2c41` |
+| `fn_elus_ai_default_write_guarded(uuid,text,text,jsonb,boolean)` | `001cbf53de34e47b39fe6f723e9f8127` |
+| `fn_elus_ai_draft_save_guarded(uuid,uuid,text,uuid,jsonb,jsonb,jsonb,boolean)` | `2dd75626f1ac9dfcb405f8076e827ff4` |
+| `fn_elus_ai_purpose_binding_write_guarded(uuid,text,jsonb,jsonb,boolean)` | `be95863e387c572c41ef3b49181cb113` |
+| `fn_elus_ai_version_create_guarded(uuid,uuid,jsonb,boolean)` | `03a2613bb5695a3f6c8aca9d7c61d9f5` |
+| `fn_elus_ai_version_patch_guarded(uuid,uuid,uuid,jsonb,jsonb,boolean)` | `4dcb50c9fa0a2bbeb24cadf594dd1e23` |
+| `fn_guard_organizations_ai_autonomy()` | `1378848e0d9fce3513bba0e660b283fd` |
+
+O trigger `trg_guard_organizations_ai_autonomy` em `public.organizations` está habilitado (`tgenabled=O`), `tgtype=23` (BEFORE INSERT OR UPDATE, FOR EACH ROW) e aponta para a função de guarda acima. A definição instalada contém a conjunção `current_user = 'service_role' AND auth.role() = 'service_role'`, além da exceção administrativa `current_user = 'postgres' AND auth.uid() IS NULL AND auth.role() IS NULL`.
+
+## Divergência com a 0690 e limites
+
+A 0690 versionada permite `auth.role() = 'service_role'` **sem exigir também** `current_user = 'service_role'`, preservando a mesma exceção administrativa. Portanto, o predicado de serviço instalado é mais restritivo que o texto versionado 0690. Um replay que substitua a guarda instalada pela 0690 **pode reduzir a restrição**. O risco de downgrade permanece bloqueante até plano de ordenação e equivalência revisado.
+
+A identidade do recibo 9037 e a presença de oito objetos com ACL esperada **não provam** identidade byte a byte entre o SQL externo e as definições atuais, nem a equivalência semântica dos corpos, isolamento multi-tenant, execução histórica completa ou autorização funcional. Os hashes acima são fotografias do catálogo atual, não uma nova baseline nem um manifesto de replay.
+
+## Código de diagnóstico adicionado à PR #62
+
+`scripts/elus-v189-production-upgrade.mjs` passou a relatar `guarded9037FunctionsExpected`, `guarded9037FunctionsPresent`, `guarded9037FunctionsLeastPrivilege` e `guarded9037FunctionsAllSafe` em modo `diagnose`, por `SELECT` somente leitura. O teste simulado `tests/unit/elus-v189-diagnose-0765-simulated.test.ts` cobre os casos 8/8, objeto ausente (7/8) e desvio de ACL (7/8). A consulta exata extraída do código foi executada **somente como SELECT**, retornando `expected=8, present=8, least_privilege=8`; três cenários simulados passaram no avaliador JavaScript. **Lint, TypeScript e suíte Vitest não foram executados localmente**; o CI do novo HEAD ainda não foi verificado.
+
+**Gates ainda pendentes:** causa da ausência da RPC 0765 (recibo íntegro, objeto ausente), 51 recibos contra teto de 50, plano de coexistência 0690/9037, reconstrução e replay histórico com restauração em PostgreSQL 15/17 descartável, ACL/RLS/tenancy funcional, autorização independente do DELETE 0759. `apply` permanece bloqueado antes de conectar. E2E/Playwright exclusivamente manual; nenhum SQL mutante, migration, merge, publicação de imagem ou deploy.
+
+## Diagnóstico de deriva das definições (03/11/2026)
+
+Consulta exclusivamente `SELECT` confirmou que os oito MD5 de `pg_get_functiondef` acima continuam correspondendo ao catálogo atual (**8/8**, PostgreSQL 17.11). O modo `diagnose` passa a comparar essas oito assinaturas com a fotografia observada e expor `guarded9037DefinitionsObservedMatches` e `guarded9037DefinitionsNoDrift`. O teste simulado diferencia ausência de função, ACL incorreta e alteração de corpo com ACL intacta. **Esta comparação detecta deriva em relação ao catálogo observado, não valida semanticamente o SQL externo, não substitui a comparação 0690/9037 e não é gate de autorização.** `apply` permanece bloqueado; nenhum SQL mutante foi executado.
+
+
+## Confronto direto do corpo da guarda com o recibo externo (03/11/2026)
+
+A consulta **exclusivamente `SELECT`** ao Supabase `elus` comparou o corpo PL/pgSQL da função `public.fn_guard_organizations_ai_autonomy()` extraído do único `statements[1]` do recibo externo `20261029104815 / elus_9037_ai_autonomy_guarded` com `pg_catalog.pg_proc.prosrc`. O extrator usa `regexp_match` delimitado pela assinatura da função e por `AS $$ ... $$`, sem exportar o SQL do recibo nem dados de tenant.
+
+**Evidência obtida:** 1 recibo, 1 função instalada, **603 caracteres em ambos os corpos e igualdade textual exata** (`raw_body_equal=true`), além de igualdade após normalização de espaços. Isso avança a comparação para além dos hashes da fotografia do catálogo: o corpo atualmente instalado dessa **única função** coincide com o corpo registrado no recibo 9037. Não prova que a migration foi executada integralmente, não atesta os outros sete corpos, nem comprova semântica de autorização, RLS, trigger ou ordem histórica.
+
+O modo `diagnose` agora expõe `guard9037ReceiptBodyExact` com uma terceira consulta `SELECT` que retorna somente booleano. Se o recibo, a função ou o corpo não corresponder, retorna `false` (ou falha fechada em caso de ambiguidade). O teste simulado cobre correspondência e deriva mantendo `gate=DIAGNOSTIC_ONLY_NOT_RELEASE_APPROVAL`; **nenhum caminho de `apply` foi desbloqueado**.
+
+A execução `ci` [41572312535](https://github.com/OARANHA/elus/actions/runs/41572312535) passou **10/10 jobs** no HEAD anterior `30adbe89`, incluindo matrizes PostgreSQL 15/17; workflows `perf` e GHCR também concluíram com sucesso, sem publicação ou promoção solicitada nesta investigação. Os novos commits desta seção **ainda não tiveram CI reconsultado nesta execução**. Simulação JavaScript do `diagnoseLedger` com três consultas exclusivamente `SELECT`: 2/2 cenários (corpo igual/divergente) aprovados. Lint, TypeScript e Vitest locais não foram executados.
+
+**NO-GO inalterado:** 0765 sem RPC, 51 recibos diante do limite 50, reconciliação e ordenação 0690/9037, replay e restauração PostgreSQL 15/17 descartável, ACL/RLS multi-tenant e autorização específica do DELETE 0759. Nenhum SQL mutante, migration, E2E/Playwright, merge, publicação de imagem ou deploy.
+
+## Confronto integral dos oito corpos 9037 (03/11/2026, 04h BRT)
+
+Consulta **exclusivamente SELECT** ao Supabase `elus` (PostgreSQL 17.11), condicionada à identidade do recibo externo `20261029104815` (nome, statement único, 34.985 bytes e MD5). A consulta divide o SQL do recibo por `CREATE OR REPLACE FUNCTION`, identifica cada delimitador `AS $tag$` ou `AS $$` e compara o corpo extraído **sem normalização** com `pg_proc.prosrc` da função correspondente em `public`. Nenhum SQL do recibo, corpo de função ou dado de tenant foi retornado.
+
+**Resultado comprovado:** oito funções reconhecidas, oito nomes distintos e **8/8 corpos textualmente idênticos** ao recibo externo. Comprimentos de cada par (recibo/catálogo): agent_create 5524/5524, credential_write 4256/4256, default_write 2124/2124, draft_save 2191/2191, purpose_binding 3983/3983, version_create 4473/4473, version_patch 4700/4700 e guarda organizations 603/603 caracteres. A consulta copiada **diretamente do código versionado** retornou `guarded_9037_receipt_bodies_exact=true`.
+
+A PR #62 acrescenta `guarded9037ReceiptBodiesExact` ao modo `diagnose`, sem modificar `apply`, que continua bloqueado antes da conexão. A inspeção estática confirmou quatro consultas literais começando por `SELECT`; simulação JavaScript da função real passou em **2/2 cenários** (igualdade integral e divergência) com `gate=DIAGNOSTIC_ONLY_NOT_RELEASE_APPROVAL`. CI do HEAD anterior `e5d01166`: [run 41589533299](https://github.com/OARANHA/elus/actions/runs/41589533299), concluído com sucesso; CI dos commits novos **não foi consultado** nesta execução. Lint, TypeScript e Vitest locais não foram executados.
+
+**Limite:** igualdade de `prosrc` não prova que a 9037 foi aplicada historicamente por inteiro, nem equivale a teste funcional de permissões, transações, RLS, trigger, ordenação 0690/9037 ou compatibilidade de replay. Os bloqueios 0765, ledger 51/50, restauração/replay PostgreSQL 15/17, multi-tenancy e autorização independente do DELETE 0759 permanecem. Nenhuma migration, SQL mutante, E2E/Playwright, merge, publicação de imagem ou deploy foi executado.
+
+## Divergência comprovada na baseline candidata — 03/11/2026, 05h BRT
+
+Auditoria **exclusivamente offline** da baseline candidata (blob Git `0269eee11299e0492f489ab6d690eb88b91e30b1`) e da migration ELUS `20261020120000_0690_org_ai_autonomy_protected.sql` (blob `4ad880adf0a8e294e20a1b50dae1fb9dbed1db65`):
+
+- A baseline inclui **verbatim** a migration 0690 e contém **uma** definição de `public.fn_guard_organizations_ai_autonomy()`.
+- O corpo da guarda nessa baseline aceita `auth.role() = 'service_role'` sem exigir `current_user = 'service_role'` conjuntamente.
+- O catálogo ativo anteriormente observado, associado ao recibo externo 9037, exige **ambas** as condições; os oito corpos da 9037 foram confrontados com o recibo por consultas `SELECT` na execução anterior.
+- Portanto, a baseline candidata **não possui paridade estática** com a guarda 9037 observada. Um provisionamento novo a partir dessa baseline ou replay da 0690 após a 9037 **pode produzir a guarda menos restritiva**. Não se afirma exploração nem comportamento funcional sem ensaio isolado.
+
+O modo offline `manifest` do executor agora expõe `replayClassification.guard0690Vs9037` com `comparison=BASELINE_0690_WEAKER_THAN_OBSERVED_9037`, `replayApproved=false` e `freshInstallParityApproved=false`. Caso a baseline mude, o resultado passa a `UNVERIFIED_DO_NOT_RELEASE`, **nunca** a aceite automático. O teste unitário `tests/unit/elus-v189-guard-0690-9037-parity.test.ts` cobre a divergência presente, uma variante com predicado reforçado e a ausência da função.
+
+**Escopo e limite:** apenas leitura de arquivos locais e avaliação JavaScript isolada; não foram executados SQL, migrations, E2E/Playwright ou deploy. O executor `apply` permanece bloqueado antes da conexão. A correção da baseline exige plano e validação separados, sem alterar as quatro migrations históricas ELUS nem reexecutar 0690/9037 no banco real. CI do novo HEAD ainda não verificado nesta execução.
+
+## Robustez da classificacao offline 0690/9037 — 03/11/2026, 06h BRT
+
+A execucao CI [41603027367](https://github.com/OARANHA/elus/actions/runs/41603027367) do HEAD anterior `d953ccb0` concluiu **GREEN (10/10 jobs)**, incluindo PostgreSQL 15/17. Este resultado nao aprova migracoes nem aceite funcional.
+
+A baseline candidata foi relida **integralmente** por blob Git `0269eee11299e0492f489ab6d690eb88b91e30b1` (3.335.831 caracteres retornados); o endpoint de arquivo convencional devolveu conteudo vazio para esse arquivo grande, por isso a auditoria usou o blob e nao tratou a resposta vazia como baseline vazia. A 0690 foi relida do blob `4ad880adf0a8e294e20a1b50dae1fb9dbed1db65`.
+
+O diagnostico `guardParity()` agora remove comentarios SQL antes de reconhecer o predicado de servico e so classifica a divergencia conhecida quando **ambas** as fontes preservam a excecao administrativa `current_user='postgres' / auth.uid() IS NULL / auth.role() IS NULL` e o ramo de negacao `elus_ai_autonomy_restricted`. Alteracao nessas clausulas retorna `UNVERIFIED_DO_NOT_RELEASE`, sem liberar replay ou instalacao nova. A remocao de comentarios e uma verificacao lexical, nao um parser SQL nem prova de equivalencia funcional.
+
+**Verificacao offline da funcao real: 4/4 cenarios aprovados** — baseline atual mais permissiva, comentario que simula guarda estrita, excecao administrativa adulterada e ramo de negacao adulterado. No caso real, `comparison=BASELINE_0690_WEAKER_THAN_OBSERVED_9037`, `adminExceptionPreserved=true`, `denialBranchPreserved=true`, `replayApproved=false` e `freshInstallParityApproved=false`. O Supabase foi consultado exclusivamente por `SELECT`: **51 recibos**, incluindo 0690 e 9037, e hash MD5 `1378848e0d9fce3513bba0e660b283fd` da guarda instalada, com predicado de servico restritivo presente.
+
+**Limites:** nao houve lint, typecheck completo ou Vitest local; CI dos novos commits ainda nao foi consultado. A RPC 0765, o ledger 51/50, a ordenacao 0690/9037, a restauracao e replay PostgreSQL 15/17, ACL/RLS multi-tenant e autorizacao especifica do DELETE 0759 continuam bloqueantes. Nenhuma migration, SQL mutante, E2E/Playwright, merge, publicacao de imagem ou deploy foi executado. **NO-GO.**
+
+## Gate lexical adicional de integridade da guarda — 03/11/2026, 08h BRT
+
+O HEAD anterior `372d2244` passou no CI [41619284086](https://github.com/OARANHA/elus/actions/runs/41619284086): **10/10 jobs**, inclusive PostgreSQL 15/17. Os workflows `perf` e GHCR desse mesmo SHA também concluíram com sucesso. Isso não constitui aceite de upgrade ou autorização para publicar/deploy.
+
+O classificador offline `guardParity()` foi reforçado para rejeitar falsos diagnósticos de paridade quando a baseline contém a 0690 integralmente, mas DDL posterior **remove o trigger**, **cria outro trigger homônimo** ou **remove a função de guarda**. A nova leitura lexical exige uma única declaração `CREATE TRIGGER trg_guard_organizations_ai_autonomy`, com `BEFORE INSERT OR UPDATE` em `public.organizations`, `FOR EACH ROW` e destino `public.fn_guard_organizations_ai_autonomy()`; a última ação nominal sobre esse trigger deve ser `CREATE`. Também exige ausência de `DROP FUNCTION` posterior à definição da guarda. Em qualquer desvio, a classificação é `UNVERIFIED_DO_NOT_RELEASE`, com `replayApproved=false` e `freshInstallParityApproved=false`.
+
+**Verificação isolada da função real:** a baseline candidata integral (blob Git `0269eee11299e0492f489ab6d690eb88b91e30b1`) manteve a classificação `BASELINE_0690_WEAKER_THAN_OBSERVED_9037`, com os dois novos campos de integridade positivos. Três mutações sintéticas (DROP TRIGGER, CREATE TRIGGER duplicado/redirecionado e DROP FUNCTION) foram recusadas, **4/4 cenários aprovados** no avaliador JavaScript isolado. O teste Vitest versionado foi ampliado com essas três mutações, mas a suíte Vitest, lint e TypeScript locais não foram executados; CI do novo HEAD não foi consultado nesta execução.
+
+**Limite explícito:** inspeção lexical não é parser SQL nem prova de execução/estado efetivo. A baseline permanece menos restritiva que a guarda externa 9037 observada, e a reconciliação funcional continua pendente. Não foram executados SQL/migrations, E2E/Playwright, merge, publicação de imagem ou deploy. Os gates RPC 0765, ledger 51/50, restauração/replay PG15/17, ACL/RLS multi-tenant e autorização independente do DELETE 0759 permanecem **NO-GO**.
+
+## Protecao contra desativacao posterior do trigger — 03/11/2026, 09h BRT
+
+O HEAD anterior `880c608a6886a1dee2cf4e06d2bddee25c8629b6` teve CI [41627725290](https://github.com/OARANHA/elus/actions/runs/41627725290) **GREEN, 10/10 jobs**, inclusive invariantes PG15/17. Os workflows `perf` e GHCR tambem finalizaram com sucesso; nenhum resultado constitui aceite funcional.
+
+A auditoria lexical offline `guardParity()` da PR #62 foi ampliada: depois do `CREATE TRIGGER` esperado, recusa `ALTER TABLE organizations DISABLE TRIGGER` (nome, `ALL` ou `USER`), `ENABLE REPLICA/ALWAYS TRIGGER` e `ALTER TRIGGER ... RENAME`. Uma criacao correta nao prova que o trigger permaneceu habilitado; essas operacoes agora resultam em `baselineGuardTriggerUnaltered=false`, `comparison=UNVERIFIED_DO_NOT_RELEASE` e os dois gates de replay/instalacao `false`.
+
+**Validacao offline da funcao JavaScript real:** a baseline candidata integral (blob `0269eee11299e0492f489ab6d690eb88b91e30b1`, 3.335.831 caracteres) permanece `BASELINE_0690_WEAKER_THAN_OBSERVED_9037` com trigger inalterado. Cinco mutacoes DDL sinteticas foram recusadas, e um comentario SQL contendo `DISABLE TRIGGER` nao causou falso positivo: **7/7 casos avaliados** (baseline + 5 mutacoes + comentario). O teste unitario versionado foi ampliado, mas **Vitest, lint e TypeScript locais nao foram executados**; o CI do novo HEAD nao foi consultado nesta execucao.
+
+**Limites:** regex lexical nao substitui parser SQL, verificacao de estado do catalogo nem ensaio funcional. A baseline segue com a guarda 0690 menos restritiva que a 9037 observada. Continuam bloqueantes RPC 0765 ausente, ledger 51/50, reconstrucao e replay fiel em PG15/17 descartavel, ACL/RLS multi-tenant e autorizacao independente do DELETE 0759. Nenhuma migration, SQL mutante, E2E/Playwright, merge, publicacao de imagem ou deploy foi executado. **NO-GO**.

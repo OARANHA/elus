@@ -1,6 +1,6 @@
 #!/usr/bin/env node
-/** ELUS v1.89: executor PRODUTIVO separado. Não executar sem aprovação explícita,
- * dump restaurável + digests de rollback, e revisão do PR. */
+/** ELUS v1.89: verificador somente leitura. Aplicação produtiva desabilitada.
+ * Desbloqueio exige executor separado, gates e autorização específica. */
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
@@ -19,6 +19,55 @@ const HISTORY=[
  ['20261021025613','elus_0692_chutes_catalog_sync']
 ];
 const EXTRA='20261026010000_0765_elus_rotacao_atomica_codigos_recuperacao.sql';
+// Impressões públicas dos sete statements históricos privados, já validadas
+// pelo exportador v1.85. Nunca expor o SQL nem tratá-las como prova de replay.
+const HISTORICAL_FINGERPRINTS=new Map([
+ ['20261018200431',[174,'72db224ba3b80c474d771d66cb593668']],
+ ['20261018204508',[508044,'a1bfe00566688f95f316e4e37ffeb97c']],
+ ['20261018204837',[509703,'f7e534e726ec192c1db7fe984cf5c2a3']],
+ ['20261018204851',[510397,'df7399b2361471a32f6baebb5a51823b']],
+ ['20261018204924',[510108,'f3a0b9ea9d0cce746c2d403f9a04dd7f']],
+ ['20261018204939',[509661,'e6038fa04f2faa45f9416dc462beeb52']],
+ ['20261018204955',[484187,'dab84f1d8332894d78cf737b28488450']],
+]);
+// Os quatro recibos ELUS anteriores ao upgrade são públicos e versionados.
+// Os MD5/tamanhos abaixo foram confrontados com os arquivos SQL da main e
+// com o ledger produtivo por SELECT, sem executar os statements.
+const ELUS_HISTORICAL_FINGERPRINTS=new Map([
+ ['20261019204449',[13326,'0d76f02a421336ac784a9668e58df143']],
+ ['20261021025530',[2344,'89178273952e0c2af1174916ab1bf0e4']],
+ ['20261021025551',[2484,'45c956e88e760a9e853f2b9e319b6f7d']],
+ ['20261021025613',[7457,'11bee3e8876a69eb515bf962db5dec44']],
+]);
+
+// Dependencias SQL documentadas: guarda de ordem ESTATICA, sem replay nem DB.
+const DEPENDENCY_CHAINS=[
+ [
+  "20261020230856_0716_agendas_de_servicos.sql",
+  "20261021173000_0717_desambigua_calendar_service_professionals.sql",
+  "20261023160008_0753_aviso_de_agendamento_no_whatsapp.sql"
+ ],
+ [
+  "20261020120002_0763_banco_externo_db_type_e_aviso.sql",
+  "20261022120000_0706_banco_externo_receitas.sql"
+ ],
+ [
+  "20261020000001_0684_a_reacao_nao_passa_pelos_gatilhos.sql",
+  "20261023230250_0760_historico_importado_nao_dispara.sql"
+ ],
+ [
+  "20261023160002_0747_mfa_dispositivo_confiavel.sql",
+  "20261023160012_0757_poder_de_plataforma_exige_sessao_confirmada.sql"
+ ],
+ [
+  "20261023160010_0755_codigos_de_recuperacao_so_pelo_servidor.sql",
+  "20261023180557_0759_codigos_de_recuperacao_antigos_saem.sql"
+ ],
+ [
+  "20261020000004_0687_responder_caso_pelo_whatsapp_interno.sql",
+  "20261023160008_0753_aviso_de_agendamento_no_whatsapp.sql"
+ ]
+];
 const digest=(data,algo='sha256')=>createHash(algo).update(data).digest('hex');
 function need(ok,reason){if(!ok)throw Error(reason);}
 function manifest(){
@@ -37,7 +86,79 @@ function manifest(){
   return {file,version:file.slice(0,14),name:file.slice(15,-4),sql:sql.toString('utf8'),sha256:digest(sql)};
  });
  need(new Set(entries.map(x=>x.version)).size===39,'DUPLICATE_VERSION');
+ const position=new Map(entries.map(({file},i)=>[file,i]));
+ for(const chain of DEPENDENCY_CHAINS){
+  need(chain.every(file=>position.has(file))&&chain.every((file,i)=>i===0||position.get(chain[i-1])<position.get(file)),'DEPENDENCY_ORDER_DRIFT');
+ }
  return entries;
+}
+// Auditoria estatica da divergencia entre a baseline candidata e a guarda
+// mais restritiva observada no recibo externo 9037 (03/11/2026).
+// Nao consulta o banco, nao prova equivalencia funcional e nunca libera replay.
+function guardParity(){
+ const own=readFileSync('supabase/migrations/20261020120000_0690_org_ai_autonomy_protected.sql','utf8');
+ const baseline=readFileSync('supabase/baseline.sql','utf8');
+ const marker='create or replace function public.fn_guard_organizations_ai_autonomy()';
+ const count=baseline.toLowerCase().split(marker).length-1;
+ const body=(sql)=>{
+  const at=sql.toLowerCase().indexOf(marker);
+  if(at<0)return '';
+  const tail=sql.slice(at);
+  const delimiter=String.fromCharCode(36,36);
+  const begin=tail.toLowerCase().indexOf('as '+delimiter);
+  const start=begin+3+delimiter.length;
+  const end=tail.indexOf(delimiter+';',start);
+  return begin>=0&&end>start?tail.slice(start,end):'';
+ };
+ // Apenas analise lexical: comentarios nao podem simular uma guarda estrita.
+ // Nao e parser SQL nem prova de equivalencia funcional.
+ const active=(sql)=>sql.replace(/\/\*[\s\S]*?\*\//g,'').replace(/--[^\r\n]*/g,'');
+ const ownBody=active(body(own)),baselineBody=active(body(baseline));
+ // A presenca textual da 0690 nao basta: DDL posterior pode remover a
+ // funcao/trigger ou trocar o alvo. Falhar fechado sem interpretar SQL.
+ const baselineActive=active(baseline);
+ const triggerActions=[...baselineActive.matchAll(/\b(?:create|drop)\s+trigger\s+(?:if\s+exists\s+)?trg_guard_organizations_ai_autonomy\b/gi)];
+ const triggerCreates=triggerActions.filter(x=>/^create\b/i.test(x[0]));
+ const baselineGuardTriggerWired=triggerCreates.length===1&&
+  /\bcreate\s+trigger\s+trg_guard_organizations_ai_autonomy\s+before\s+insert\s+or\s+update\s+on\s+public\.organizations\s+for\s+each\s+row\s+execute\s+function\s+public\.fn_guard_organizations_ai_autonomy\(\)\s*;/i.test(baselineActive)&&
+  /^create\b/i.test(triggerActions.at(-1)?.[0]??'');
+ const functionDrops=[...baselineActive.matchAll(/\bdrop\s+function\s+(?:if\s+exists\s+)?public\.fn_guard_organizations_ai_autonomy\s*\(\s*\)/gi)];
+ const baselineGuardFunctionNotDropped=(functionDrops.at(-1)?.index??-1)<baselineActive.toLowerCase().lastIndexOf(marker);
+ // Alteracoes posteriores de estado/identidade do trigger nao sao cobertas
+ // pelo CREATE inicial. Rejeitar mesmo que uma reativacao posterior exista:
+ // sem interpretar a sequencia SQL, nao ha prova de paridade.
+ const afterGuardTrigger=baselineActive.slice(triggerCreates[0]?.index??baselineActive.length);
+ const baselineGuardTriggerUnaltered=
+  !/\balter\s+table\s+(?:if\s+exists\s+)?(?:only\s+)?(?:public\.)?organizations\b[^;]*\b(?:disable\s+trigger|enable\s+(?:replica|always)\s+trigger)\s+(?:trg_guard_organizations_ai_autonomy|all|user)\b/i.test(afterGuardTrigger)&&
+  !/\balter\s+trigger\s+trg_guard_organizations_ai_autonomy\s+on\s+(?:public\.)?organizations\s+rename\s+to\b/i.test(afterGuardTrigger);
+ const strict=/current_user\s*=\s*'service_role'\s+and\s+auth\.role\(\)\s*=\s*'service_role'/i;
+ const jwtOnly=/auth\.role\(\)\s*=\s*'service_role'/i;
+ const admin=/current_user\s*=\s*'postgres'\s+and\s+auth\.uid\(\)\s+is\s+null\s+and\s+auth\.role\(\)\s+is\s+null/i;
+ const deny=/if\s+not\s+coalesce\(\s*v_privileged\s*,\s*false\s*\)\s+then\s+raise\s+exception\s+'elus_ai_autonomy_restricted'/i;
+ const baselineIncludes0690Verbatim=baseline.includes(own);
+ const migration0690ServiceRoleJwtOnly=Boolean(ownBody)&&jwtOnly.test(ownBody)&&!strict.test(ownBody);
+ const baselineServiceRoleDbAndJwtRequired=Boolean(baselineBody)&&strict.test(baselineBody);
+ const adminExceptionPreserved=admin.test(ownBody)&&admin.test(baselineBody);
+ const denialBranchPreserved=deny.test(ownBody)&&deny.test(baselineBody);
+ const weaker=baselineIncludes0690Verbatim&&count===1&&migration0690ServiceRoleJwtOnly&&
+  Boolean(baselineBody)&&!baselineServiceRoleDbAndJwtRequired&&
+  adminExceptionPreserved&&denialBranchPreserved&&
+  baselineGuardTriggerWired&&baselineGuardFunctionNotDropped&&baselineGuardTriggerUnaltered;
+ return {
+  baselineIncludes0690Verbatim,
+  baselineGuardDefinitionCount:count,
+  migration0690ServiceRoleJwtOnly,
+  baselineServiceRoleDbAndJwtRequired,
+  adminExceptionPreserved,
+  denialBranchPreserved,
+  baselineGuardTriggerWired,
+  baselineGuardFunctionNotDropped,
+  baselineGuardTriggerUnaltered,
+  external9037Reference:'2026-11-03: current_user=service_role AND auth.role()=service_role',
+  comparison:weaker?'BASELINE_0690_WEAKER_THAN_OBSERVED_9037':'UNVERIFIED_DO_NOT_RELEASE',
+  replayApproved:false,
+  freshInstallParityApproved:false
+ };
 }
 function sourceGuard(){
  try{execFileSync('git',['merge-base','--is-ancestor',BASE,'HEAD'],{stdio:'ignore'});}
@@ -57,9 +178,24 @@ function config(){
   connectionTimeoutMillis:8000,query_timeout:120000};
 }
 async function snapshot(c,items){
- const records=(await c.query("SELECT version,name,md5(array_to_string(statements,'')) AS md5 FROM supabase_migrations.schema_migrations ORDER BY version")).rows;
+ const records=(await c.query("SELECT version,name,md5(array_to_string(statements,'')) AS md5, cardinality(statements) AS statement_count, octet_length(statements[1]) AS first_statement_bytes FROM supabase_migrations.schema_migrations ORDER BY version")).rows;
  const old=records.filter(x=>HISTORY.some(y=>y[0]===x.version));
  need(old.length===11&&old.every((r,i)=>r.version===HISTORY[i][0]&&r.name===HISTORY[i][1]),'HISTORY_DRIFT');
+ // O nome e a versão do recibo não bastam: comparar também a identidade
+ // dos sete SQLs privados da instalação v1.85, sem exportar seu conteúdo.
+ for(const r of old){
+  const expected=HISTORICAL_FINGERPRINTS.get(r.version);
+  if(expected){
+   need(r.statement_count===1&&r.first_statement_bytes===expected[0]&&
+        digest(Buffer.from(r.md5||'','ascii'),'md5')===expected[1],
+        'HISTORY_STATEMENT_DRIFT');
+  }
+  const own=ELUS_HISTORICAL_FINGERPRINTS.get(r.version);
+  if(own){
+   need(r.statement_count===1&&r.first_statement_bytes===own[0]&&r.md5===own[1],
+        'ELUS_HISTORY_STATEMENT_DRIFT');
+  }
+ }
  need(records.length<=50,'LEDGER_COUNT_DRIFT');
  const receipts=records.filter(x=>!HISTORY.some(y=>y[0]===x.version));
  need(receipts.length<=39&&new Set(receipts.map(x=>x.version)).size===receipts.length,'RECEIPT_DUPLICATE');
@@ -67,58 +203,359 @@ async function snapshot(c,items){
  need(receipts.every(r=>expected.has(r.version)&&expected.get(r.version).name===r.name),'UNKNOWN_RECEIPT');
  const seen=new Set(receipts.map(x=>x.version));
  need(items.every((x,i)=>i<receipts.length?seen.has(x.version):!seen.has(x.version)),'NONPREFIX_LEDGER');
- for(const r of receipts)need(r.md5===digest(Buffer.from(expected.get(r.version).sql),'md5'),'RECEIPT_HASH_DRIFT');
+ // Cada recibo novo deve armazenar exatamente o SQL fixado como UM statement.
+ // MD5 da concatenação sozinho aceitaria um array dividido em vários elementos.
+ for(const r of receipts){
+  const item=expected.get(r.version);
+  need(r.statement_count===1,'RECEIPT_STATEMENT_CARDINALITY_DRIFT');
+  need(r.first_statement_bytes===Buffer.byteLength(item.sql,'utf8'),'RECEIPT_STATEMENT_LENGTH_DRIFT');
+  need(r.md5===digest(Buffer.from(item.sql),'md5'),'RECEIPT_HASH_DRIFT');
+ }
  const tables=Number((await c.query("SELECT count(*) AS n FROM pg_tables WHERE schemaname='public'")).rows[0].n);
  if(receipts.length===0)need(tables===191,'INITIAL_SCHEMA_DRIFT');
  if(receipts.length===39)need(tables===208,'FINAL_SCHEMA_DRIFT');
  return {applied:receipts.length,publicTables:tables};
 }
+// Atestacao isolada dos 11 recibos historicos, inclusive os sete lotes
+// privados. Retorna somente contagens/booleanos; nunca exporta statements[].
+// Funciona mesmo com recibos externos que bloqueiam snapshot/preflight.
+async function historicalReceiptDiagnostic(c){
+ const rows=(await c.query(`
+   SELECT version,name,cardinality(statements) AS statement_count,
+     octet_length(statements[1]) AS first_statement_bytes,
+     md5(array_to_string(statements,'')) AS md5
+   FROM supabase_migrations.schema_migrations
+   WHERE version = ANY($1::text[])
+   ORDER BY version
+ `,[HISTORY.map(([version])=>version)])).rows;
+ const matched=rows.filter(r=>{
+  const expected=HISTORY.find(([version])=>version===r.version);
+  if(!expected||r.name!==expected[1]||r.statement_count!==1)return false;
+  const privateFp=HISTORICAL_FINGERPRINTS.get(r.version);
+  if(privateFp)return r.first_statement_bytes===privateFp[0]&&
+    digest(Buffer.from(r.md5||'','ascii'),'md5')===privateFp[1];
+  const elusFp=ELUS_HISTORICAL_FINGERPRINTS.get(r.version);
+  return Boolean(elusFp&&r.first_statement_bytes===elusFp[0]&&r.md5===elusFp[1]);
+ }).length;
+ return {historicalReceiptsMatched:matched,historicalReceiptsExpected:HISTORY.length,
+   historicalReceiptsExact:rows.length===HISTORY.length&&matched===HISTORY.length};
+}
+// Diagnóstico independente do gate de upgrade: observa a migration externa
+// 9037 sem aceitá-la no manifesto v1.89 ou no limite fail-closed de 50.
+// Somente metadados; nunca retorna statements ou dados de tenants.
+async function diagnoseLedger(c){
+ const historical=await historicalReceiptDiagnostic(c);
+ const ledger=(await c.query(`
+   SELECT count(*) AS total_receipts,
+     count(*) FILTER (WHERE version='20261029104815'
+       AND name='elus_9037_ai_autonomy_guarded'
+       AND cardinality(statements)=1
+       AND octet_length(statements[1])=34985
+       AND md5(statements[1])='10df3c797779f8cb4461631cb22676d2') AS external_9037_exact,
+     count(*) FILTER (WHERE version='20261021025530'
+       AND name='elus_0690_org_ai_autonomy_protected'
+       AND cardinality(statements)=1
+       AND octet_length(statements[1])=2344
+       AND md5(statements[1])='89178273952e0c2af1174916ab1bf0e4') AS receipt_0690_exact,
+     count(*) FILTER (WHERE version='20261026010000') AS receipt_0765,
+     count(*) FILTER (WHERE version='20261026010000'
+       AND name='0765_elus_rotacao_atomica_codigos_recuperacao'
+       AND cardinality(statements)=1
+       AND octet_length(statements[1])=2747
+       AND md5(statements[1])='add7a7db36db87cd213fd7a7d0f81db7') AS receipt_0765_exact
+   FROM supabase_migrations.schema_migrations
+ `)).rows[0];
+ const catalog=(await c.query(`
+   SELECT to_regprocedure('public.fn_elus_rotacionar_codigos_recuperacao(uuid,text[])') IS NOT NULL AS rpc_0765_present,
+     COALESCE((SELECT p.prosecdef FROM pg_catalog.pg_proc p
+       WHERE p.oid=to_regprocedure('public.fn_elus_rotacionar_codigos_recuperacao(uuid,text[])')),false) AS rpc_0765_security_definer,
+     COALESCE((SELECT p.proconfig @> ARRAY['search_path=""']::text[] FROM pg_catalog.pg_proc p
+       WHERE p.oid=to_regprocedure('public.fn_elus_rotacionar_codigos_recuperacao(uuid,text[])')),false) AS rpc_0765_pinned_search_path,
+     COALESCE((SELECT has_function_privilege('service_role',p.oid,'EXECUTE')
+       AND NOT has_function_privilege('anon',p.oid,'EXECUTE')
+       AND NOT has_function_privilege('authenticated',p.oid,'EXECUTE')
+       AND NOT EXISTS (SELECT 1 FROM pg_catalog.aclexplode(p.proacl) AS acl
+         WHERE acl.grantee=0 AND acl.privilege_type='EXECUTE')
+       FROM pg_catalog.pg_proc p
+       WHERE p.oid=to_regprocedure('public.fn_elus_rotacionar_codigos_recuperacao(uuid,text[])')),false) AS rpc_0765_service_role_clients_denied,
+     (SELECT position('current_user = ''service_role'' and auth.role() = ''service_role'''
+             in lower(p.prosrc))>0
+      FROM pg_catalog.pg_proc p
+      WHERE p.oid=to_regprocedure('public.fn_guard_organizations_ai_autonomy()')) AS guard_9037_strict,
+     (SELECT t.tgenabled IN ('O','A') FROM pg_catalog.pg_trigger t
+      WHERE t.tgrelid=to_regclass('public.organizations')
+        AND t.tgname='trg_guard_organizations_ai_autonomy'
+        AND NOT t.tgisinternal) AS guard_trigger_enabled,
+     (SELECT t.tgfoid=to_regprocedure('public.fn_guard_organizations_ai_autonomy()')
+             AND t.tgtype=23
+      FROM pg_catalog.pg_trigger t
+      WHERE t.tgrelid=to_regclass('public.organizations')
+        AND t.tgname='trg_guard_organizations_ai_autonomy'
+        AND NOT t.tgisinternal) AS guard_trigger_wiring_correct,
+     (SELECT NOT p.prosecdef FROM pg_catalog.pg_proc p
+      WHERE p.oid=to_regprocedure('public.fn_guard_organizations_ai_autonomy()')) AS guard_function_invoker,
+     (SELECT has_function_privilege('service_role',p.oid,'EXECUTE')
+             AND NOT has_function_privilege('anon',p.oid,'EXECUTE')
+             AND NOT has_function_privilege('authenticated',p.oid,'EXECUTE')
+      FROM pg_catalog.pg_proc p
+      WHERE p.oid=to_regprocedure('public.fn_guard_organizations_ai_autonomy()')) AS guard_function_execute_restricted,
+     (SELECT count(*) FROM pg_catalog.pg_proc p
+      WHERE p.proname='fn_elus_rotacionar_codigos_recuperacao') AS rpc_0765_any_schema_count,
+     (SELECT relrowsecurity FROM pg_catalog.pg_class
+      WHERE oid=to_regclass('public.user_recovery_codes')) AS recovery_codes_rls,
+     COALESCE((SELECT bool_and(
+       NOT has_table_privilege(roles.role,t.oid,'SELECT')
+       AND NOT has_table_privilege(roles.role,t.oid,'INSERT')
+       AND NOT has_table_privilege(roles.role,t.oid,'UPDATE')
+       AND NOT has_table_privilege(roles.role,t.oid,'DELETE'))
+       FROM (VALUES ('anon'),('authenticated')) AS roles(role)
+       CROSS JOIN (SELECT to_regclass('public.user_recovery_codes') AS oid) AS t
+     ),false) AS recovery_codes_client_dml_denied,
+     EXISTS(SELECT 1 FROM pg_catalog.pg_policy pol
+            WHERE pol.polrelid=to_regclass('public.user_recovery_codes')
+              AND pol.polcmd='r'
+              AND pol.polname='user_recovery_codes_ninguem_le'
+              AND pg_get_expr(pol.polqual,pol.polrelid)='false') AS recovery_codes_deny_select_policy,
+     -- O recibo externo 9037 declara oito funcoes. Atestar assinatura,
+     -- invoker, search_path e EXECUTE efetivo; somente catalogo, sem dados.
+     (SELECT jsonb_build_object(
+       'expected',count(*),
+       'present',count(p.oid),
+       -- Fotografia observada do catalogo PG17; nao atesta semantica nem autoriza replay.
+       'observed_definition_matches',count(*) FILTER (WHERE p.oid IS NOT NULL
+         AND md5(pg_get_functiondef(p.oid))=expected.observed_md5),
+       'least_privilege',count(*) FILTER (WHERE p.oid IS NOT NULL
+         AND NOT p.prosecdef
+         AND p.proconfig @> ARRAY['search_path=pg_catalog, public, pg_temp']::text[]
+         AND has_function_privilege('service_role',p.oid,'EXECUTE')
+         AND NOT has_function_privilege('anon',p.oid,'EXECUTE')
+         AND NOT has_function_privilege('authenticated',p.oid,'EXECUTE')
+         AND NOT EXISTS (SELECT 1 FROM pg_catalog.aclexplode(p.proacl) a
+           WHERE a.grantee=0 AND a.privilege_type='EXECUTE'))
+      ) FROM (VALUES
+       ('public.fn_elus_ai_agent_create_guarded(uuid,jsonb,jsonb,boolean)','a0424b4d585c5027de87f903e231cde9'),
+       ('public.fn_elus_ai_credential_write_guarded(uuid,text,uuid,jsonb,boolean)','c72d496fa7d210389ff02e0ae9ae2c41'),
+       ('public.fn_elus_ai_default_write_guarded(uuid,text,text,jsonb,boolean)','001cbf53de34e47b39fe6f723e9f8127'),
+       ('public.fn_elus_ai_draft_save_guarded(uuid,uuid,text,uuid,jsonb,jsonb,jsonb,boolean)','2dd75626f1ac9dfcb405f8076e827ff4'),
+       ('public.fn_elus_ai_purpose_binding_write_guarded(uuid,text,jsonb,jsonb,boolean)','be95863e387c572c41ef3b49181cb113'),
+       ('public.fn_elus_ai_version_create_guarded(uuid,uuid,jsonb,boolean)','03a2613bb5695a3f6c8aca9d7c61d9f5'),
+       ('public.fn_elus_ai_version_patch_guarded(uuid,uuid,uuid,jsonb,jsonb,boolean)','4dcb50c9fa0a2bbeb24cadf594dd1e23'),
+       ('public.fn_guard_organizations_ai_autonomy()','1378848e0d9fce3513bba0e660b283fd')
+      ) AS expected(signature,observed_md5)
+      LEFT JOIN pg_catalog.pg_proc p
+        ON p.oid=to_regprocedure(expected.signature)
+     ) AS guarded_9037_functions
+ `)).rows[0];
+ // Compara o corpo PL/pgSQL da guarda no recibo externo 9037 ao catálogo,
+ // sem exportar statements[] ou SQL de tenant. É evidência, não autorização.
+ const guardReceiptBody=(await c.query(`
+   SELECT COALESCE((
+     SELECT (regexp_match(m.statements[1],
+       'create[[:space:]]+or[[:space:]]+replace[[:space:]]+function[[:space:]]+(public[.])?fn_guard_organizations_ai_autonomy[[:space:]]*[(][[:space:]]*[)][[:space:][:print:]]*?as[[:space:]]+[$][$]([[:space:][:print:]]*?)[$][$]',
+       'i'))[2] = p.prosrc
+     FROM supabase_migrations.schema_migrations m
+     JOIN pg_catalog.pg_proc p
+       ON p.oid=to_regprocedure('public.fn_guard_organizations_ai_autonomy()')
+     WHERE m.version='20261029104815'
+       AND m.name='elus_9037_ai_autonomy_guarded'
+       AND cardinality(m.statements)=1
+   ),false) AS guard_9037_receipt_body_exact
+ `)).rows[0];
+ // Compara todos os oito corpos da 9037 ao recibo EXATO, inclusive
+ // delimitadores $tag$ distintos. Não retorna o SQL nem dados de tenant.
+ const guardedReceiptBodies=(await c.query(`
+   SELECT (
+     WITH receipt AS (
+       SELECT statements[1] AS sql
+       FROM supabase_migrations.schema_migrations
+       WHERE version='20261029104815'
+         AND name='elus_9037_ai_autonomy_guarded'
+         AND cardinality(statements)=1
+         AND octet_length(statements[1])=34985
+         AND md5(statements[1])='10df3c797779f8cb4461631cb22676d2'
+     ), chunks AS (
+       SELECT chunk FROM receipt CROSS JOIN LATERAL
+       regexp_split_to_table(sql,
+         'create[[:space:]]+or[[:space:]]+replace[[:space:]]+function[[:space:]]+', 'i') AS chunk
+     ), parsed AS (
+       SELECT (regexp_match(chunk,
+         '^[[:space:]]*(?:public[.])?([a-z_][a-z0-9_]*)','i'))[1] AS function_name,
+         (regexp_match(chunk,
+         '[[:space:]]+as[[:space:]]+([$][a-z0-9_]*[$])','i'))[1] AS delimiter,
+         chunk FROM chunks
+     ), matched AS (
+       SELECT parsed.function_name, parsed.delimiter, parsed.chunk, p.prosrc
+       FROM parsed
+       JOIN pg_catalog.pg_proc p ON p.proname=parsed.function_name
+       JOIN pg_catalog.pg_namespace n ON n.oid=p.pronamespace AND n.nspname='public'
+       WHERE parsed.function_name IN (
+         'fn_elus_ai_agent_create_guarded','fn_elus_ai_credential_write_guarded',
+         'fn_elus_ai_default_write_guarded','fn_elus_ai_draft_save_guarded',
+         'fn_elus_ai_purpose_binding_write_guarded','fn_elus_ai_version_create_guarded',
+         'fn_elus_ai_version_patch_guarded','fn_guard_organizations_ai_autonomy')
+     )
+     SELECT count(*)=8 AND count(DISTINCT function_name)=8
+       AND count(*) FILTER (WHERE delimiter IS NOT NULL
+         AND split_part(chunk,delimiter,2)=prosrc)=8
+     FROM matched
+   ) AS guarded_9037_receipt_bodies_exact
+ `)).rows[0];
+ return {
+   ...historical,
+   ledgerReceipts:Number(ledger.total_receipts),
+   external9037Exact:Number(ledger.external_9037_exact)===1,
+   receipt0690Exact:Number(ledger.receipt_0690_exact)===1,
+   // Colisao de SQLs versionados, nao prova de replay nem de ordem de execucao.
+   guard0690And9037Coexist:Number(ledger.receipt_0690_exact)===1&&Number(ledger.external_9037_exact)===1,
+   receipt0765Present:Number(ledger.receipt_0765)===1,
+   receipt0765Exact:Number(ledger.receipt_0765_exact)===1,
+   rpc0765Present:catalog.rpc_0765_present===true,
+   // Presenca no catalogo nao comprova SECURITY DEFINER, search_path ou ACL.
+   // Sinais diagnosticos somente leitura; nunca autorizam apply.
+   rpc0765SecurityDefiner:catalog.rpc_0765_security_definer===true,
+   rpc0765PinnedSearchPath:catalog.rpc_0765_pinned_search_path===true,
+   rpc0765ServiceRoleClientsDenied:catalog.rpc_0765_service_role_clients_denied===true,
+   // Recibo armazenado nao prova que a RPC existe no catalogo atual.
+   receipt0765RpcMismatch:Number(ledger.receipt_0765)>0&&catalog.rpc_0765_present!==true,
+   guard9037Strict:catalog.guard_9037_strict===true,
+   guard9037ReceiptBodyExact:guardReceiptBody.guard_9037_receipt_body_exact===true,
+   guarded9037ReceiptBodiesExact:guardedReceiptBodies.guarded_9037_receipt_bodies_exact===true,
+   guardTriggerEnabled:catalog.guard_trigger_enabled===true,
+   guardTriggerWiringCorrect:catalog.guard_trigger_wiring_correct===true,
+   guardFunctionInvoker:catalog.guard_function_invoker===true,
+   guardFunctionExecuteRestricted:catalog.guard_function_execute_restricted===true,
+   guarded9037FunctionsExpected:8,
+   guarded9037FunctionsPresent:Number(catalog.guarded_9037_functions?.present??0),
+   guarded9037FunctionsLeastPrivilege:Number(catalog.guarded_9037_functions?.least_privilege??0),
+   guarded9037DefinitionsObservedMatches:Number(catalog.guarded_9037_functions?.observed_definition_matches??0),
+   guarded9037DefinitionsNoDrift:Number(catalog.guarded_9037_functions?.observed_definition_matches)===8,
+   guarded9037FunctionsAllSafe:Number(catalog.guarded_9037_functions?.present)===8&&
+     Number(catalog.guarded_9037_functions?.least_privilege)===8,
+   rpc0765NamedFunctionsAnySchema:Number(catalog.rpc_0765_any_schema_count),
+   recoveryCodesRls:catalog.recovery_codes_rls===true,
+   recoveryCodesClientDmlDenied:catalog.recovery_codes_client_dml_denied===true,
+   recoveryCodesDenySelectPolicy:catalog.recovery_codes_deny_select_policy===true,
+   gate:'DIAGNOSTIC_ONLY_NOT_RELEASE_APPROVAL'
+ };
+}
 async function main(){
  const mode=process.argv[2];
- need(['manifest','preflight','verify','apply'].includes(mode),'INVALID_MODE');
+ need(['manifest','preflight','verify','diagnose','apply'].includes(mode),'INVALID_MODE');
  const items=manifest();
  if(mode==='manifest'){
-  console.log(JSON.stringify({mode:'offline',count:39,files:items.map(({file,sha256})=>({file,sha256}))}));
+  // Classificacao offline do corte historico, NAO um plano de aplicacao.
+  // Os 11 SQL upstream anteriores ao corte nao podem ser reaplicados
+  // automaticamente a uma instalacao que ja possua os 11 recibos v1.85.
+  const cut=HISTORY.at(-1)[0];
+  const imported=items.filter(x=>x.file!==EXTRA);
+  const beforeCut=imported.filter(x=>x.version<=cut).map(x=>x.file);
+  const afterCut=imported.filter(x=>x.version>cut).map(x=>x.file);
+  need(beforeCut.length===11&&afterCut.length===27,'REPLAY_CUT_DRIFT');
+  console.log(JSON.stringify({mode:'offline',count:39,
+    files:items.map(({file,sha256})=>({file,sha256})),
+    historicalCut:cut,
+    replayClassification:{
+      upstreamBeforeOrAtCut:beforeCut,
+      upstreamAfterCut:afterCut,
+      elusHistoricalVersions:HISTORY.slice(-4).map(x=>x[0]),
+      atomicMfaMigration:EXTRA,
+      destructiveMigration:'20261023180557_0759_codigos_de_recuperacao_antigos_saem.sql',
+      dependencyChains:DEPENDENCY_CHAINS,
+      dependencyOrderVerified:true, // somente ordem nominal; nao prova seguranca do SQL
+      guard0690Vs9037:guardParity(),
+      replayApproved:false,
+      reason:'RESTORE_AND_FULL_LEDGER_STATEMENTS_NOT_VERIFIED'
+    }
+  }));
   return;
  }
- sourceGuard();
+ // FAIL-CLOSED: o executor da main não comprova restauração do backup
+ // nem exige aprovação independente para o DELETE da migration 0759.
+ // Um SHA-256 bem formado e um ACK não substituem essas evidências.
+ // Desbloqueio exige PR separada, restauração/replay em PG 15/17 descartável,
+ // revisão de ACL/RLS e autorização específica. Bloquear antes de conectar.
  if(mode==='apply'){
-  need(process.env.ELUS_V189_PROD_ACK==='I_AUTHORIZE_ELUS_V189_PRODUCTION_LEDGER_39','ADMIN_APPROVAL_REQUIRED');
-  need(/^[a-f0-9]{64}$/.test(process.env.ELUS_V189_VERIFIED_BACKUP_SHA256||''),'VERIFIED_BACKUP_REQUIRED');
-  need(process.env.ELUS_V189_ROLLBACK_APP_DIGEST==='sha256:5af1da63aced2560c1c10d2fb2505346322eff0757a1239dd6a63bcca2656c74','ROLLBACK_DIGEST_DRIFT');
+  throw Error('PRODUCTION_APPLY_BLOCKED_PENDING_RESTORE_AND_0759_APPROVAL');
  }
+ sourceGuard();
  const c=new pg.Client(config());
  await c.connect();
- let locked=false;
  try{
-  if(mode==='apply'){await c.query('SELECT pg_advisory_lock($1)',[76050002]);locked=true;}
-  else await c.query('BEGIN READ ONLY');
-  const state=await snapshot(c,items);
-  const legacy=Number((await c.query('SELECT count(*) AS n FROM public.user_recovery_codes WHERE octet_length(code_hash) <> 32')).rows[0].n);
-  if(mode!=='apply'){
-   console.log(JSON.stringify({mode:'read-only',ledgerHistorical:11,...state,legacyMfaCodes:legacy,manifest:39}));
+  await c.query('BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY');
+  if(mode==='diagnose'){
+   console.log(JSON.stringify({mode:'read-only-diagnostic',...await diagnoseLedger(c)}));
    return;
   }
-  need(legacy===0,'MFA_LEGACY_ROWS_REQUIRE_SEPARATE_APPROVAL');
-  for(let i=state.applied;i<39;i++){
-   const item=items[i];
-   await c.query('BEGIN');
-   try{
-    await c.query(item.sql);
-    await c.query('INSERT INTO supabase_migrations.schema_migrations (version,name,statements) VALUES ($1,$2,$3::text[])',[item.version,item.name,[item.sql]]);
-    await c.query('COMMIT');
-   }catch(e){
-    await c.query('ROLLBACK').catch(()=>{});
-    throw Error('FAILED_AT_'+item.version,{cause:e});
-   }
-   console.log('APPLIED='+String(i+1)+'/39');
+  const state=await snapshot(c,items);
+  // Amostra de DDLs independentes: recibos e contagem de tabelas nao provam
+  // que cada objeto de migration foi criado. Isto NAO substitui replay.
+  const schemaCanaries=(await c.query(`
+    SELECT to_regclass('public.crm_lead_attachments') IS NOT NULL AS lead_attachments,
+           to_regclass('public.mfa_trusted_devices') IS NOT NULL AS mfa_trusted_devices,
+           to_regclass('public.importacoes_de_historico') IS NOT NULL AS history_imports,
+           to_regclass('public.automation_rodizio_atribuicoes') IS NOT NULL AS automation_round_robin,
+           to_regprocedure('public.fn_session_mfa_proven()') IS NOT NULL AS mfa_proven,
+           to_regprocedure('public.fn_automation_rodizio_atribuir(uuid,uuid,uuid,uuid)') IS NOT NULL AS automation_round_robin_fn
+  `)).rows[0];
+  const legacy=Number((await c.query('SELECT count(*) AS n FROM public.user_recovery_codes WHERE octet_length(code_hash) <> 32')).rows[0].n);
+  // Read-only catalog attestation: a matching migration receipt does not prove
+  // that its SECURITY DEFINER RPC or least-privilege grants exist in the schema.
+  const rpc=(await c.query(`
+    SELECT p.oid IS NOT NULL AS present,
+           COALESCE(p.prosecdef,false) AS security_definer,
+           COALESCE(p.proconfig @> ARRAY['search_path=""']::text[],false) AS pinned_empty_search_path,
+           COALESCE(p.proacl IS NOT NULL AND NOT EXISTS (
+             SELECT 1 FROM pg_catalog.aclexplode(p.proacl) AS acl
+             WHERE acl.grantee=0 AND acl.privilege_type='EXECUTE'
+           ),false) AS public_execute_denied,
+           COALESCE(has_function_privilege('service_role',p.oid,'EXECUTE'),false) AS service_execute,
+           COALESCE(has_function_privilege('anon',p.oid,'EXECUTE'),false) AS anon_execute,
+           COALESCE(has_function_privilege('authenticated',p.oid,'EXECUTE'),false) AS authenticated_execute,
+           COALESCE((SELECT relrowsecurity FROM pg_class
+                     WHERE oid=to_regclass('public.user_recovery_codes')),false) AS recovery_codes_rls,
+           COALESCE((SELECT bool_and(
+                      NOT has_table_privilege(roles.role,t.oid,'SELECT') AND
+                      NOT has_table_privilege(roles.role,t.oid,'INSERT') AND
+                      NOT has_table_privilege(roles.role,t.oid,'UPDATE') AND
+                      NOT has_table_privilege(roles.role,t.oid,'DELETE'))
+                     FROM (VALUES ('anon'),('authenticated')) AS roles(role)
+                     CROSS JOIN (SELECT to_regclass('public.user_recovery_codes') AS oid) AS t
+                    ),false) AS recovery_codes_client_dml_denied,
+           EXISTS(SELECT 1 FROM pg_policy pol
+                  WHERE pol.polrelid=to_regclass('public.user_recovery_codes')
+                    AND pol.polcmd='r'
+                    AND pol.polname='user_recovery_codes_ninguem_le'
+                    AND pg_get_expr(pol.polqual,pol.polrelid)='false'
+                 ) AS recovery_codes_deny_select_policy
+    FROM (SELECT to_regprocedure('public.fn_elus_rotacionar_codigos_recuperacao(uuid,text[])') AS oid) AS expected
+    LEFT JOIN pg_proc p ON p.oid=expected.oid
+  `)).rows[0];
+  if(mode==='verify'){
+   need(state.applied===39,'INCOMPLETE_LEDGER');
+   need(Object.values(schemaCanaries).every(v=>v===true),'SCHEMA_CANARY_DRIFT');
+   // A 0759 elimina os formatos legados; recibo completo não prova esse efeito.
+   need(legacy===0,'MFA_LEGACY_ROWS_REMAIN_AFTER_0759');
+   need(rpc.present===true,'RPC_0765_MISSING');
+   need(rpc.pinned_empty_search_path===true,'RPC_0765_SEARCH_PATH_DRIFT');
+   need(rpc.public_execute_denied===true,'RPC_0765_PUBLIC_EXECUTE_DRIFT');
+   need(rpc.security_definer===true&&rpc.service_execute===true&&
+        rpc.anon_execute===false&&rpc.authenticated_execute===false,'RPC_0765_ACL_DRIFT');
+   need(rpc.recovery_codes_rls===true,'RECOVERY_CODES_RLS_DRIFT');
+   need(rpc.recovery_codes_client_dml_denied===true,'RECOVERY_CODES_CLIENT_DML_GRANT_DRIFT');
+   need(rpc.recovery_codes_deny_select_policy===true,'RECOVERY_CODES_DENY_SELECT_POLICY_DRIFT');
   }
-  const done=await snapshot(c,items);
-  need(done.applied===39,'POST_APPLY_LEDGER_DRIFT');
-  console.log('OFFICIAL_LEDGER_50_VERIFIED');
+  console.log(JSON.stringify({mode:'read-only',ledgerHistorical:11,...state,legacyMfaCodes:legacy,
+    recoveryRotationRpcPresent:rpc.present,recoveryRotationSecurityDefiner:rpc.security_definer,
+    recoveryRotationPinnedEmptySearchPath:rpc.pinned_empty_search_path,
+    recoveryRotationPublicExecuteDenied:rpc.public_execute_denied,
+    recoveryRotationServiceExecute:rpc.service_execute,recoveryRotationAnonExecute:rpc.anon_execute,
+    recoveryRotationAuthenticatedExecute:rpc.authenticated_execute,
+    recoveryCodesRls:rpc.recovery_codes_rls,
+    recoveryCodesClientDmlDenied:rpc.recovery_codes_client_dml_denied,
+    recoveryCodesDenySelectPolicy:rpc.recovery_codes_deny_select_policy,
+    schemaCanaries,manifest:39}));
  }finally{
-  if(locked)await c.query('SELECT pg_advisory_unlock($1)',[76050002]).catch(()=>{});
-  else await c.query('ROLLBACK').catch(()=>{});
+  await c.query('ROLLBACK').catch(()=>{});
   await c.end();
  }
 }
